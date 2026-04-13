@@ -106,7 +106,6 @@ export function InlineSubItems({
       }
 
       setRows(l1)
-      onCountChangeRef.current?.(l1.length)
     } catch (e) {
       console.error('Failed to load sub-items:', e)
     } finally {
@@ -117,6 +116,10 @@ export function InlineSubItems({
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    onCountChangeRef.current?.(rows.length)
+  }, [rows.length])
 
   useEffect(() => {
     if (showAddForm) setTimeout(() => addInputRef.current?.focus(), 50)
@@ -182,11 +185,7 @@ export function InlineSubItems({
 
         const created = (await res.json()) as SubItemData
 
-        setRows((prev) => {
-          const next = [...prev, { ...created, children: [] }]
-          onCountChangeRef.current?.(next.length)
-          return next
-        })
+        setRows((prev) => [...prev, { ...created, children: [] }])
       } catch (e) {
         console.error('Failed to create sub-item:', e)
       }
@@ -237,11 +236,7 @@ export function InlineSubItems({
     async (id: string, depth: 0 | 1, parentId: string | null) => {
       // Optimistic removal
       if (depth === 0) {
-        setRows((prev) => {
-          const next = prev.filter((r) => r.id !== id)
-          onCountChangeRef.current?.(next.length)
-          return next
-        })
+        setRows((prev) => prev.filter((r) => r.id !== id))
       } else {
         setRows((prev) =>
           prev.map((r) =>
