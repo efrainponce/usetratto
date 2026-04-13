@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 10**
+- Board Views (Fase 8.7): tab strip entre header y tabla, column picker dropdown, rename/delete vistas
+- Migration 011: `board_views` + `board_view_columns` aplicada en Supabase remoto
+- 4 API routes nuevas: CRUD vistas + toggle visibilidad de columnas por vista
+- Auto-crea vista "Default" en primer load; sin board_view_columns = columna visible por default
+- Plan actualizado: 8.7 done, `board_view_members` + billing diferidos a Fase 9; build 64 rutas 0 errores
+
 **~sesión 9**
 - Fase 8 Settings completa: layout Cursor-inspired, 9 páginas (profile, workspace, members, teams, territories, boards, billing, superadmin), 56 rutas build limpio
 - Permisos `restrict_to_own` en `board_members`: miembro solo ve items donde es owner; toggle en Acceso tab; enforcement en `GET /api/items`
