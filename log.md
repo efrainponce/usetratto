@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 3**
+- Fase 4 completa: `ItemDetailView` (header editable + stage badge + info panel + tabs placeholder), `[itemSid]/page.tsx` server page, `resolveItemBySid` en lib/boards
+- Optimización de velocidad: datos pre-fetcheados en servidor y pasados como props — 0 client fetches al cargar board o item
+- Caches: `resolveBoardBySid`, `getBoardContext`, `getWorkspaceUsers` con `unstable_cache` 60s; profile lookup 30s
+- Service client singleton; `requireAuthApi` sin SELECT users redundante
+- Prev/Next eliminado de ItemDetailView por decisión de diseño
+
 **~sesión 2**
 - Rutas migradas de `[boardSlug]` → `[boardSid]`: boards ahora en `/app/b/10000039`
 - `resolveBoardBySid()` + `getFirstBoard()` reemplazan lógica de slug; redirect `/app` dinámico por `system_key`

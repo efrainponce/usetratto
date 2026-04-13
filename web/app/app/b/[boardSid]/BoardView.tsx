@@ -1,59 +1,13 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
-
-// ─── Raw API shapes ───────────────────────────────────────────────────────────
-
-type RawColumn = {
-  id:        string
-  col_key:   string
-  name:      string
-  kind:      string
-  is_system: boolean
-  position:  number
-  is_hidden: boolean
-  settings:  Record<string, unknown>
-}
-
-type Stage = {
-  id:        string
-  name:      string
-  color:     string
-  position:  number
-  is_closed: boolean
-}
-
-type WorkspaceUser = {
-  id:    string
-  name:  string | null
-  phone: string | null
-}
-
-type ItemValue = {
-  column_id:    string
-  value_text:   string | null
-  value_number: number | null
-  value_date:   string | null
-  value_json:   unknown
-}
-
-type RawItem = {
-  id:           string
-  sid:          number
-  name:         string
-  stage_id:     string | null
-  owner_id:     string | null
-  territory_id: string | null
-  deadline:     string | null
-  position:     number
-  item_values:  ItemValue[]
-}
+import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue } from '@/lib/boards'
 
 // System col_keys that map directly to items table fields
-const ITEMS_FIELD: Record<string, keyof RawItem> = {
+const ITEMS_FIELD: Record<string, keyof BoardItem> = {
   name:     'name',
   stage:    'stage_id',
   owner:    'owner_id',
@@ -73,21 +27,28 @@ const SID_COL: ColumnDef = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
-  boardId:   string
-  boardSid:  number
-  boardName: string
+  boardId:        string
+  boardSid:       number
+  boardName:      string
+  initialStages:  BoardStage[]
+  initialColumns: BoardColumn[]
+  initialUsers:   WorkspaceUser[]
+  initialItems:   BoardItem[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BoardView({ boardId, boardSid, boardName }: Props) {
+export function BoardView({
+  boardId, boardSid, boardName,
+  initialStages, initialColumns, initialUsers, initialItems,
+}: Props) {
   const router = useRouter()
 
-  const [rawCols,  setRawCols]  = useState<RawColumn[]>([])
-  const [stages,   setStages]   = useState<Stage[]>([])
-  const [users,    setUsers]    = useState<WorkspaceUser[]>([])
-  const [rawItems, setRawItems] = useState<RawItem[]>([])
-  const [loading,  setLoading]  = useState(true)
+  // All data pre-fetched by server — no loading state, no useEffect
+  const [rawCols,  setRawCols]  = useState<BoardColumn[]>(initialColumns)
+  const [stages,   setStages]   = useState<BoardStage[]>(initialStages)
+  const [users,    setUsers]    = useState<WorkspaceUser[]>(initialUsers)
+  const [rawItems, setRawItems] = useState<BoardItem[]>(initialItems)
 
   // col_key → column UUID  (for item_values lookups)
   const colIdMap = useMemo(() => {
@@ -117,35 +78,6 @@ export function BoardView({ boardId, boardSid, boardName }: Props) {
     if (rawCols.length === 0) return []
     return rawItems.map(item => toRow(item, colIdMap, columns))
   }, [rawItems, colIdMap, columns, rawCols.length])
-
-  // ── Fetch ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        const [boardRes, colsRes, itemsRes, usersRes] = await Promise.all([
-          fetch(`/api/boards/${boardId}`),
-          fetch(`/api/boards/${boardId}/columns`),
-          fetch(`/api/items?boardId=${boardId}`),
-          fetch('/api/workspace-users'),
-        ])
-        if (cancelled) return
-        const [boardData, colsData, itemsData, usersData] = await Promise.all([
-          boardRes.json(), colsRes.json(), itemsRes.json(), usersRes.json(),
-        ])
-        if (cancelled) return
-        setStages(boardData.stages ?? [])
-        setRawCols(Array.isArray(colsData) ? colsData : [])
-        setRawItems(Array.isArray(itemsData) ? itemsData : [])
-        setUsers(Array.isArray(usersData) ? usersData : [])
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [boardId])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -202,7 +134,7 @@ export function BoardView({ boardId, boardSid, boardName }: Props) {
       body:    JSON.stringify({ board_id: boardId, name: 'Nuevo registro' }),
     })
     if (!res.ok) return
-    const item = await res.json() as RawItem
+    const item = await res.json() as BoardItem
     setRawItems(prev => [...prev, { ...item, item_values: [] }])
   }
 
@@ -230,7 +162,7 @@ export function BoardView({ boardId, boardSid, boardName }: Props) {
         <h1 className="text-[14px] font-semibold text-gray-800">{boardName}</h1>
         <div className="flex-1" />
         <span className="text-[12px] text-gray-400">
-          {loading ? '…' : `${rows.length} registro${rows.length !== 1 ? 's' : ''}`}
+          {rows.length} registro{rows.length !== 1 ? 's' : ''}
         </span>
         <button
           onClick={handleNew}
@@ -246,7 +178,7 @@ export function BoardView({ boardId, boardSid, boardName }: Props) {
           onCellChange={handleCellChange}
           onRowClick={handleRowClick}
           onBulkDelete={handleBulkDelete}
-          loading={loading}
+          loading={false}
         />
       </div>
     </div>
@@ -255,7 +187,7 @@ export function BoardView({ boardId, boardSid, boardName }: Props) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function augmentSettings(col: RawColumn, stages: Stage[], users: WorkspaceUser[]): ColumnSettings {
+function augmentSettings(col: BoardColumn, stages: BoardStage[], users: WorkspaceUser[]): ColumnSettings {
   const base = (col.settings ?? {}) as ColumnSettings
   if (col.col_key === 'stage') {
     return {
@@ -274,7 +206,7 @@ function augmentSettings(col: RawColumn, stages: Stage[], users: WorkspaceUser[]
   return base
 }
 
-function toRow(item: RawItem, colIdMap: Record<string, string>, cols: ColumnDef[]): Row {
+function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDef[]): Row {
   const cells: Record<string, CellValue> = {}
   for (const col of cols) {
     if (col.key === '__sid') {

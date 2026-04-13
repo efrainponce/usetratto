@@ -318,19 +318,19 @@ web/lib/boards/index.ts
 
 ### Tareas
 
-- [ ] **4.1** Server page: resuelve item por sid, board por sid (no slug)
-- [ ] **4.2** `ItemDetailView.tsx`:
+- [x] **4.1** Server page: resuelve item por sid, board por sid (no slug)
+- [x] **4.2** `ItemDetailView.tsx`:
   - Header: nombre editable + stage badge + sid visible
   - Info panel: campos core + custom editables (mismo cell system)
   - Tabs: Sub-items (placeholder) | Canales (placeholder) | Actividad (placeholder)
-  - Prev/Next navigation por sid, breadcrumb al board
-- [ ] **4.3** API: `GET /api/items/[id]` → item completo con values + board info
+  - ~~Prev/Next navigation~~ — eliminado por decisión de diseño; breadcrumb al board
+- [x] **4.3** API: `GET /api/items/[id]` ya existía; datos pre-fetcheados en server page
 
 ### Verificación
-- [ ] Click en row → `/app/b/10000020/10000107` → detalle con sid en header
-- [ ] Editar fields → guarda
-- [ ] Breadcrumb → volver al board
-- [ ] Prev/Next funciona
+- [x] Click en row → `/app/b/10000020/10000107` → detalle con sid en header
+- [x] Editar fields → guarda
+- [x] Breadcrumb → volver al board
+- ~~Prev/Next~~ — eliminado
 
 ### Archivos
 ```

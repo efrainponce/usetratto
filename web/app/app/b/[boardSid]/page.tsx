@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
-import { resolveBoardBySid } from '@/lib/boards'
+import { resolveBoardBySid, getBoardContext, getWorkspaceUsers, getBoardItems } from '@/lib/boards'
 import { BoardView } from './BoardView'
 
 type Props = {
@@ -14,14 +14,23 @@ export default async function BoardPage({ params }: Props) {
 
   const user  = await requireAuth()
   const board = await resolveBoardBySid(sid, user.workspaceId)
-
   if (!board) notFound()
+
+  const [{ stages, columns }, users, items] = await Promise.all([
+    getBoardContext(board.id),
+    getWorkspaceUsers(user.workspaceId),
+    getBoardItems(board.id, user.workspaceId),
+  ])
 
   return (
     <BoardView
       boardId={board.id}
       boardSid={board.sid}
       boardName={board.name}
+      initialStages={stages}
+      initialColumns={columns}
+      initialUsers={users}
+      initialItems={items}
     />
   )
 }

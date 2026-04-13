@@ -1,4 +1,5 @@
 import 'server-only'
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
@@ -6,13 +7,28 @@ import { NextResponse } from 'next/server'
 export type UserRole = 'superadmin' | 'admin' | 'member' | 'viewer'
 
 export type AuthUser = {
-  userId: string
-  userSid: number
-  phone: string | null
-  name: string | null
-  role: UserRole
+  userId:      string
+  userSid:     number
+  phone:       string | null
+  name:        string | null
+  role:        UserRole
   workspaceId: string
 }
+
+// Cache profile for 30s — eliminates repeated DB hits across parallel API calls
+const getCachedProfile = unstable_cache(
+  async (userId: string) => {
+    const service = createServiceClient()
+    const { data } = await service
+      .from('users')
+      .select('sid, name, role, workspace_id')
+      .eq('id', userId)
+      .single()
+    return data ?? null
+  },
+  ['user-profile'],
+  { revalidate: 30 }
+)
 
 export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
   const supabase = await createClient()
@@ -22,12 +38,7 @@ export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
-  const service = createServiceClient()
-  let { data: profile } = await service
-    .from('users')
-    .select('sid, name, role, workspace_id')
-    .eq('id', user.id)
-    .single()
+  let profile = await getCachedProfile(user.id)
 
   if (!profile) {
     const withPlus    = user.phone ? (user.phone.startsWith('+') ? user.phone : `+${user.phone}`) : null
@@ -35,10 +46,10 @@ export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
     const phoneCandidates = [withPlus, withoutPlus].filter(Boolean) as string[]
 
     const { data: saRow } = phoneCandidates.length
-      ? await service.from('superadmin_phones').select('workspace_id').in('phone', phoneCandidates).maybeSingle()
+      ? await createServiceClient().from('superadmin_phones').select('workspace_id').in('phone', phoneCandidates).maybeSingle()
       : { data: null }
 
-    const { data: newProfile } = await service
+    const { data: newProfile } = await createServiceClient()
       .from('users')
       .upsert({
         id:           user.id,
@@ -49,7 +60,7 @@ export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
       .select('sid, name, role, workspace_id')
       .maybeSingle()
 
-    profile = newProfile
+    profile = newProfile ?? null
   }
 
   if (!profile) {
@@ -57,11 +68,11 @@ export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
   }
 
   return {
-    userId: user.id,
-    userSid: profile.sid,
-    phone: user.phone ?? null,
-    name: profile.name,
-    role: profile.role as UserRole,
+    userId:      user.id,
+    userSid:     profile.sid,
+    phone:       user.phone ?? null,
+    name:        profile.name,
+    role:        profile.role as UserRole,
     workspaceId: profile.workspace_id,
   }
 }
