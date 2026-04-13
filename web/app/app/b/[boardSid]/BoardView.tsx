@@ -74,13 +74,13 @@ const SID_COL: ColumnDef = {
 
 type Props = {
   boardId:   string
-  boardSlug: string
+  boardSid:  number
   boardName: string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BoardView({ boardId, boardSlug, boardName }: Props) {
+export function BoardView({ boardId, boardSid, boardName }: Props) {
   const router = useRouter()
 
   const [rawCols,  setRawCols]  = useState<RawColumn[]>([])
@@ -220,8 +220,8 @@ export function BoardView({ boardId, boardSlug, boardName }: Props) {
   const handleRowClick = useCallback((rowId: string) => {
     const item = rawItems.find(i => i.id === rowId)
     if (!item?.sid) return
-    router.push(`/app/b/${boardSlug}/${item.sid}`)
-  }, [rawItems, boardSlug, router])
+    router.push(`/app/b/${boardSid}/${item.sid}`)
+  }, [rawItems, boardSid, router])
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

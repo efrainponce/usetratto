@@ -27,13 +27,13 @@ type Props = {
 
 function BoardIcon({ board, pathname }: { board: SidebarBoard; pathname: string }) {
   const active =
-    pathname === `/app/b/${board.slug}` ||
-    pathname.startsWith(`/app/b/${board.slug}/`)
+    pathname === `/app/b/${board.sid}` ||
+    pathname.startsWith(`/app/b/${board.sid}/`)
 
   return (
     <Tooltip label={board.name} side="right">
       <Link
-        href={`/app/b/${board.slug}`}
+        href={`/app/b/${board.sid}`}
         className={[
           'w-8 h-8 rounded-lg flex items-center justify-center transition-all',
           active

@@ -34,8 +34,8 @@ Deploy:     Vercel + Supabase
 No hay tablas especiales para contactos, cuentas, vendors, catálogo. **Todo** vive en `boards` → `items` → `item_values`. Un "contacto" es un item en un board con `system_key = 'contacts'`. Un "producto" es un item en el board `catalog`. La única diferencia es la configuración de columnas.
 
 ### 2. Una sola UI para todo
-- **UNA** ruta de lista: `/app/b/[boardSlug]` → `BoardView.tsx`
-- **UNA** ruta de detalle: `/app/b/[boardSlug]/[itemSid]` → `ItemDetailView.tsx`
+- **UNA** ruta de lista: `/app/b/[boardSid]` → `BoardView.tsx`
+- **UNA** ruta de detalle: `/app/b/[boardSid]/[itemSid]` → `ItemDetailView.tsx`
 - **UNA** tabla genérica: `GenericDataTable.tsx`
 - **UNA** celda por tipo: `TextCell`, `NumberCell`, `DateCell`, `SelectCell`, etc.
 - **UN** import wizard: `ImportWizard.tsx` (sirve para cualquier board)
@@ -86,7 +86,7 @@ La secuencia `tratto_sid_seq` es **compartida** entre TODAS las entidades. Esto 
 
 Adicionalmente, `boards` tienen `slug` (text, UNIQUE per workspace) para URLs amigables.
 
-**En la UI:** siempre mostrar `sid`, nunca uuid. En URLs de boards usar `slug`.
+**En la UI:** siempre mostrar `sid`, nunca uuid. En URLs usar `sid` para boards e items — nunca slug, nunca uuid.
 
 ### Tablas
 
@@ -261,8 +261,8 @@ Toda tabla tiene `workspace_id`. RLS garantiza aislamiento total. Un workspace =
 ```
 /login                              → OTP phone auth
 /app                                → Redirect a board "opportunities" (o primer board)
-/app/b/[boardSlug]                  → BoardView (lista universal)
-/app/b/[boardSlug]/[itemSid]        → ItemDetailView (detalle universal)
+/app/b/[boardSid]                  → BoardView (lista universal)
+/app/b/[boardSid]/[itemSid]        → ItemDetailView (detalle universal)
 /app/settings                       → Configuración
 /app/settings/boards                → CRUD boards + stages + columns + members
 /app/settings/teams                 → CRUD equipos + miembros
@@ -353,11 +353,11 @@ components/
     header.tsx                  → Header con breadcrumb dinámico.
 
 pages (app router):
-  app/b/[boardSlug]/
-    page.tsx                    → Server: resuelve board por slug, fetch data
+  app/b/[boardSid]/
+    page.tsx                    → Server: resuelve board por SID, fetch data
     BoardView.tsx               → Client: toolbar + GenericDataTable + import
 
-  app/b/[boardSlug]/[itemSid]/
+  app/b/[boardSid]/[itemSid]/
     page.tsx                    → Server: resuelve item por sid
     ItemDetailView.tsx          → Client: info panel + tabs (Sub-items | Canales | Actividad)
 ```
@@ -467,7 +467,7 @@ whatsapp-outbound   → Sender genérico
 - **UI:** español (labels, mensajes, placeholders)
 - **Fechas:** UTC en DB, timezone del workspace en UI
 - **Teléfonos:** E.164
-- **IDs en UI:** siempre mostrar `sid`, nunca uuid. En URLs de boards usar `slug`.
+- **IDs en UI:** siempre mostrar `sid`, nunca uuid. En URLs usar `sid` para boards e items — nunca slug, nunca uuid.
 - **Commits:** Conventional Commits en español. `feat:`, `fix:`, `refactor:`
 - **Branches:** `main` solamente. Un agente a la vez. Sin GitButler.
 - **Workflow:** Un agente Claude → hace su tarea → commit → push. Secuencial.
@@ -477,7 +477,7 @@ whatsapp-outbound   → Sender genérico
 ## Errores a NO repetir
 
 1. **❌ Tablas separadas para contacts/accounts/vendors** → Duplicación masiva. Solución: todo es un item en un board.
-2. **❌ Rutas hardcodeadas por tipo** → Solución: `/app/b/[boardSlug]`.
+2. **❌ Rutas hardcodeadas por tipo** → Solución: `/app/b/[boardSid]`.
 3. **❌ Componentes específicos por board** → Solución: `BoardView.tsx` universal.
 4. **❌ 5 agentes en paralelo con GitButler** → Solución: 1 agente, secuencial, main directo.
 5. **❌ Columnas core como FK físicas** (`contact_id`, `account_id`) → Solución: columnas tipo `relation` en EAV.

@@ -1,23 +1,26 @@
 import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
-import { resolveBoardBySlug } from '@/lib/boards'
+import { resolveBoardBySid } from '@/lib/boards'
 import { BoardView } from './BoardView'
 
 type Props = {
-  params: Promise<{ boardSlug: string }>
+  params: Promise<{ boardSid: string }>
 }
 
 export default async function BoardPage({ params }: Props) {
-  const { boardSlug } = await params
+  const { boardSid } = await params
+  const sid = parseInt(boardSid, 10)
+  if (isNaN(sid)) notFound()
+
   const user  = await requireAuth()
-  const board = await resolveBoardBySlug(boardSlug, user.workspaceId)
+  const board = await resolveBoardBySid(sid, user.workspaceId)
 
   if (!board) notFound()
 
   return (
     <BoardView
       boardId={board.id}
-      boardSlug={board.slug}
+      boardSid={board.sid}
       boardName={board.name}
     />
   )

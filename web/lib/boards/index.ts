@@ -1,15 +1,36 @@
 import 'server-only'
 import { createServiceClient } from '@/lib/supabase/service'
 
-export async function resolveBoardBySlug(slug: string, workspaceId: string) {
+export async function resolveBoardBySid(sid: number, workspaceId: string) {
   const supabase = createServiceClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('boards')
     .select('id, sid, slug, name, type, system_key')
     .eq('workspace_id', workspaceId)
-    .eq('slug', slug)
-    .single()
+    .eq('sid', sid)
+    .maybeSingle()
+  if (error) console.error('[resolveBoardBySid] error:', error, { sid, workspaceId })
   return data ?? null
+}
+
+export async function getFirstBoard(workspaceId: string) {
+  const supabase = createServiceClient()
+  // Try opportunities first
+  const { data: opp } = await supabase
+    .from('boards')
+    .select('id, sid, slug, name, type, system_key')
+    .eq('workspace_id', workspaceId)
+    .eq('system_key', 'opportunities')
+    .single()
+  if (opp) return opp
+  // Fallback: any board
+  const { data: any } = await supabase
+    .from('boards')
+    .select('id, sid, slug, name, type, system_key')
+    .eq('workspace_id', workspaceId)
+    .limit(1)
+    .single()
+  return any ?? null
 }
 
 export async function getBoardItems(boardId: string, workspaceId: string) {

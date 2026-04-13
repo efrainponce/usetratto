@@ -210,8 +210,8 @@ web/app/api/auth/logout/route.ts
   - Settings icon, Superadmin button (condicional), Logout
 - [ ] **2.3** Header: pageName dinámico + breadcrumb
 - [x] **2.4** API: `GET /api/boards` → boards del workspace con sid y slug
-- [x] **2.5** Redirect: `/app` → `/app/b/oportunidades`
-- [x] **2.6** Placeholder en `/app/b/[boardSlug]/page.tsx`
+- [x] **2.5** Redirect: `/app` → `/app/b/{sid_de_opportunities}` (dinámico por system_key)
+- [x] **2.6** Placeholder en `/app/b/[boardSid]/page.tsx`
 
 ### Verificación
 - [ ] Login → sidebar con 5 boards de sistema (mostrando nombre, no sid)
@@ -222,7 +222,7 @@ web/app/api/auth/logout/route.ts
 ```
 web/app/app/layout.tsx
 web/app/app/page.tsx
-web/app/app/b/[boardSlug]/page.tsx
+web/app/app/b/[boardSid]/page.tsx
 web/app/api/boards/route.ts
 web/components/layout/{sidebar,header}.tsx
 ```
@@ -264,7 +264,7 @@ web/components/layout/{sidebar,header}.tsx
   - Toolbar: "+ Nuevo", búsqueda, count
   - Row click → `/app/b/[slug]/[item.sid]`
 
-- [x] **3.4** Server page: resuelve board por slug + workspace
+- [x] **3.4** Server page: resuelve board por SID + workspace
 
 - [x] **3.5** API:
   ```
@@ -303,7 +303,7 @@ web/components/layout/{sidebar,header}.tsx
 ```
 web/components/data-table/GenericDataTable.tsx
 web/components/cells/{types,ColumnCell,TextCell,NumberCell,DateCell,SelectCell,MultiSelectCell,PeopleCell,BooleanCell,RelationCell,PhoneCell,EmailCell}.tsx
-web/app/app/b/[boardSlug]/{page,BoardView}.tsx
+web/app/app/b/[boardSid]/{page,BoardView}.tsx
 web/app/api/items/{route,[id]/route,[id]/values/route,bulk/route}.ts
 web/app/api/boards/[id]/{route,columns/route}.ts
 web/app/api/workspace-users/route.ts
@@ -318,7 +318,7 @@ web/lib/boards/index.ts
 
 ### Tareas
 
-- [ ] **4.1** Server page: resuelve item por sid, board por slug
+- [ ] **4.1** Server page: resuelve item por sid, board por sid (no slug)
 - [ ] **4.2** `ItemDetailView.tsx`:
   - Header: nombre editable + stage badge + sid visible
   - Info panel: campos core + custom editables (mismo cell system)
@@ -327,14 +327,14 @@ web/lib/boards/index.ts
 - [ ] **4.3** API: `GET /api/items/[id]` → item completo con values + board info
 
 ### Verificación
-- [ ] Click en row → `/app/b/oportunidades/10000107` → detalle con sid en header
+- [ ] Click en row → `/app/b/10000020/10000107` → detalle con sid en header
 - [ ] Editar fields → guarda
 - [ ] Breadcrumb → volver al board
 - [ ] Prev/Next funciona
 
 ### Archivos
 ```
-web/app/app/b/[boardSlug]/[itemSid]/{page,ItemDetailView}.tsx
+web/app/app/b/[boardSid]/[itemSid]/{page,ItemDetailView}.tsx
 ```
 
 ---
