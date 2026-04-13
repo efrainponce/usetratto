@@ -15,6 +15,12 @@
 - `/start` carga contexto mínimo (fase actual, git, log) en caveman mode
 - `/end` loggea sesión + commit + push automático
 
+**~hora 4**
+- Fase 1 completada: middleware (proxy.ts), auth helpers, login, logout
+- AuthUser ahora incluye workspaceId, role, userSid desde tabla users
+- proxy.ts confirmado como middleware en Next.js 16 (`ƒ Proxy (Middleware)` en build)
+- Pendiente: test manual OTP (+521234567890 / 123456) antes de Fase 2
+
 **~hora 3**
 - Fase 0 completa: 6 migrations aplicadas en Supabase remoto
 - 001: 23 tablas, sequence global `tratto_sid_seq`, indexes
