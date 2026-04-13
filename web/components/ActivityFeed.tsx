@@ -70,8 +70,8 @@ export function ActivityFeed({ itemId }: Props) {
       try {
         const res = await fetch(`/api/items/${itemId}/activity`)
         if (!res.ok) throw new Error(`API error: ${res.status}`)
-        const data = (await res.json()) as ActivityEntry[]
-        setActivities(data)
+        const data = (await res.json()) as { activity: ActivityEntry[] }
+        setActivities(data.activity ?? [])
       } catch (e) {
         console.error('Failed to load activity:', e)
         setActivities([])

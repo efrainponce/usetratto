@@ -14,11 +14,12 @@ type Channel = {
 type Message = {
   id: string
   channel_id: string
-  user_id: string
-  user_name: string
+  user_id: string | null
   body: string
-  type: 'user' | 'system'
+  type: 'text' | 'system' | 'whatsapp'
+  metadata: Record<string, unknown>
   created_at: string
+  users: { id: string; name: string | null; phone: string | null } | null
 }
 
 type WorkspaceUser = {
@@ -57,6 +58,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
 
   // Message input state
   const [inputValue, setInputValue] = useState('')
+  const [sendError, setSendError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Mention picker state
@@ -78,8 +80,8 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       try {
         const res = await fetch(`/api/channels?itemId=${itemId}`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = (await res.json()) as Channel[]
-        setChannels(data)
+        const data = (await res.json()) as { channels: Channel[] }
+        setChannels(data.channels ?? [])
         if (data.length > 0) setSelectedChannelId(data[0].id)
       } catch (e) {
         setChannelsError(e instanceof Error ? e.message : 'Error loading channels')
@@ -95,26 +97,33 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
   useEffect(() => {
     if (!selectedChannelId) return
 
-    const loadMessages = async () => {
-      setLoadingMessages(true)
-      setMessagesError(null)
+    const fetchMessages = async (initial: boolean) => {
+      if (initial) { setLoadingMessages(true); setMessagesError(null) }
       try {
         const res = await fetch(`/api/channels/${selectedChannelId}/messages`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = (await res.json()) as Message[]
-        setMessages(data.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()))
+        const data = (await res.json()) as { messages: Message[] }
+        const sorted = (data.messages ?? []).sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        )
+        // Only update state if something actually changed (avoids rerender flash on poll)
+        setMessages(prev => {
+          const lastPrev = prev[prev.length - 1]?.id
+          const lastNew  = sorted[sorted.length - 1]?.id
+          return lastPrev === lastNew && prev.length === sorted.length ? prev : sorted
+        })
       } catch (e) {
-        setMessagesError(e instanceof Error ? e.message : 'Error loading messages')
+        if (initial) setMessagesError(e instanceof Error ? e.message : 'Error loading messages')
       } finally {
-        setLoadingMessages(false)
+        if (initial) setLoadingMessages(false)
       }
     }
 
-    loadMessages()
+    fetchMessages(true)
 
-    // Poll for new messages every 8 seconds
+    // Poll silently — no loading spinner on poll
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-    pollIntervalRef.current = setInterval(loadMessages, 8000)
+    pollIntervalRef.current = setInterval(() => fetchMessages(false), 8000)
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
@@ -150,12 +159,13 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       setShowMentionPicker(false)
     }
 
-    // Auto-expand textarea
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      const newHeight = Math.min(Math.max(textareaRef.current.scrollHeight, 24), 72)
-      textareaRef.current.style.height = `${newHeight}px`
-    }
+    // Auto-expand textarea — set to auto first to shrink, then grow to scrollHeight
+    requestAnimationFrame(() => {
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto'
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 72)}px`
+      }
+    })
   }
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -184,25 +194,30 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     const body = inputValue.trim()
     setInputValue('')
     if (textareaRef.current) {
-      textareaRef.current.style.height = '24px'
+      textareaRef.current.style.height = 'auto'
     }
 
+    setSendError(null)
     try {
       const res = await fetch(`/api/channels/${selectedChannelId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as any).error ?? `HTTP ${res.status}`)
+      }
 
       // Refresh messages
       const messagesRes = await fetch(`/api/channels/${selectedChannelId}/messages`)
       if (messagesRes.ok) {
-        const data = (await messagesRes.json()) as Message[]
-        setMessages(data.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()))
+        const data = (await messagesRes.json()) as { messages: Message[] }
+        setMessages((data.messages ?? []).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()))
       }
     } catch (e) {
-      console.error('Error sending message:', e)
+      setSendError(e instanceof Error ? e.message : 'Error al enviar')
+      setInputValue(body) // restore input so user doesn't lose the message
     }
   }, [selectedChannelId, inputValue])
 
@@ -265,8 +280,8 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       // Refresh channels to get updated members
       const refreshRes = await fetch(`/api/channels?itemId=${itemId}`)
       if (refreshRes.ok) {
-        const data = (await refreshRes.json()) as Channel[]
-        setChannels(data)
+        const data = (await refreshRes.json()) as { channels: Channel[] }
+        setChannels(data.channels ?? [])
       }
     } catch (e) {
       console.error('Error adding member:', e)
@@ -280,8 +295,8 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       // Refresh channels to get updated members
       const refreshRes = await fetch(`/api/channels?itemId=${itemId}`)
       if (refreshRes.ok) {
-        const data = (await refreshRes.json()) as Channel[]
-        setChannels(data)
+        const data = (await refreshRes.json()) as { channels: Channel[] }
+        setChannels(data.channels ?? [])
       }
     } catch (e) {
       console.error('Error removing member:', e)
@@ -453,13 +468,13 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
                 <div className="flex gap-2">
                   {msg.type !== 'system' && (
                     <div className="w-6 h-6 rounded-full bg-indigo-200 flex items-center justify-center flex-none text-[11px] font-semibold text-indigo-700">
-                      {msg.user_name.charAt(0).toUpperCase()}
+                      {(msg.users?.name ?? msg.users?.phone ?? '?').charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
                     {msg.type !== 'system' && (
                       <div className="flex items-baseline gap-2">
-                        <span className="font-medium text-gray-900">{msg.user_name}</span>
+                        <span className="font-medium text-gray-900">{msg.users?.name ?? msg.users?.phone ?? 'Usuario'}</span>
                         <span className="text-[11px] text-gray-500">
                           {new Date(msg.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -478,6 +493,9 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
 
         {/* Message input */}
         <div className="flex-none border-t border-gray-100 px-4 py-3 bg-white relative">
+          {sendError && (
+            <div className="text-[12px] text-red-500 mb-1.5">{sendError}</div>
+          )}
           <div className="flex gap-2">
             <textarea
               ref={textareaRef}
@@ -489,7 +507,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
               className={`flex-1 text-[13px] px-2.5 py-1.5 border border-gray-200 rounded resize-none focus:outline-none focus:border-indigo-400 transition-colors ${
                 isSystemChannel ? 'bg-gray-50 text-gray-400' : ''
               }`}
-              style={{ height: '24px', minHeight: '24px', maxHeight: '72px' }}
+              style={{ minHeight: '36px', maxHeight: '72px', overflowY: 'auto' }}
               rows={1}
             />
             <button
