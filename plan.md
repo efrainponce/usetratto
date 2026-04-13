@@ -506,6 +506,12 @@ web/app/api/sub-item-columns/[colId]/route.ts
 - [ ] **8.5** Workspace config
 - [ ] **8.6** Superadmin: workspace switcher
 - [ ] **8.7** Column permissions UI (en board detail → column settings)
+- [ ] **8.8** Sub-item views: múltiples configuraciones de source por board
+  - `sub_item_views (id, board_id, source_board_id, name, is_active)` — view activa = la que se muestra
+  - `sub_item_columns` migra de `board_id` a `view_id` (FK a sub_item_views)
+  - UI: switch de views en toolbar; crear/renombrar/archivar views
+  - Cambiar source ya no destruye config anterior — cada source tiene su propia view
+  - Migración: view default auto-creada por board con los sub_item_columns actuales
 
 ---
 
