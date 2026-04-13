@@ -2,6 +2,12 @@
 
 ## 2026-04-13
 
+**~sesión 15**
+- ⋯ en headers de columna en GenericDataTable → abre ColumnSettingsPanel directamente desde la tabla (no solo desde el picker)
+- Todos los dropdowns de permisos (columnas, board members, view members) soportan Equipos + Usuarios con optgroup
+- Fix: SelectCell/PeopleCell no mostraban dropdown — overflow-hidden en `td` clipaba position:absolute; removido, confirmado funcional
+- Build 72 rutas 0 errores
+
 **~sesión 14**
 - Fase 10 completa: ColumnSettingsPanel — drawer deslizante derecho, tabs General/Opciones/Permisos
 - General: nombre editable, tipo (kind) con selector + advertencia al cambiar, Number format, Relation target board

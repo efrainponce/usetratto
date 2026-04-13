@@ -664,10 +664,10 @@ El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita cr
 **Goal:** Features avanzadas sobre base sólida.
 
 ### Tareas
-- [ ] **10.1** Edge Functions: twilio_webhook, mentions-trigger, daily-digest
-- [ ] **10.2** Quote templates CRUD
-- [ ] **10.3** PDF generation
-- [ ] **10.4** Tab "Cotización" en ItemDetailView
+- [ ] **11.1** Edge Functions: twilio_webhook, mentions-trigger, daily-digest
+- [ ] **11.2** Quote templates CRUD
+- [ ] **11.3** PDF generation
+- [ ] **11.4** Tab "Cotización" en ItemDetailView
 
 ---
 
