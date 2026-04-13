@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 17**
+- Brainstorm: buttons, files, signature, stage gates, variantes L2, cross-board automations
+- plan.md: Fases 11-16 rediseñadas — Column Upgrades / Variantes / Stage Gates / Automations / Quotes / WhatsApp
+- Signature = kind:'signature' con watermark DocuSeal-style, $0, ligado a auth OTP
+- Variantes: producto cartesiano N dimensiones (talla × color × ...) → L2 auto-generados
+- Stage gates: blockers con auto-post a canal Sistema + mención WhatsApp al vendedor
+
 **~sesión 16**
 - plan.md: Fase 11 (WhatsApp+Quote) separada en Fase 11 Quote Engine + Fase 12 WhatsApp — specs completos para cada una
 - performance: `getBoardItems`, `getBoardViews`, `getSubItemColumns` envueltos en `unstable_cache` (15s/60s/60s)

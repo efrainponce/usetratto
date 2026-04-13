@@ -43,9 +43,17 @@ Fase 9: Permisos (RLS real, board_members, column_permissions, view members)
    ↓
 Fase 10: Column Settings Editor (nombre, tipo, opciones, fórmulas, relation)
    ↓
-Fase 11: Quote Engine (templates PDF, cotizaciones desde items)
+Fase 11: Column Upgrades (files, buttons, signature)
    ↓
-Fase 12: WhatsApp Integration (Claude AI + Twilio + Edge Functions)
+Fase 12: Variantes L2 + Vistas por board
+   ↓
+Fase 13: Stage Gates + Approval (gatekeepers nativos, reemplaza Make)
+   ↓
+Fase 14: Cross-board Automations (trigger → acción, reemplaza Make)
+   ↓
+Fase 15: Quote Engine (templates PDF, cotizaciones desde items)
+   ↓
+Fase 16: WhatsApp Integration (Claude AI + Twilio + Edge Functions)
 ```
 
 ---
@@ -663,9 +671,352 @@ El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita cr
 
 ---
 
-## Fase 11 — Quote Engine
+## Fase 11 — Column Upgrades: Files, Buttons, Signature
 
-**Goal:** Generación de cotizaciones PDF desde items del pipeline. Templates configurables por board, líneas = sub-items.
+**Goal:** Tres nuevos `kind` de columna que desbloquean quotes, gates y aprobaciones.
+
+### 11.1 — kind: 'file'
+
+```typescript
+// item_values.value_json:
+[{ name: string, url: string, size: number, mime: string, uploaded_at: string }]
+```
+
+- Bucket `item-files` en Supabase Storage (RLS por workspace)
+- API: `POST /api/items/[id]/files` → genera signed upload URL → cliente sube directo a Storage
+- `FileCell`: chips con nombre + icono + botón download; botón "+" para subir
+- Múltiples archivos por celda (array en value_json)
+
+### 11.2 — kind: 'button'
+
+```typescript
+// board_columns.settings:
+{
+  label: string,              // texto del botón
+  action: 'change_stage'      // acción directa
+        | 'create_quote'
+        | 'run_automation',   // Fase 14
+  // por acción:
+  stage_id?: string,          // para change_stage
+  template_id?: string,       // para create_quote
+  automation_id?: string,     // para run_automation
+  confirm?: boolean,          // pedir confirmación antes de ejecutar
+  confirm_message?: string,
+}
+```
+
+- `ButtonCell`: botón inline en la tabla, no editable
+- On click → ejecuta acción via API según settings → muestra feedback (spinner → check / error)
+- `change_stage` y `create_quote` no requieren Fase 14
+
+### 11.3 — kind: 'signature'
+
+```typescript
+// item_values.value_json cuando firmado:
+{
+  doc_id: string,    // UUID generado al firmar (único, inmutable)
+  signed_by: string, // nombre del usuario
+  email: string,
+  signed_at: string, // ISO timestamp
+  user_id: string,   // FK a users.id para auditoría
+}
+// null cuando no está firmado
+```
+
+- `SignatureCell`: sin firma → botón "Firmar" (solo roles permitidos por `settings.allowed_roles`); con firma → watermark estilo DocuSeal
+- On click "Firmar" → modal de confirmación → guarda JSON → **read-only para siempre** (RLS + API)
+- Admin puede invalidar con log de actividad obligatorio
+- `settings.allowed_roles: string[]` — qué roles pueden firmar
+- En PDF de quote: si el item tiene columna signature firmada → incluir watermark en footer
+
+### Tareas
+- [ ] **11.1** Bucket Storage + API upload + FileCell
+- [ ] **11.2** ButtonCell + acciones `change_stage` y `create_quote` (sin automation engine)
+- [ ] **11.3** SignatureCell + lógica de inmutabilidad
+
+### Verificación
+- [ ] Subir archivo a item → aparece en celda → descargable
+- [ ] Botón cambia stage del item al hacer click
+- [ ] Firma guarda watermark → no editable después → aparece en PDF
+
+---
+
+## Fase 12 — Variantes L2 + Vistas por board
+
+**Goal:** Explotar un sub-item en variantes por talla/color. Configurar qué niveles se ven por board.
+
+### Contexto
+
+```
+Oportunidad (item)
+  └── Camisa táctica azul (sub-item L1, depth=0)
+        └── S  | qty: 50 (sub-item L2, depth=1)
+        └── M  | qty: 80
+        └── L  | qty: 40
+        └── XL | qty: 30
+```
+
+- En board **Oportunidades**: ver solo L1 (total por producto, sin desglose de tallas)
+- En board **Proyectos**: ver L1+L2 (desglose completo por talla)
+
+### Schema (ya existe, solo UI faltante)
+
+```sql
+sub_items.depth      -- 0 = L1, 1 = L2
+sub_items.parent_id  -- L2 apunta a L1
+```
+
+### Feature: Auto-expand L1 → L2 (producto cartesiano)
+
+```typescript
+// boards.settings (jsonb):
+{
+  variant_dimensions: ['tallas_col_id', 'colores_col_id'],  // 1..N columnas multiselect
+  variant_value_columns: ['qty', 'unit_price']              // columnas en blanco en cada L2
+}
+
+// Ejemplos:
+// 1 dimensión: tallas=[S,M,L,XL]              → 4 L2s ("S", "M", "L", "XL")
+// 2 dimensiones: tallas × colores (4×3)       → 12 L2s ("S / Azul", "M / Negro"...)
+// 3 dimensiones: talla × color × tela (4×3×2) → 24 L2s ("S / Azul / Ripstop"...)
+```
+
+Botón "Explotar variantes" en L1 → lee valores de todas las `variant_dimensions` del sub-item → calcula producto cartesiano → crea un L2 por cada combinación con `name = "dim1 / dim2 / ..."` y `variant_value_columns` en blanco.
+
+Si ya existen L2s para ese L1 → pregunta si reemplazar o agregar faltantes (no duplicar combinaciones ya existentes).
+
+### Feature: Formula sum L2 en L1
+
+```typescript
+// sub_item_columns.settings para kind='formula' en L1:
+{
+  formula: 'sum_children',   // nuevo tipo: suma una columna de todos los L2 hijos
+  child_column: 'qty'
+}
+```
+
+Computable en frontend: `sum(row.subRows.map(l2 => l2.qty))`. Read-only. Útil para validar sum(tallas) = total pedido.
+
+### Feature: View config por board
+
+```typescript
+// boards.settings (jsonb, ya existe):
+{
+  subitem_view: 'L1_only' | 'L1_L2' | 'L2_only'
+}
+```
+
+`BoardView` y `ItemDetailView` respetan este setting al renderizar sub-items.
+
+### Tareas
+- [ ] **12.1** UI de L2 en `InlineSubItems` + `SubItemsView`: indentación, expand/collapse L1
+- [ ] **12.2** Botón "Explotar variantes" en L1 → crea L2 desde multiselect column
+- [ ] **12.3** Formula `sum_children` en sub_item_columns
+- [ ] **12.4** Setting `subitem_view` por board + respetarlo en BoardView/ItemDetailView
+- [ ] **12.5** API `POST /api/sub-items/[id]/expand` → recibe column_id, crea L2s
+
+### Verificación
+- [ ] L1 con tallas S/M/L/XL → explotar → genera 4 L2
+- [ ] sum(L2.qty) se actualiza en L1 al cambiar cualquier cantidad
+- [ ] Oportunidades solo ve L1; Proyectos ve L1+L2
+
+---
+
+## Fase 13 — Stage Gates + Field Locks
+
+**Goal:** Reemplazar Make checks con validaciones nativas. Bloquear campos según estado.
+
+### 13.A — Stage Gates
+
+Antes de que un item avance a una etapa, todas las `entry_conditions` de esa etapa deben cumplirse.
+
+```sql
+-- board_stages.entry_conditions jsonb DEFAULT '[]'
+-- Cada condition:
+{
+  "id": "uuid",
+  "label": "Debe tener al menos 1 producto con descripción",  -- aparece en mensaje al vendedor
+  "type": "column_not_empty"
+        | "column_equals"
+        | "column_greater_than"
+        | "column_contains"
+        | "all_subitems_match"    -- todos los L1 tienen [column] = [value]
+        | "sum_children_equals"   -- sum(L2.column) = item.column
+        | "signature_exists"      -- columna kind='signature' está firmada
+        | "file_attached",        -- columna kind='file' tiene al menos 1 archivo
+  "column_id": "uuid",
+  "value": any,
+  "child_column_id": "uuid"       -- para all_subitems_match y sum_children_equals
+}
+```
+
+**Flujo cuando falla:**
+
+```
+PATCH /api/items/[id] { stage_id: 'nuevo' }
+  → evalúa entry_conditions del stage destino
+  → si alguna falla:
+      1. Retorna 422 { blocked: true, failed: [{ label, type }] }
+      2. INSERT item_activity { action: 'stage_blocked', metadata: { failed_checks, attempted_stage } }
+      3. POST canal "Sistema": "@[owner] No pudiste avanzar a [Etapa]:\n❌ [label1]\n❌ [label2]"
+      4. INSERT mentions → trigger WhatsApp al owner (ya existente)
+```
+
+**UI en Settings → Boards → click en etapa:**
+```
+┌─────────────────────────────────────────────────┐
+│  Requisitos para entrar a "Costeo"              │
+│                                                 │
+│  ❯ Institución del contacto  [no está vacío]    │
+│  ❯ Descripción               [no está vacío]    │
+│  ❯ Cantidad                  [mayor que 0]      │
+│  + Agregar requisito                            │
+└─────────────────────────────────────────────────┘
+```
+
+### 13.B — Field Locks
+
+Cuando una columna alcanza cierto valor → se vuelve read-only para roles no privilegiados.
+
+```typescript
+// sub_item_columns.settings (o board_columns.settings):
+{
+  lock_when: {
+    column_id: 'stage_col_id',
+    operator: 'equals',
+    value: 'listo_stage_id'
+  },
+  lock_for_roles: ['member', 'viewer']  // admin/costeador sí puede editar
+}
+```
+
+Enforcement:
+- **API**: `PATCH /api/sub-items/[id]/values` verifica lock antes de escribir → 403 si aplica
+- **UI**: celda se muestra con fondo gris + cursor not-allowed + tooltip "Este campo está bloqueado"
+
+### Tareas
+- [ ] **13.1** `board_stages.entry_conditions` — migration + PATCH en API de stages
+- [ ] **13.2** Evaluador de conditions en `lib/stage-gates.ts` (todos los tipos)
+- [ ] **13.3** Enforcement en `PATCH /api/items/[id]` al cambiar `stage_id`
+- [ ] **13.4** Auto-post canal Sistema + mention al owner cuando falla
+- [ ] **13.5** UI condition builder en Settings → Boards → Stages
+- [ ] **13.6** `lock_when` en settings de board_columns y sub_item_columns
+- [ ] **13.7** Enforcement de lock en API + UI (celda gris)
+
+### Verificación
+- [ ] Item sin institución de contacto → no puede avanzar a Costeo → mensaje en canal con checks fallidos
+- [ ] Sub-item en stage Listo → vendor intenta editar → bloqueado; costeador sí puede
+- [ ] Firma requerida → sin firma → no avanza → con firma → avanza
+
+---
+
+## Fase 14 — Cross-board Automations
+
+**Goal:** Trigger → Acción. Reemplazar los scenarios de Make que conectan boards.
+
+### Schema
+
+```sql
+automations (
+  id uuid PK,
+  workspace_id uuid,
+  board_id uuid,          -- board donde vive la automation
+  name text,
+  is_active boolean DEFAULT true,
+  trigger_type text,      -- ver tipos abajo
+  trigger_config jsonb,   -- parámetros del trigger
+  actions jsonb[],        -- array de acciones a ejecutar en orden
+  created_at timestamptz
+)
+```
+
+### Triggers
+
+| type | config | Descripción |
+|---|---|---|
+| `stage_changed` | `{ to_stage_id, from_stage_id? }` | Item cambia a/desde etapa |
+| `item_created` | `{}` | Nuevo item en el board |
+| `column_changed` | `{ column_id, to_value? }` | Columna cambia (opcionalmente a valor específico) |
+| `button_clicked` | `{ button_column_id }` | Click en ButtonCell (Fase 11) |
+
+### Acciones
+
+| type | params | Descripción |
+|---|---|---|
+| `change_stage` | `{ stage_id }` | Cambiar etapa del item |
+| `set_column_value` | `{ column_id, value }` | Fijar valor de columna |
+| `assign_owner` | `{ user_id \| 'trigger_user' }` | Asignar dueño |
+| `notify_user` | `{ user_field \| user_id, message_template }` | Mensaje en canal Sistema |
+| `create_quote` | `{ template_id }` | Genera cotización PDF |
+| `cross_board_copy` | `{ target_board_id, field_mapping, copy_subitems, expand_variants }` | Crea item en otro board |
+| `call_webhook` | `{ url, method, headers, body_template }` | HTTP request externo |
+
+### cross_board_copy — el caso Oportunidad → Proyecto
+
+```typescript
+{
+  type: 'cross_board_copy',
+  params: {
+    target_board_id: 'proyectos_board_id',
+    field_mapping: [
+      { from_column: 'nombre', to_column: 'nombre' },
+      { from_column: 'contacto', to_column: 'cliente' },
+    ],
+    copy_subitems: true,     // copiar L1 sub-items
+    expand_variants: true,   // explotar L2 desde multiselect tallas
+    link_column: 'oportunidad_relation_col'  // columna relation en Proyectos que apunta al item original
+  }
+}
+```
+
+### Motor de automations
+
+```typescript
+// lib/automation-engine.ts
+export async function runAutomations(event: AutomationEvent, supabase: SupabaseClient)
+
+// AutomationEvent:
+{ type: 'stage_changed' | 'item_created' | ..., item_id, board_id, workspace_id, payload }
+```
+
+Llamado desde API routes después de cada mutación relevante. No DB triggers — lógica en TypeScript, más fácil de debuggear.
+
+**Anti-loop:** `automation_runs` table guarda `(automation_id, item_id, triggered_at)` — si la misma automation corrió para el mismo item en los últimos 5s, skip.
+
+### UI — Lista de recetas por board
+
+Settings → Boards → tab "Automations":
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Cuando [etapa cambia a Ganado]                      │
+│  Hacer  [crear item en Proyectos] + [generar PDF]    │
+│                                          ✏️  🗑️      │
+├──────────────────────────────────────────────────────┤
+│  + Nueva automation                                  │
+└──────────────────────────────────────────────────────┘
+```
+
+No canvas. Lista simple. Cada fila = 1 trigger + N acciones.
+
+### Tareas
+- [ ] **14.1** Migration: `automations` + `automation_runs`
+- [ ] **14.2** `lib/automation-engine.ts` — evaluador de triggers + ejecutor de acciones
+- [ ] **14.3** Integrar `runAutomations()` en `PATCH /api/items/[id]` + `POST /api/items`
+- [ ] **14.4** Implementar acción `cross_board_copy` (con copy_subitems + expand_variants)
+- [ ] **14.5** UI: Settings → Boards → tab "Automations" (lista de recetas + editor)
+- [ ] **14.6** ButtonCell con `action: 'run_automation'` (completar Fase 11.2)
+
+### Verificación
+- [ ] Oportunidad gana → se crea item en Proyectos con sub-items y tallas auto-expandidas
+- [ ] Botón "Aprobar" cambia stage + genera PDF en 1 click
+- [ ] Anti-loop: automation no corre dos veces por el mismo evento
+
+---
+
+## Fase 15 — Quote Engine
+
+**Goal:** Generación de cotizaciones PDF desde items del pipeline. Templates configurables por board, líneas = sub-items. Firma digital integrada.
 
 ### Arquitectura
 
@@ -680,32 +1031,32 @@ quotes          (id, workspace_id, item_id, template_id, generated_by,
 - `line_columns`: qué sub_item_columns van como líneas de la cotización
 - `footer_fields`: subtotal, impuestos, total — derivados de fórmulas de sub-items
 - `template_html`: HTML Handlebars con vars `{{item.name}}`, `{{lines}}`, etc.
-- PDF generado via Edge Function (Puppeteer o similar), guardado en Supabase Storage
+- PDF generado via Edge Function (Puppeteer), guardado en Supabase Storage
+- Si item tiene columna `kind='signature'` firmada → watermark en footer del PDF
 
 ### Tareas
-- [ ] **11.1** Migration: `quote_templates` + `quotes` (ya en schema 001, solo verificar)
-- [ ] **11.2** Settings → Boards → tab "Cotizaciones": CRUD de templates
-  - Editor visual: elegir header_fields, line_columns, footer_fields
+- [ ] **15.1** Migration: `quote_templates` + `quotes` (verificar si ya existe en schema 001)
+- [ ] **15.2** Settings → Boards → tab "Cotizaciones": CRUD de templates
+  - Editor: elegir header_fields, line_columns, footer_fields
   - Preview en tiempo real
-- [ ] **11.3** Edge Function `generate-quote`:
-  - Recibe `item_id` + `template_id`
-  - Fetch item + sub-items + values
+- [ ] **15.3** Edge Function `generate-quote`:
+  - Fetch item + sub-items + values + firma si existe
   - Render HTML con Handlebars
-  - PDF con Puppeteer → upload Supabase Storage → retorna URL
-- [ ] **11.4** API: `POST /api/quotes` → llama Edge Function → guarda en `quotes`
-- [ ] **11.5** Tab "Cotización" en ItemDetailView:
+  - PDF con Puppeteer → upload Storage → retorna URL
+- [ ] **15.4** API: `POST /api/quotes` → llama Edge Function → guarda en `quotes`
+- [ ] **15.5** Tab "Cotización" en ItemDetailView:
   - Lista de cotizaciones previas
   - Botón "Generar cotización" → elige template → genera → muestra PDF
   - Descarga + link compartible
 
 ### Verificación
-- [ ] Generar cotización desde oportunidad con 3 sub-items → PDF descargable
-- [ ] Template con logo, datos de empresa, líneas con precios
+- [ ] Cotización desde oportunidad con L1+L2 → PDF con tallas desglosadas
+- [ ] Firma en PDF si item tiene signature column firmada
 - [ ] Historial de cotizaciones por item
 
 ---
 
-## Fase 12 — WhatsApp Integration
+## Fase 16 — WhatsApp Integration
 
 **Goal:** Usuarios en campo operan Tratto desde WhatsApp. Claude AI parsea intención y ejecuta acciones.
 
@@ -729,25 +1080,24 @@ quotes          (id, workspace_id, item_id, template_id, generated_by,
 ```
 
 ### Tareas
-- [ ] **12.1** Edge Function `twilio-webhook`:
+- [ ] **16.1** Edge Function `twilio-webhook`:
   - Recibe mensaje WA entrante
   - Llama Claude API con contexto del usuario (boards, items recientes)
   - Claude decide acción: create_item | query_items | reply_mention | unknown
   - Ejecuta acción vía API interna
   - Responde al usuario por WA
-- [ ] **12.2** Edge Function `mentions-trigger`:
+- [ ] **16.2** Edge Function `mentions-trigger`:
   - Cron cada 2 min
   - Busca `mentions WHERE notified=false`
   - Envía WA con preview del mensaje + link al canal
   - Marca `notified=true`
-- [ ] **12.3** Edge Function `daily-digest`:
+- [ ] **16.3** Edge Function `daily-digest`:
   - Cron 8:30 AM America/Mexico_City
   - Por usuario activo: items overdue + items due today + menciones sin responder
   - Mensaje WA formateado
-- [ ] **12.4** Edge Function `whatsapp-outbound`:
+- [ ] **16.4** Edge Function `whatsapp-outbound`:
   - Sender genérico: `sendWhatsApp(phone, message)`
-  - Usado por mentions-trigger, daily-digest, y twilio-webhook para respuestas
-- [ ] **12.5** UI: Settings → Workspace → tab "WhatsApp"
+- [ ] **16.5** UI: Settings → Workspace → tab "WhatsApp"
   - Conectar número Twilio
   - Test de envío
   - Log de mensajes recientes
