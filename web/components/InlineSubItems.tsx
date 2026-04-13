@@ -271,22 +271,23 @@ export function InlineSubItems({
     <div className="py-2">
       {/* Top bar */}
       <div className="flex items-center justify-between px-8 pb-1.5">
-        <span className="text-[12px] font-semibold text-gray-600">{sourceLabel}</span>
-        {!showAddForm && (
+        <span className="text-[12px] font-semibold text-gray-600">Sub-items</span>
+        {!showAddForm && sourceBoardId && (
           <button
-            onClick={() => {
-              if (sourceBoardId) {
-                setShowPicker(true)
-              } else {
-                setShowAddForm(true)
-              }
-            }}
+            onClick={() => setShowPicker(true)}
             className="flex items-center gap-1 text-[12px] text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
           >
             <span className="text-[15px] leading-none">+</span> Agregar
           </button>
         )}
       </div>
+
+      {/* No source warning */}
+      {!sourceBoardId && (
+        <p className="px-8 text-[11px] text-amber-600 italic mb-1">
+          Elige un catálogo en la barra superior antes de agregar sub-items.
+        </p>
+      )}
 
       {/* Table */}
       {rows.length > 0 && (

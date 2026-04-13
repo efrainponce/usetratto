@@ -187,13 +187,27 @@ export function BoardView({
         <div className="flex-1" />
         <button
           onClick={() => setShowMapper(true)}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] border rounded-md transition-colors ${
+            sourceBoardId
+              ? 'text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
+              : 'text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100'
+          }`}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
-            <circle cx="6" cy="6" r="4" strokeWidth="1.5"/>
-            <path d="M6 3v1M6 8v1M3 6h1M8 6h1" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          {sourceBoardId ? 'Fuente configurada' : 'Configurar fuente'}
+          {sourceBoardId ? (
+            <>
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+                <path d="M2 6l3 3 5-5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Catálogo de sub-items listo · Cambiar
+            </>
+          ) : (
+            <>
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+                <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              Elige un catálogo para los sub-items
+            </>
+          )}
         </button>
         <span className="text-[12px] text-gray-400">
           {rows.length} registro{rows.length !== 1 ? 's' : ''}
