@@ -7,3 +7,5 @@
 - proxy.ts (auth guard para /app y /api)
 - Login page con phone OTP
 - /app protegido, muestra "estoy logged in"
+- Auth module con server-only + cache() + dos páginas de prueba
+- Commit inicial
