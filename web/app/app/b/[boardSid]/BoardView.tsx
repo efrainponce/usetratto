@@ -6,6 +6,7 @@ import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import { InlineSubItems } from '@/components/InlineSubItems'
 import { SourceColumnMapper } from '@/components/SourceColumnMapper'
 import { ImportWizard } from '@/components/import/ImportWizard'
+import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView } from '@/lib/boards'
 
@@ -100,12 +101,8 @@ export function BoardView({
   const [territoriesLoaded, setTerritoriesLoaded] = useState(false)
   const [territoryFilter, setTerritoryFilter]   = useState<string | null>(null)
   const [showTerritoryPicker, setShowTerritoryPicker] = useState(false)
-  // Column permissions (in col picker panel)
-  const [openColPermId,    setOpenColPermId]    = useState<string | null>(null)
-  const [colPerms,         setColPerms]         = useState<Record<string, ColPermission[]>>({})
-  const [colPermsLoading,  setColPermsLoading]  = useState<Record<string, boolean>>({})
-  const [newColPermUserId, setNewColPermUserId] = useState('')
-  const [newColPermAccess, setNewColPermAccess] = useState<'view' | 'edit'>('view')
+  // Column settings panel
+  const [colSettingsCol, setColSettingsCol] = useState<BoardColumn | null>(null)
 
   const newViewInputRef    = useRef<HTMLInputElement>(null)
   const colPickerRef       = useRef<HTMLDivElement>(null)
@@ -253,36 +250,6 @@ export function BoardView({
     if (colsRes.ok)  setRawCols(await colsRes.json() as BoardColumn[])
   }, [boardId])
 
-  // ── Column permission handlers (used in col picker) ───────────────────────
-  const loadColPerms = useCallback(async (colId: string) => {
-    if (colPerms[colId] !== undefined) return
-    setColPermsLoading(p => ({ ...p, [colId]: true }))
-    try {
-      const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions`)
-      if (res.ok) { const data = await res.json(); setColPerms(p => ({ ...p, [colId]: data })) }
-    } finally {
-      setColPermsLoading(p => ({ ...p, [colId]: false }))
-    }
-  }, [boardId, colPerms])
-
-  const handleAddColPerm = useCallback(async (colId: string) => {
-    if (!newColPermUserId) return
-    const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: newColPermUserId, access: newColPermAccess }),
-    })
-    if (res.ok) {
-      const perm = await res.json()
-      setColPerms(p => ({ ...p, [colId]: [...(p[colId] ?? []), perm] }))
-      setNewColPermUserId('')
-    }
-  }, [boardId, newColPermUserId, newColPermAccess])
-
-  const handleRemoveColPerm = useCallback(async (colId: string, permId: string) => {
-    const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions/${permId}`, { method: 'DELETE' })
-    if (res.ok) setColPerms(p => ({ ...p, [colId]: (p[colId] ?? []).filter(x => x.id !== permId) }))
-  }, [boardId])
 
   // ── View handlers ──────────────────────────────────────────────────────────
   const handleCreateView = async () => {
@@ -712,85 +679,28 @@ export function BoardView({
               {rawCols.filter(c => !c.is_hidden).map(col => {
                 const vc = activeView?.columns.find(vc => vc.column_id === col.id)
                 const isVisible = vc ? vc.is_visible : true
-                const perms = colPerms[col.id]
-                const hasPerms = perms && perms.length > 0
                 return (
-                  <div key={col.id}>
-                    <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        checked={isVisible}
-                        onChange={() => handleToggleColumn(col.id, isVisible)}
-                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 shrink-0"
-                      />
-                      <span className="text-[12px] text-gray-700 flex-1 truncate cursor-pointer" onClick={() => handleToggleColumn(col.id, isVisible)}>{col.name}</span>
-                      {hasPerms && (
-                        <span className="text-[10px] text-amber-500 shrink-0" title="Tiene restricciones de acceso">🔒</span>
-                      )}
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">{col.kind.slice(0,4)}</span>
-                      <button
-                        onClick={e => {
-                          e.stopPropagation()
-                          const next = openColPermId === col.id ? null : col.id
-                          setOpenColPermId(next)
-                          if (next) loadColPerms(col.id)
-                        }}
-                        className={`shrink-0 text-[14px] leading-none transition-colors ${openColPermId === col.id ? 'text-indigo-500' : 'text-gray-300 hover:text-indigo-500'}`}
-                        title="Permisos de columna"
-                      >⋯</button>
-                    </div>
-
-                    {openColPermId === col.id && (
-                      <div className="mx-2 mb-1 px-3 py-2.5 bg-indigo-50/60 border border-indigo-100 rounded-md">
-                        <p className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wide mb-2">Acceso a columna</p>
-                        {colPermsLoading[col.id] ? (
-                          <p className="text-[11px] text-gray-400">Cargando...</p>
-                        ) : (
-                          <>
-                            {(colPerms[col.id] ?? []).length === 0 ? (
-                              <p className="text-[11px] text-gray-400 mb-2">Sin restricción — todos ven esta columna</p>
-                            ) : (
-                              <div className="space-y-1 mb-2">
-                                {(colPerms[col.id] ?? []).map(p => (
-                                  <div key={p.id} className="flex items-center gap-1.5">
-                                    <span className="flex-1 text-[11px] text-gray-700 truncate">{p.users?.name ?? p.teams?.name ?? '?'}</span>
-                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full shrink-0 ${p.access === 'edit' ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}>
-                                      {p.access === 'edit' ? 'Editar' : 'Ver'}
-                                    </span>
-                                    <button onClick={() => handleRemoveColPerm(col.id, p.id)} className="text-gray-300 hover:text-red-500 text-[12px] leading-none shrink-0">×</button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            <div className="flex gap-1.5">
-                              <select
-                                value={newColPermUserId}
-                                onChange={e => setNewColPermUserId(e.target.value)}
-                                className="flex-1 min-w-0 border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white"
-                              >
-                                <option value="">Usuario...</option>
-                                {users.filter(u => !(colPerms[col.id] ?? []).some(p => p.user_id === u.id)).map(u => (
-                                  <option key={u.id} value={u.id}>{u.name ?? u.phone ?? 'Usuario'}</option>
-                                ))}
-                              </select>
-                              <select
-                                value={newColPermAccess}
-                                onChange={e => setNewColPermAccess(e.target.value as 'view' | 'edit')}
-                                className="border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white shrink-0"
-                              >
-                                <option value="view">Ver</option>
-                                <option value="edit">Editar</option>
-                              </select>
-                              <button
-                                onClick={() => handleAddColPerm(col.id)}
-                                disabled={!newColPermUserId}
-                                className="px-2 py-1 bg-indigo-600 text-white text-[11px] rounded hover:bg-indigo-700 disabled:opacity-40 shrink-0"
-                              >+</button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
+                  <div key={col.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={isVisible}
+                      onChange={() => handleToggleColumn(col.id, isVisible)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 shrink-0"
+                    />
+                    <span
+                      className="text-[12px] text-gray-700 flex-1 truncate cursor-pointer"
+                      onClick={() => handleToggleColumn(col.id, isVisible)}
+                    >{col.name}</span>
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">{col.kind.slice(0,4)}</span>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        setColSettingsCol(col)
+                        setShowColPicker(false)
+                      }}
+                      className="shrink-0 text-[14px] leading-none transition-colors text-gray-300 hover:text-indigo-500"
+                      title="Configurar columna"
+                    >⋯</button>
                   </div>
                 )
               })}
@@ -846,6 +756,20 @@ export function BoardView({
           onImported={async (_count) => {
             setShowImport(false)
             await refreshAll()
+          }}
+        />
+      )}
+
+      {/* ColumnSettingsPanel drawer */}
+      {colSettingsCol && (
+        <ColumnSettingsPanel
+          column={colSettingsCol}
+          boardId={boardId}
+          users={users}
+          onClose={() => setColSettingsCol(null)}
+          onUpdated={updated => {
+            setRawCols(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
+            setColSettingsCol(null)
           }}
         />
       )}

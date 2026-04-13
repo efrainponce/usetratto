@@ -11,9 +11,11 @@ export async function PATCH(req: Request, { params }: Context) {
   const { id, colId } = await params
   const body = await req.json() as {
     name?: string
+    kind?: string
     is_hidden?: boolean
     required?: boolean
     position?: number
+    settings?: Record<string, unknown>
   }
 
   const supabase = await createClient()
@@ -65,6 +67,18 @@ export async function PATCH(req: Request, { params }: Context) {
 
   if ('position' in body && body.position !== undefined) {
     patch.position = body.position
+  }
+
+  if ('kind' in body && body.kind !== undefined) {
+    const validKinds = ['text','number','date','select','multiselect','people','boolean','relation','phone','email','autonumber','url']
+    if (!validKinds.includes(body.kind)) {
+      return NextResponse.json({ error: 'Invalid column kind' }, { status: 400 })
+    }
+    patch.kind = body.kind
+  }
+
+  if ('settings' in body && body.settings !== undefined) {
+    patch.settings = body.settings
   }
 
   if (Object.keys(patch).length === 0) {
