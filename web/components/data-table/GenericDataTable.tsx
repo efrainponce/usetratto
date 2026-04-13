@@ -306,7 +306,7 @@ export function GenericDataTable({
                           zIndex: isSticky ? 10 : undefined,
                         }}
                       >
-                        <div className="w-full h-full flex items-center overflow-hidden">
+                        <div className="w-full h-full flex items-center">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </div>
                       </td>
