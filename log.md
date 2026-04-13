@@ -2,6 +2,24 @@
 
 ## 2026-04-13
 
+**~sesión 13**
+- Fix: vistas no guardaban columnas (upsert pasaba null a campos NOT NULL — position/width); ahora persiste correctamente
+- Fix: ⋯ en vistas y columnas invisible → cambiado a siempre visible (gris claro, hover indigo)
+- Fase 9 completa: 9.3 territory filter en BoardView toolbar + 9.4 verificado (RLS + restrict_to_own API ok)
+- BoardView: botón "Configurar" (engrane) → settings del board; panel Columnas con ⋯ por columna → permisos inline (misma API que Settings)
+- Fase 10 documentada en plan.md: ColumnSettingsPanel (editor completo — nombre, tipo, opciones select, fórmulas, relation, permisos)
+
+**~sesión 12**
+- Fase 9 completa (9.1–9.6): permisos granulares por columna y por vista
+- Migration 012: `board_view_members` table + RLS (sin registros = visible para todos; con registros = acceso restringido)
+- 4 API routes nuevas: CRUD permisos de columna + CRUD miembros de vista
+- Settings → Boards → Columnas tab: 3-dot (⋯) hover por columna → panel inline de permisos (ver/editar por usuario)
+- BoardView tab strip: 3-dot (⋯) hover por vista → popup de gestión de acceso por vista
+- GET /api/boards/[id]/columns filtra columnas según column_permissions + devuelve user_access; GET /api/boards/[id]/views incluye members
+- Build 70+ rutas 0 errores
+
+
+
 **~sesión 11**
 - Fix cells: SelectCell + MultiSelectCell + PeopleCell abren con single click (era double click — no funcionaba etapa)
 - Fix bug: vista duplicada al crear — onBlur + onKeyDown Enter disparaban handleCreateView dos veces; resuelto con viewSubmittingRef

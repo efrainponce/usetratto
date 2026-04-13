@@ -9,6 +9,29 @@ import { ImportWizard } from '@/components/import/ImportWizard'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView } from '@/lib/boards'
 
+// ─── Column permission type ───────────────────────────────────────────────────
+type ColPermission = {
+  id: string
+  user_id: string | null
+  team_id: string | null
+  access: 'view' | 'edit'
+  users?: { id: string; sid: number; name: string }
+  teams?: { id: string; sid: number; name: string }
+}
+
+// ─── View member type ─────────────────────────────────────────────────────────
+type ViewMember = {
+  id: string
+  user_id: string | null
+  team_id: string | null
+  users?: { id: string; sid: number; name: string }
+  teams?: { id: string; sid: number; name: string }
+}
+
+
+// ─── Territory type ───────────────────────────────────────────────────────────
+type Territory = { id: string; sid: number; name: string; parent_id: string | null }
+
 // System col_keys that map directly to items table fields
 const ITEMS_FIELD: Record<string, keyof BoardItem> = {
   name:     'name',
@@ -69,8 +92,25 @@ export function BoardView({
   const [renamingViewId, setRenamingViewId] = useState<string | null>(null)
   const [renameValue,    setRenameValue]    = useState('')
   const [showColPicker,  setShowColPicker]  = useState(false)
+  const [viewMembersOpen, setViewMembersOpen] = useState<string | null>(null)
+  const [viewMembers, setViewMembers] = useState<Record<string, ViewMember[]>>({})
+  const [viewMembersLoading, setViewMembersLoading] = useState<Record<string, boolean>>({})
+  const [newViewMemberId, setNewViewMemberId] = useState('')
+  const [territories, setTerritories]           = useState<Territory[]>([])
+  const [territoriesLoaded, setTerritoriesLoaded] = useState(false)
+  const [territoryFilter, setTerritoryFilter]   = useState<string | null>(null)
+  const [showTerritoryPicker, setShowTerritoryPicker] = useState(false)
+  // Column permissions (in col picker panel)
+  const [openColPermId,    setOpenColPermId]    = useState<string | null>(null)
+  const [colPerms,         setColPerms]         = useState<Record<string, ColPermission[]>>({})
+  const [colPermsLoading,  setColPermsLoading]  = useState<Record<string, boolean>>({})
+  const [newColPermUserId, setNewColPermUserId] = useState('')
+  const [newColPermAccess, setNewColPermAccess] = useState<'view' | 'edit'>('view')
+
   const newViewInputRef    = useRef<HTMLInputElement>(null)
   const colPickerRef       = useRef<HTMLDivElement>(null)
+  const viewMembersPanelRef = useRef<HTMLDivElement>(null)
+  const territoryPickerRef = useRef<HTMLDivElement>(null)
   const viewSubmittingRef  = useRef(false)
 
   // col_key → column UUID  (for item_values lookups)
@@ -107,8 +147,11 @@ export function BoardView({
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
     if (rawCols.length === 0) return []
-    return rawItems.map(item => toRow(item, colIdMap, columns))
-  }, [rawItems, colIdMap, columns, rawCols.length])
+    const items = territoryFilter
+      ? rawItems.filter(i => i.territory_id === territoryFilter)
+      : rawItems
+    return items.map(item => toRow(item, colIdMap, columns))
+  }, [rawItems, colIdMap, columns, rawCols.length, territoryFilter])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -210,6 +253,37 @@ export function BoardView({
     if (colsRes.ok)  setRawCols(await colsRes.json() as BoardColumn[])
   }, [boardId])
 
+  // ── Column permission handlers (used in col picker) ───────────────────────
+  const loadColPerms = useCallback(async (colId: string) => {
+    if (colPerms[colId] !== undefined) return
+    setColPermsLoading(p => ({ ...p, [colId]: true }))
+    try {
+      const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions`)
+      if (res.ok) { const data = await res.json(); setColPerms(p => ({ ...p, [colId]: data })) }
+    } finally {
+      setColPermsLoading(p => ({ ...p, [colId]: false }))
+    }
+  }, [boardId, colPerms])
+
+  const handleAddColPerm = useCallback(async (colId: string) => {
+    if (!newColPermUserId) return
+    const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: newColPermUserId, access: newColPermAccess }),
+    })
+    if (res.ok) {
+      const perm = await res.json()
+      setColPerms(p => ({ ...p, [colId]: [...(p[colId] ?? []), perm] }))
+      setNewColPermUserId('')
+    }
+  }, [boardId, newColPermUserId, newColPermAccess])
+
+  const handleRemoveColPerm = useCallback(async (colId: string, permId: string) => {
+    const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions/${permId}`, { method: 'DELETE' })
+    if (res.ok) setColPerms(p => ({ ...p, [colId]: (p[colId] ?? []).filter(x => x.id !== permId) }))
+  }, [boardId])
+
   // ── View handlers ──────────────────────────────────────────────────────────
   const handleCreateView = async () => {
     if (viewSubmittingRef.current) return
@@ -269,6 +343,48 @@ export function BoardView({
     })
   }
 
+  const loadViewMembers = async (viewId: string) => {
+    if (viewMembers[viewId] !== undefined) return
+    setViewMembersLoading(p => ({ ...p, [viewId]: true }))
+    try {
+      const res = await fetch(`/api/boards/${boardId}/views/${viewId}/members`)
+      if (res.ok) { const data = await res.json(); setViewMembers(p => ({ ...p, [viewId]: data })) }
+    } finally {
+      setViewMembersLoading(p => ({ ...p, [viewId]: false }))
+    }
+  }
+
+  const handleAddViewMember = async (viewId: string) => {
+    if (!newViewMemberId) return
+    const res = await fetch(`/api/boards/${boardId}/views/${viewId}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: newViewMemberId }),
+    })
+    if (res.ok) {
+      const member = await res.json()
+      setViewMembers(p => ({ ...p, [viewId]: [...(p[viewId] ?? []), member] }))
+      setNewViewMemberId('')
+    }
+  }
+
+  const handleRemoveViewMember = async (viewId: string, memberId: string) => {
+    const res = await fetch(`/api/boards/${boardId}/views/${viewId}/members/${memberId}`, { method: 'DELETE' })
+    if (res.ok) {
+      setViewMembers(p => ({ ...p, [viewId]: (p[viewId] ?? []).filter(m => m.id !== memberId) }))
+    }
+  }
+
+  // Load territories handler
+  const loadTerritories = useCallback(async () => {
+    if (territoriesLoaded) return
+    const res = await fetch('/api/territories')
+    if (res.ok) {
+      setTerritories(await res.json())
+      setTerritoriesLoaded(true)
+    }
+  }, [territoriesLoaded])
+
   // Close column picker on click outside
   useEffect(() => {
     if (!showColPicker) return
@@ -280,6 +396,30 @@ export function BoardView({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showColPicker])
+
+  // Close view members panel on click outside
+  useEffect(() => {
+    if (!viewMembersOpen) return
+    const handler = (e: MouseEvent) => {
+      if (viewMembersPanelRef.current && !viewMembersPanelRef.current.contains(e.target as Node)) {
+        setViewMembersOpen(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [viewMembersOpen])
+
+  // Close territory picker on click outside
+  useEffect(() => {
+    if (!showTerritoryPicker) return
+    const handler = (e: MouseEvent) => {
+      if (territoryPickerRef.current && !territoryPickerRef.current.contains(e.target as Node)) {
+        setShowTerritoryPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showTerritoryPicker])
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -322,6 +462,71 @@ export function BoardView({
           </svg>
           Importar
         </button>
+        <a
+          href={`/app/settings/boards/${boardId}`}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+          title="Configuración del board"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+            <circle cx="6" cy="6" r="2" strokeWidth="1.3"/>
+            <path d="M6 1v1.5M6 9.5V11M1 6h1.5M9.5 6H11M2.4 2.4l1.1 1.1M8.5 8.5l1.1 1.1M2.4 9.6l1.1-1.1M8.5 3.5l1.1-1.1" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          Configurar
+        </a>
+
+        {/* Territory filter */}
+        <div className="relative" ref={territoryPickerRef}>
+          <button
+            onClick={() => {
+              setShowTerritoryPicker(p => !p)
+              loadTerritories()
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] border rounded-md transition-colors ${
+              territoryFilter
+                ? 'text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100'
+                : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <circle cx="6" cy="5" r="3" strokeWidth="1.3"/>
+              <path d="M6 1v1M6 9v1M1 5h1M10 5h1" strokeWidth="1.3" strokeLinecap="round"/>
+              <path d="M3 8.5c0 1.5 1.34 2 3 2s3-.5 3-2" strokeWidth="1.3"/>
+            </svg>
+            {territoryFilter
+              ? territories.find(t => t.id === territoryFilter)?.name ?? 'Territorio'
+              : 'Territorio'}
+          </button>
+
+          {showTerritoryPicker && (
+            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
+              <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 mb-1">
+                Filtrar por territorio
+              </div>
+              <button
+                onClick={() => { setTerritoryFilter(null); setShowTerritoryPicker(false) }}
+                className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 ${!territoryFilter ? 'text-indigo-600 font-medium' : 'text-gray-700'}`}
+              >
+                Todos
+              </button>
+              {!territoriesLoaded && (
+                <p className="px-3 py-2 text-[12px] text-gray-400">Cargando...</p>
+              )}
+              {territories.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => { setTerritoryFilter(t.id); setShowTerritoryPicker(false) }}
+                  className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 flex items-center gap-1.5 ${
+                    territoryFilter === t.id ? 'text-teal-700 font-medium' : 'text-gray-700'
+                  }`}
+                >
+                  {t.parent_id && <span className="text-gray-300 text-[10px]">└</span>}
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <span className="text-[12px] text-gray-400">
           {rows.length} registro{rows.length !== 1 ? 's' : ''}
         </span>
@@ -334,7 +539,7 @@ export function BoardView({
       </div>
 
       {/* View tab strip */}
-      <div className="flex items-center gap-0 px-4 border-b border-gray-100 flex-none bg-white">
+      <div className="relative flex items-center gap-0 px-4 border-b border-gray-100 flex-none bg-white">
         {views.map(view => (
           <button
             key={view.id}
@@ -371,12 +576,25 @@ export function BoardView({
               <span>{view.name}</span>
             )}
 
-            {/* Delete button — hover only, not on default */}
+            {/* View members button */}
+            <span
+              role="button"
+              onClick={e => {
+                e.stopPropagation()
+                const next = viewMembersOpen === view.id ? null : view.id
+                setViewMembersOpen(next)
+                if (next) loadViewMembers(view.id)
+              }}
+              className="ml-0.5 text-gray-300 hover:text-indigo-500 transition-colors text-[14px] leading-none"
+              title="Quién puede ver esta vista"
+            >⋯</span>
+
+            {/* Delete button — not on default */}
             {!view.is_default && (
               <span
                 role="button"
                 onClick={e => { e.stopPropagation(); handleDeleteView(view.id) }}
-                className="ml-0.5 opacity-0 group-hover:opacity-50 hover:!opacity-100 text-gray-400 hover:text-red-500 transition-opacity text-[13px] leading-none"
+                className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors text-[13px] leading-none"
               >×</span>
             )}
 
@@ -386,6 +604,57 @@ export function BoardView({
             )}
           </button>
         ))}
+
+        {/* View members popup */}
+        {viewMembersOpen && (
+          <div
+            ref={viewMembersPanelRef}
+            className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3"
+            style={{ left: '8px' }}
+          >
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              Acceso a esta vista
+            </p>
+            {viewMembersLoading[viewMembersOpen] ? (
+              <p className="text-xs text-gray-400">Cargando...</p>
+            ) : (viewMembers[viewMembersOpen] ?? []).length === 0 ? (
+              <p className="text-xs text-gray-400 mb-3">Sin restricción — todos los miembros del board pueden ver esta vista</p>
+            ) : (
+              <div className="space-y-1.5 mb-3">
+                {(viewMembers[viewMembersOpen] ?? []).map(m => {
+                  const name = m.users?.name ?? m.teams?.name ?? 'Desconocido'
+                  return (
+                    <div key={m.id} className="flex items-center gap-2">
+                      <span className="flex-1 text-[12px] text-gray-700">{name}</span>
+                      <button
+                        onClick={() => handleRemoveViewMember(viewMembersOpen, m.id)}
+                        className="text-gray-300 hover:text-red-500 text-[13px] leading-none"
+                      >×</button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <select
+                value={newViewMemberId}
+                onChange={e => setNewViewMemberId(e.target.value)}
+                className="flex-1 border border-gray-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+              >
+                <option value="">Agregar usuario...</option>
+                {users
+                  .filter(u => !(viewMembers[viewMembersOpen] ?? []).some(m => m.user_id === u.id))
+                  .map(u => <option key={u.id} value={u.id}>{u.name ?? u.phone ?? 'Usuario'}</option>)
+                }
+              </select>
+              <button
+                onClick={() => handleAddViewMember(viewMembersOpen)}
+                disabled={!newViewMemberId}
+                className="px-2.5 py-1 bg-indigo-600 text-white text-xs rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              >+</button>
+            </div>
+          </div>
+        )}
 
         {/* New view input or button */}
         {addingView ? (
@@ -436,27 +705,93 @@ export function BoardView({
           </button>
 
           {showColPicker && (
-            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-72 overflow-y-auto">
+            <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-96 overflow-y-auto">
               <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 mb-1">
                 Columnas visibles
               </div>
               {rawCols.filter(c => !c.is_hidden).map(col => {
                 const vc = activeView?.columns.find(vc => vc.column_id === col.id)
                 const isVisible = vc ? vc.is_visible : true
+                const perms = colPerms[col.id]
+                const hasPerms = perms && perms.length > 0
                 return (
-                  <label
-                    key={col.id}
-                    className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isVisible}
-                      onChange={() => handleToggleColumn(col.id, isVisible)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-                    />
-                    <span className="text-[12px] text-gray-700 flex-1 truncate">{col.name}</span>
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">{col.kind.slice(0,4)}</span>
-                  </label>
+                  <div key={col.id}>
+                    <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={isVisible}
+                        onChange={() => handleToggleColumn(col.id, isVisible)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 shrink-0"
+                      />
+                      <span className="text-[12px] text-gray-700 flex-1 truncate cursor-pointer" onClick={() => handleToggleColumn(col.id, isVisible)}>{col.name}</span>
+                      {hasPerms && (
+                        <span className="text-[10px] text-amber-500 shrink-0" title="Tiene restricciones de acceso">🔒</span>
+                      )}
+                      <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">{col.kind.slice(0,4)}</span>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          const next = openColPermId === col.id ? null : col.id
+                          setOpenColPermId(next)
+                          if (next) loadColPerms(col.id)
+                        }}
+                        className={`shrink-0 text-[14px] leading-none transition-colors ${openColPermId === col.id ? 'text-indigo-500' : 'text-gray-300 hover:text-indigo-500'}`}
+                        title="Permisos de columna"
+                      >⋯</button>
+                    </div>
+
+                    {openColPermId === col.id && (
+                      <div className="mx-2 mb-1 px-3 py-2.5 bg-indigo-50/60 border border-indigo-100 rounded-md">
+                        <p className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wide mb-2">Acceso a columna</p>
+                        {colPermsLoading[col.id] ? (
+                          <p className="text-[11px] text-gray-400">Cargando...</p>
+                        ) : (
+                          <>
+                            {(colPerms[col.id] ?? []).length === 0 ? (
+                              <p className="text-[11px] text-gray-400 mb-2">Sin restricción — todos ven esta columna</p>
+                            ) : (
+                              <div className="space-y-1 mb-2">
+                                {(colPerms[col.id] ?? []).map(p => (
+                                  <div key={p.id} className="flex items-center gap-1.5">
+                                    <span className="flex-1 text-[11px] text-gray-700 truncate">{p.users?.name ?? p.teams?.name ?? '?'}</span>
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full shrink-0 ${p.access === 'edit' ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}>
+                                      {p.access === 'edit' ? 'Editar' : 'Ver'}
+                                    </span>
+                                    <button onClick={() => handleRemoveColPerm(col.id, p.id)} className="text-gray-300 hover:text-red-500 text-[12px] leading-none shrink-0">×</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex gap-1.5">
+                              <select
+                                value={newColPermUserId}
+                                onChange={e => setNewColPermUserId(e.target.value)}
+                                className="flex-1 min-w-0 border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white"
+                              >
+                                <option value="">Usuario...</option>
+                                {users.filter(u => !(colPerms[col.id] ?? []).some(p => p.user_id === u.id)).map(u => (
+                                  <option key={u.id} value={u.id}>{u.name ?? u.phone ?? 'Usuario'}</option>
+                                ))}
+                              </select>
+                              <select
+                                value={newColPermAccess}
+                                onChange={e => setNewColPermAccess(e.target.value as 'view' | 'edit')}
+                                className="border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white shrink-0"
+                              >
+                                <option value="view">Ver</option>
+                                <option value="edit">Editar</option>
+                              </select>
+                              <button
+                                onClick={() => handleAddColPerm(col.id)}
+                                disabled={!newColPermUserId}
+                                className="px-2 py-1 bg-indigo-600 text-white text-[11px] rounded hover:bg-indigo-700 disabled:opacity-40 shrink-0"
+                              >+</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )
               })}
             </div>

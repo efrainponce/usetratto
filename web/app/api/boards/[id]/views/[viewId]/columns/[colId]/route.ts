@@ -37,13 +37,13 @@ export async function PATCH(req: Request, { params }: Context) {
 
   if (!view) return NextResponse.json({ error: 'View not found' }, { status: 404 })
 
-  // Build upsert data
+  // Build upsert data — position/width must have defaults (NOT NULL in schema)
   const upsertData = {
     view_id: viewId,
     column_id: colId,
     is_visible: body.is_visible ?? true,
-    position: body.position ?? null,
-    width: body.width ?? null,
+    position: body.position ?? 0,
+    width: body.width ?? 200,
   }
 
   const { data: updated, error } = await supabase

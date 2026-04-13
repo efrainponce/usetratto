@@ -602,12 +602,12 @@ PATCH  /api/boards/[id]/views/[viewId]/columns/[colId] → toggle is_visible, se
 
 ### Tareas
 - [x] **9.0** Seguridad base: 35 API routes migradas de createServiceClient → createClient; RLS ahora es el único enforcement; service client solo en admin/seed y superadmin
-- [ ] **9.1** RLS refinado: board_members (user o team) con access level
-- [ ] **9.2** Column visibility: frontend filtra columnas según column_permissions del user
-- [ ] **9.3** Territory filtering en items
-- [ ] **9.4** Verificar: member sin acceso al board → NO ve items
-- [ ] **9.5** Column permissions UI (settings → board → column → toggle quién ve/edita)
-- [ ] **9.6** `board_view_members`: permisos por vista (user/team que puede ver la vista)
+- [x] **9.1** RLS refinado: board_members (user o team) con access level (ya estaba implementado en migration 003)
+- [x] **9.2** Column visibility: GET /api/boards/[id]/columns filtra columnas según column_permissions del user + devuelve `user_access`
+- [x] **9.3** Territory filter: dropdown en BoardView toolbar filtra items por territorio (client-side, lazy load)
+- [x] **9.4** Verificado: RLS bloquea board privado; restrict_to_own enforced en GET /api/items
+- [x] **9.5** Column permissions UI (settings → board → columnas tab → 3-dot (⋯) hover → panel inline con add/remove permisos por usuario)
+- [x] **9.6** `board_view_members` (migration 012): UI en BoardView tab strip → 3-dot (⋯) hover por vista → popup gestión de acceso
   ```sql
   board_view_members (
     id uuid PK,
@@ -618,12 +618,48 @@ PATCH  /api/boards/[id]/views/[viewId]/columns/[colId] → toggle is_visible, se
   )
   -- Sin registros → visible para todos los miembros del board
   ```
-- [ ] **9.7** Sub-item views: múltiples source configs por board (migrado de 8.8)
-- [ ] **9.8** Billing page mock (migrado de 8.9)
+- [ ] **9.7** Sub-item views: múltiples source configs por board — diferido a post-Fase 10
+- [x] **9.8** Billing page mock — implementado en Fase 8
 
 ---
 
-## Fase 10 — WhatsApp + Quote Engine
+## Fase 10 — Column Settings Editor (NEXT — VITAL)
+
+**Goal:** Editor completo de configuración de columna accesible desde el panel "Columnas" del BoardView (⋯ por columna) y desde Settings. Mismo componente, mismos datos.
+
+### Contexto
+El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita crecer para ser el punto central de configuración de cualquier columna: nombre, tipo, opciones, fórmulas, target board (relation), etc.
+
+### Tareas
+
+- [ ] **10.1** `ColumnSettingsPanel` — componente genérico (drawer o modal) que recibe `column` y `boardId`, muestra y guarda toda la configuración:
+  ```
+  Secciones:
+  ├── General: nombre editable, kind (tipo), col_key (readonly)
+  ├── Opciones (kind=select|multiselect): lista de opciones con color picker, add/remove/reorder
+  ├── Fórmula (kind=formula): selector de operación (multiply/add/subtract/percent) + col_a + col_b
+  ├── Relation (kind=relation): target_board_id picker (dropdown de boards del workspace)
+  ├── Number (kind=number): formato (currency, percentage, plain), decimales
+  └── Permisos: quién puede ver/editar (reusa lógica ya implementada)
+  ```
+
+- [ ] **10.2** Integrar en panel Columnas del BoardView: el ⋯ abre `ColumnSettingsPanel` en lugar del mini-panel de permisos actual
+
+- [ ] **10.3** Integrar en Settings → Boards → Columnas tab: el ⋯ abre el mismo `ColumnSettingsPanel` (reemplaza el panel de permisos actual de settings)
+
+- [ ] **10.4** API: `PATCH /api/boards/[id]/columns/[colId]` ya existe — verificar que acepta `name`, `kind`, `settings` (jsonb con opciones/fórmula/formato)
+
+- [ ] **10.5** Para `kind=select|multiselect`: persistir opciones en `board_columns.settings.options = [{ value, label, color }]` — mismo formato que ya usa SelectCell
+
+### Decisiones clave
+- `ColumnSettingsPanel` es un componente independiente en `components/ColumnSettingsPanel.tsx`
+- Se puede abrir como drawer lateral (slide-in desde la derecha) o modal — decidir en implementación
+- Cambiar `kind` de una columna con datos existentes: advertencia al usuario ("los valores existentes pueden quedar incompatibles")
+- Reorder de opciones: drag-and-drop simple (o flechas arriba/abajo para evitar dependencia nueva)
+
+---
+
+## Fase 11 — WhatsApp + Quote Engine
 
 **Goal:** Features avanzadas sobre base sólida.
 

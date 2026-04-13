@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import React, { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type Stage = {
@@ -10,6 +10,15 @@ type Stage = {
   color: string
   position: number
   is_closed: boolean
+}
+
+type ColPermission = {
+  id: string
+  user_id: string | null
+  team_id: string | null
+  access: 'view' | 'edit'
+  users?: { id: string; sid: number; name: string }
+  teams?: { id: string; sid: number; name: string }
 }
 
 type Column = {
@@ -93,6 +102,12 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const [selectedMemberAccess, setSelectedMemberAccess] = useState<'view' | 'edit'>('edit')
   const [selectedUserId, setSelectedUserId] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+
+  const [openPermColId, setOpenPermColId] = useState<string | null>(null)
+  const [colPermissions, setColPermissions] = useState<Record<string, ColPermission[]>>({})
+  const [permLoading, setPermLoading] = useState<Record<string, boolean>>({})
+  const [newPermUserId, setNewPermUserId] = useState<Record<string, string>>({})
+  const [newPermAccess, setNewPermAccess] = useState<Record<string, 'view' | 'edit'>>({})
 
   // Fetch data on mount
   useEffect(() => {
@@ -345,6 +360,57 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
     return handleUpdateMember(memberId, { access: newAccess })
   }
 
+  // ─── Column Permission handlers ──────────────────────────────────
+
+  async function loadColPermissions(colId: string) {
+    if (colPermissions[colId] !== undefined) return
+    setPermLoading(p => ({ ...p, [colId]: true }))
+    try {
+      const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions`)
+      if (res.ok) {
+        const data = await res.json()
+        setColPermissions(p => ({ ...p, [colId]: data }))
+      }
+    } finally {
+      setPermLoading(p => ({ ...p, [colId]: false }))
+    }
+  }
+
+  async function handleAddColPermission(colId: string) {
+    const userId = newPermUserId[colId]
+    const access = newPermAccess[colId] ?? 'view'
+    if (!userId) return
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, access }),
+      })
+      if (res.ok) {
+        const perm = await res.json()
+        setColPermissions(p => ({ ...p, [colId]: [...(p[colId] ?? []), perm] }))
+        setNewPermUserId(p => ({ ...p, [colId]: '' }))
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function handleRemoveColPermission(colId: string, permId: string) {
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/boards/${boardId}/columns/${colId}/permissions/${permId}`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        setColPermissions(p => ({ ...p, [colId]: (p[colId] ?? []).filter(x => x.id !== permId) }))
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="w-full max-w-4xl">
@@ -558,53 +624,124 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
       {/* ─── Tab: Columnas ──────────────────────────────────────────── */}
       {activeTab === 'columnas' && (
-        <div className="space-y-0 border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
           {columns.length === 0 ? (
             <p className="text-sm text-gray-500 p-4">No hay columnas</p>
           ) : (
             columns.map((col) => (
-              <div
-                key={col.id}
-                className="flex items-center justify-between gap-4 py-3 px-4 border-b border-gray-100 last:border-b-0"
-              >
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">{col.name}</p>
-                  <p className="text-xs text-gray-500">{col.col_key}</p>
-                </div>
+              <React.Fragment key={col.id}>
+                <div
+                  className="group flex items-center justify-between gap-4 py-3 px-4 border-b border-gray-100 last:border-b-0"
+                >
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{col.name}</p>
+                    <p className="text-xs text-gray-500">{col.col_key}</p>
+                  </div>
 
-                <div className="flex items-center gap-3">
-                  <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
-                    {col.kind}
-                  </span>
-
-                  {!col.is_system && (
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={col.is_hidden}
-                        onChange={() => handleToggleColumnHidden(col.id, col.is_hidden)}
-                        disabled={isSaving}
-                        className="rounded"
-                      />
-                      <span className="text-xs text-gray-600">Oculta</span>
-                    </label>
-                  )}
-
-                  {col.is_system ? (
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                      Sistema
+                  <div className="flex items-center gap-3">
+                    <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
+                      {col.kind}
                     </span>
-                  ) : (
+
+                    {!col.is_system && (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={col.is_hidden}
+                          onChange={() => handleToggleColumnHidden(col.id, col.is_hidden)}
+                          disabled={isSaving}
+                          className="rounded"
+                        />
+                        <span className="text-xs text-gray-600">Oculta</span>
+                      </label>
+                    )}
+
+                    {col.is_system ? (
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                        Sistema
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteColumn(col.id)}
+                        disabled={isSaving}
+                        className="text-gray-400 hover:text-red-600 text-lg leading-none disabled:opacity-50"
+                      >
+                        ×
+                      </button>
+                    )}
+
                     <button
-                      onClick={() => handleDeleteColumn(col.id)}
-                      disabled={isSaving}
-                      className="text-gray-400 hover:text-red-600 text-lg leading-none disabled:opacity-50"
-                    >
-                      ×
-                    </button>
-                  )}
+                      onClick={() => {
+                        const next = openPermColId === col.id ? null : col.id
+                        setOpenPermColId(next)
+                        if (next) loadColPermissions(col.id)
+                      }}
+                      className="text-gray-300 hover:text-gray-700 transition-colors px-1.5 py-1 rounded hover:bg-gray-100 text-[16px] leading-none"
+                      title="Permisos de columna"
+                    >⋯</button>
+                  </div>
                 </div>
-              </div>
+
+                {openPermColId === col.id && (
+                  <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Permisos de columna</p>
+                    {permLoading[col.id] ? (
+                      <p className="text-xs text-gray-400">Cargando...</p>
+                    ) : (
+                      <>
+                        {(colPermissions[col.id] ?? []).length === 0 ? (
+                          <p className="text-xs text-gray-400 mb-3">Sin restricción — todos los miembros del board pueden ver esta columna</p>
+                        ) : (
+                          <div className="space-y-1.5 mb-3">
+                            {(colPermissions[col.id] ?? []).map(perm => {
+                              const name = perm.users?.name ?? perm.teams?.name ?? 'Desconocido'
+                              return (
+                                <div key={perm.id} className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-700 flex-1">{name}</span>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${perm.access === 'edit' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {perm.access === 'edit' ? 'Editar' : 'Ver'}
+                                  </span>
+                                  <button
+                                    onClick={() => handleRemoveColPermission(col.id, perm.id)}
+                                    disabled={isSaving}
+                                    className="text-gray-300 hover:text-red-500 text-[13px] leading-none"
+                                  >×</button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={newPermUserId[col.id] ?? ''}
+                            onChange={e => setNewPermUserId(p => ({ ...p, [col.id]: e.target.value }))}
+                            className="flex-1 border border-gray-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                          >
+                            <option value="">Agregar usuario...</option>
+                            {workspaceUsers
+                              .filter(u => !(colPermissions[col.id] ?? []).some(p => p.user_id === u.id))
+                              .map(u => <option key={u.id} value={u.id}>{u.name}</option>)
+                            }
+                          </select>
+                          <select
+                            value={newPermAccess[col.id] ?? 'view'}
+                            onChange={e => setNewPermAccess(p => ({ ...p, [col.id]: e.target.value as 'view' | 'edit' }))}
+                            className="border border-gray-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                          >
+                            <option value="view">Solo ver</option>
+                            <option value="edit">Editar</option>
+                          </select>
+                          <button
+                            onClick={() => handleAddColPermission(col.id)}
+                            disabled={isSaving || !newPermUserId[col.id]}
+                            className="px-2.5 py-1 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+                          >+</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </React.Fragment>
             ))
           )}
         </div>

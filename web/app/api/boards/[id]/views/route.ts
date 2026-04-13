@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: Context) {
   // Get existing views
   const { data: views, error: viewsError } = await supabase
     .from('board_views')
-    .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width)`)
+    .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width), board_view_members(id, user_id, team_id, users(id, sid, name), teams(id, sid, name))`)
     .eq('board_id', id)
     .order('position')
 
@@ -41,7 +41,7 @@ export async function GET(req: Request, { params }: Context) {
         is_default: true,
         position: 0,
       })
-      .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width)`)
+      .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width), board_view_members(id, user_id, team_id, users(id, sid, name), teams(id, sid, name))`)
       .single()
 
     if (createError) return NextResponse.json({ error: createError.message }, { status: 500 })
@@ -106,7 +106,7 @@ export async function POST(req: Request, { params }: Context) {
       is_default: false,
       position: nextPosition,
     })
-    .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width)`)
+    .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width), board_view_members(id, user_id, team_id, users(id, sid, name), teams(id, sid, name))`)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
