@@ -38,6 +38,7 @@ type ColPermission = {
 }
 
 type RemoteBoard = { id: string; name: string }
+type RemoteTeam  = { id: string; name: string }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,8 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
   // ── Permissions state ─────────────────────────────────────────────────────
   const [permissions,   setPermissions]   = useState<ColPermission[]>([])
   const [permsLoading,  setPermsLoading]  = useState(false)
-  const [newPermUserId, setNewPermUserId] = useState('')
+  const [teams,         setTeams]         = useState<RemoteTeam[]>([])
+  const [newPermId,     setNewPermId]     = useState('')   // 'u:<uuid>' | 't:<uuid>'
   const [newPermAccess, setNewPermAccess] = useState<'view' | 'edit'>('view')
   const [savingPerm,    setSavingPerm]    = useState(false)
 
@@ -121,13 +123,16 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
   type TabId = 'general' | 'opciones' | 'permisos'
   const [tab, setTab] = useState<TabId>('general')
 
-  // ── Load permissions ──────────────────────────────────────────────────────
+  // ── Load permissions + teams ──────────────────────────────────────────────
   useEffect(() => {
     setPermsLoading(true)
-    fetch(`/api/boards/${boardId}/columns/${column.id}/permissions`)
-      .then(r => (r.ok ? r.json() : []))
-      .then((data: ColPermission[]) => setPermissions(data))
-      .finally(() => setPermsLoading(false))
+    Promise.all([
+      fetch(`/api/boards/${boardId}/columns/${column.id}/permissions`).then(r => r.ok ? r.json() : []),
+      fetch('/api/teams').then(r => r.ok ? r.json() : []),
+    ]).then(([perms, teamsData]: [ColPermission[], RemoteTeam[]]) => {
+      setPermissions(perms)
+      setTeams(teamsData)
+    }).finally(() => setPermsLoading(false))
   }, [boardId, column.id])
 
   // ── Load boards for relation ──────────────────────────────────────────────
@@ -231,18 +236,23 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
   }
 
   async function handleAddPermission() {
-    if (!newPermUserId) return
+    if (!newPermId) return
+    const isTeam = newPermId.startsWith('t:')
+    const entityId = newPermId.slice(2)
     setSavingPerm(true)
     try {
       const res = await fetch(`/api/boards/${boardId}/columns/${column.id}/permissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: newPermUserId, access: newPermAccess }),
+        body: JSON.stringify({
+          ...(isTeam ? { team_id: entityId } : { user_id: entityId }),
+          access: newPermAccess,
+        }),
       })
       if (res.ok) {
         const perm = await res.json() as ColPermission
         setPermissions(prev => [...prev, perm])
-        setNewPermUserId('')
+        setNewPermId('')
       }
     } finally {
       setSavingPerm(false)
@@ -531,18 +541,33 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
                   <div className="pt-3 border-t border-gray-100 space-y-2">
                     <p className="text-xs font-medium text-gray-600">Agregar restricción</p>
                     <select
-                      value={newPermUserId}
-                      onChange={e => setNewPermUserId(e.target.value)}
+                      value={newPermId}
+                      onChange={e => setNewPermId(e.target.value)}
                       className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
                     >
-                      <option value="">Seleccionar usuario...</option>
-                      {users
-                        .filter(u => !permissions.some(p => p.user_id === u.id))
-                        .map(u => (
-                          <option key={u.id} value={u.id}>
-                            {u.name ?? u.phone ?? 'Usuario'}
-                          </option>
-                        ))}
+                      <option value="">Seleccionar miembro o equipo...</option>
+                      {users.filter(u => !permissions.some(p => p.user_id === u.id)).length > 0 && (
+                        <optgroup label="Miembros">
+                          {users
+                            .filter(u => !permissions.some(p => p.user_id === u.id))
+                            .map(u => (
+                              <option key={u.id} value={`u:${u.id}`}>
+                                {u.name ?? u.phone ?? 'Usuario'}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                      {teams.filter(t => !permissions.some(p => p.team_id === t.id)).length > 0 && (
+                        <optgroup label="Equipos">
+                          {teams
+                            .filter(t => !permissions.some(p => p.team_id === t.id))
+                            .map(t => (
+                              <option key={t.id} value={`t:${t.id}`}>
+                                {t.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
                     </select>
                     <div className="flex gap-2">
                       <select
@@ -555,7 +580,7 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
                       </select>
                       <button
                         onClick={handleAddPermission}
-                        disabled={savingPerm || !newPermUserId}
+                        disabled={savingPerm || !newPermId}
                         className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-md hover:bg-gray-800 disabled:opacity-50"
                       >
                         {savingPerm ? '...' : '+'}

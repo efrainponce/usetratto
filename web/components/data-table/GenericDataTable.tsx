@@ -29,6 +29,7 @@ type Props = {
   renderRowExpansion?:  (rowId: string) => ReactNode
   onOpenItem?:          (rowId: string) => void
   onBulkDelete?:        (ids: string[]) => void
+  onColumnSettings?:    (colKey: string) => void
   loading?:             boolean
 }
 
@@ -41,6 +42,7 @@ export function GenericDataTable({
   renderRowExpansion,
   onOpenItem,
   onBulkDelete,
+  onColumnSettings,
   loading,
 }: Props) {
   const [sorting,     setSorting]     = useState<SortingState>([])
@@ -230,7 +232,7 @@ export function GenericDataTable({
                       key={header.id}
                       className={[
                         'text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide',
-                        'border-r border-gray-100 select-none px-2',
+                        'border-r border-gray-100 select-none px-2 group/th',
                         isSticky ? 'z-30' : '',
                         header.column.getCanSort() ? 'cursor-pointer hover:bg-gray-50' : '',
                       ].join(' ')}
@@ -244,12 +246,24 @@ export function GenericDataTable({
                       }}
                       onClick={header.column.getToggleSortingHandler()}
                     >
-                      <div className="flex items-center gap-1 truncate">
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      <div className="flex items-center gap-1 overflow-hidden">
+                        <span className="flex-1 truncate min-w-0">
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </span>
                         {header.column.getIsSorted() === 'asc'  && <SortAsc />}
                         {header.column.getIsSorted() === 'desc' && <SortDesc />}
+                        {onColumnSettings && !header.id.startsWith('__') && (
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              onColumnSettings(header.id)
+                            }}
+                            className="opacity-0 group-hover/th:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                            title="Configurar columna"
+                          >⋯</button>
+                        )}
                       </div>
                     </th>
                   )

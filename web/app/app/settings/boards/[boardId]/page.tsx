@@ -75,6 +75,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const [columns, setColumns] = useState<Column[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [workspaceUsers, setWorkspaceUsers] = useState<WorkspaceUser[]>([])
+  const [workspaceTeams, setWorkspaceTeams] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
 
   const [activeTab, setActiveTab] = useState<'etapas' | 'columnas' | 'acceso'>('etapas')
@@ -85,7 +86,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const [showNewStageForm, setShowNewStageForm] = useState(false)
   const [isPublic, setIsPublic] = useState(true)
   const [selectedMemberAccess, setSelectedMemberAccess] = useState<'view' | 'edit'>('edit')
-  const [selectedUserId, setSelectedUserId] = useState('')
+  const [selectedMemberId, setSelectedMemberId] = useState('')   // 'u:<uuid>' | 't:<uuid>'
   const [isSaving, setIsSaving] = useState(false)
 
   const [colSettingsId, setColSettingsId] = useState<string | null>(null)
@@ -94,18 +95,20 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   useEffect(() => {
     async function fetchData() {
       try {
-        const [boardRes, colRes, membersRes, usersRes] = await Promise.all([
+        const [boardRes, colRes, membersRes, usersRes, teamsRes] = await Promise.all([
           fetch(`/api/boards/${boardId}`),
           fetch(`/api/boards/${boardId}/columns`),
           fetch(`/api/boards/${boardId}/members`),
           fetch('/api/workspace-users'),
+          fetch('/api/teams'),
         ])
 
-        const [boardData, colData, membersData, usersData] = await Promise.all([
+        const [boardData, colData, membersData, usersData, teamsData] = await Promise.all([
           boardRes.json(),
           colRes.json(),
           membersRes.json(),
           usersRes.json(),
+          teamsRes.json(),
         ])
 
         if (boardRes.ok) setBoard(boardData)
@@ -115,6 +118,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
           setIsPublic(membersData.length === 0)
         }
         if (usersRes.ok) setWorkspaceUsers(usersData)
+        if (teamsRes.ok) setWorkspaceTeams(teamsData)
       } catch (error) {
         console.error('Error fetching data:', error)
       } finally {
@@ -262,7 +266,10 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!selectedUserId) return
+    if (!selectedMemberId) return
+
+    const isTeam = selectedMemberId.startsWith('t:')
+    const entityId = selectedMemberId.slice(2)
 
     setIsSaving(true)
     try {
@@ -270,7 +277,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: selectedUserId,
+          ...(isTeam ? { team_id: entityId } : { user_id: entityId }),
           access: selectedMemberAccess,
         }),
       })
@@ -278,7 +285,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
       if (res.ok) {
         const member = await res.json()
         setMembers([...members, member])
-        setSelectedUserId('')
+        setSelectedMemberId('')
         setSelectedMemberAccess('edit')
         setIsPublic(false)
       }
@@ -361,9 +368,9 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
     )
   }
 
-  const availableUsers = workspaceUsers.filter(
-    (u) => !members.some((m) => m.user_id === u.id)
-  )
+  const availableUsers = workspaceUsers.filter((u) => !members.some((m) => m.user_id === u.id))
+  const availableTeams = workspaceTeams.filter((t) => !members.some((m) => m.team_id === t.id))
+  const hasAvailable   = availableUsers.length > 0 || availableTeams.length > 0
 
   return (
     <div className="w-full max-w-4xl">
@@ -673,16 +680,19 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
               {members.length > 0 && (
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   {members.map((member) => {
-                    const user = member.users
-                    const name = user ? user.name : 'Unknown'
+                    const name = member.users?.name ?? member.teams?.name ?? 'Desconocido'
+                    const isTeamMember = !!member.team_id
 
                     return (
                       <div
                         key={member.id}
                         className="flex items-center justify-between gap-4 py-3 px-4 border-b border-gray-100 last:border-b-0"
                       >
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{name}</p>
+                        <div className="flex-1 flex items-center gap-2 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
+                          {isTeamMember && (
+                            <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full shrink-0 border border-blue-100">Equipo</span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-3">
@@ -739,23 +749,36 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
               )}
 
               {/* Add Member Form */}
-              {availableUsers.length > 0 && (
+              {hasAvailable && (
                 <form onSubmit={handleAddMember} className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-4">
-                  <p className="text-sm font-medium text-gray-700">Agregar miembro</p>
+                  <p className="text-sm font-medium text-gray-700">Agregar miembro o equipo</p>
 
                   <div className="flex gap-3">
                     <select
-                      value={selectedUserId}
-                      onChange={(e) => setSelectedUserId(e.target.value)}
+                      value={selectedMemberId}
+                      onChange={(e) => setSelectedMemberId(e.target.value)}
                       disabled={isSaving}
                       className="flex-1 border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
                     >
-                      <option value="">Selecciona un usuario...</option>
-                      {availableUsers.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name}
-                        </option>
-                      ))}
+                      <option value="">Seleccionar...</option>
+                      {availableUsers.length > 0 && (
+                        <optgroup label="Miembros">
+                          {availableUsers.map((user) => (
+                            <option key={user.id} value={`u:${user.id}`}>
+                              {user.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {availableTeams.length > 0 && (
+                        <optgroup label="Equipos">
+                          {availableTeams.map((team) => (
+                            <option key={team.id} value={`t:${team.id}`}>
+                              {team.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
 
                     <select
@@ -770,7 +793,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
                     <button
                       type="submit"
-                      disabled={isSaving || !selectedUserId}
+                      disabled={isSaving || !selectedMemberId}
                       className="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
                     >
                       {isSaving ? '...' : '+'}
@@ -779,9 +802,9 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                 </form>
               )}
 
-              {availableUsers.length === 0 && members.length > 0 && (
+              {!hasAvailable && members.length > 0 && (
                 <p className="text-xs text-gray-500">
-                  Todos los usuarios del workspace ya son miembros
+                  Todos los miembros y equipos del workspace ya tienen acceso
                 </p>
               )}
             </>

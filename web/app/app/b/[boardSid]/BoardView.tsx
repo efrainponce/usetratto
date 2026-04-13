@@ -97,6 +97,8 @@ export function BoardView({
   const [viewMembers, setViewMembers] = useState<Record<string, ViewMember[]>>({})
   const [viewMembersLoading, setViewMembersLoading] = useState<Record<string, boolean>>({})
   const [newViewMemberId, setNewViewMemberId] = useState('')
+  const [viewMemberTeams, setViewMemberTeams] = useState<{ id: string; name: string }[]>([])
+  const [viewMemberTeamsLoaded, setViewMemberTeamsLoaded] = useState(false)
   const [territories, setTerritories]           = useState<Territory[]>([])
   const [territoriesLoaded, setTerritoriesLoaded] = useState(false)
   const [territoryFilter, setTerritoryFilter]   = useState<string | null>(null)
@@ -311,22 +313,34 @@ export function BoardView({
   }
 
   const loadViewMembers = async (viewId: string) => {
-    if (viewMembers[viewId] !== undefined) return
-    setViewMembersLoading(p => ({ ...p, [viewId]: true }))
-    try {
-      const res = await fetch(`/api/boards/${boardId}/views/${viewId}/members`)
-      if (res.ok) { const data = await res.json(); setViewMembers(p => ({ ...p, [viewId]: data })) }
-    } finally {
-      setViewMembersLoading(p => ({ ...p, [viewId]: false }))
-    }
+    const membersPromise = viewMembers[viewId] !== undefined
+      ? Promise.resolve(null)
+      : (async () => {
+          setViewMembersLoading(p => ({ ...p, [viewId]: true }))
+          try {
+            const res = await fetch(`/api/boards/${boardId}/views/${viewId}/members`)
+            if (res.ok) { const data = await res.json(); setViewMembers(p => ({ ...p, [viewId]: data })) }
+          } finally {
+            setViewMembersLoading(p => ({ ...p, [viewId]: false }))
+          }
+        })()
+    const teamsPromise = viewMemberTeamsLoaded
+      ? Promise.resolve(null)
+      : fetch('/api/teams').then(r => r.ok ? r.json() : []).then(data => {
+          setViewMemberTeams(data)
+          setViewMemberTeamsLoaded(true)
+        })
+    await Promise.all([membersPromise, teamsPromise])
   }
 
   const handleAddViewMember = async (viewId: string) => {
     if (!newViewMemberId) return
+    const isTeam = newViewMemberId.startsWith('t:')
+    const entityId = newViewMemberId.slice(2)
     const res = await fetch(`/api/boards/${boardId}/views/${viewId}/members`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: newViewMemberId }),
+      body: JSON.stringify(isTeam ? { team_id: entityId } : { user_id: entityId }),
     })
     if (res.ok) {
       const member = await res.json()
@@ -608,11 +622,23 @@ export function BoardView({
                 onChange={e => setNewViewMemberId(e.target.value)}
                 className="flex-1 border border-gray-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
               >
-                <option value="">Agregar usuario...</option>
-                {users
-                  .filter(u => !(viewMembers[viewMembersOpen] ?? []).some(m => m.user_id === u.id))
-                  .map(u => <option key={u.id} value={u.id}>{u.name ?? u.phone ?? 'Usuario'}</option>)
-                }
+                <option value="">Miembro o equipo...</option>
+                {users.filter(u => !(viewMembers[viewMembersOpen] ?? []).some(m => m.user_id === u.id)).length > 0 && (
+                  <optgroup label="Miembros">
+                    {users
+                      .filter(u => !(viewMembers[viewMembersOpen] ?? []).some(m => m.user_id === u.id))
+                      .map(u => <option key={u.id} value={`u:${u.id}`}>{u.name ?? u.phone ?? 'Usuario'}</option>)
+                    }
+                  </optgroup>
+                )}
+                {viewMemberTeams.filter(t => !(viewMembers[viewMembersOpen] ?? []).some(m => m.team_id === t.id)).length > 0 && (
+                  <optgroup label="Equipos">
+                    {viewMemberTeams
+                      .filter(t => !(viewMembers[viewMembersOpen] ?? []).some(m => m.team_id === t.id))
+                      .map(t => <option key={t.id} value={`t:${t.id}`}>{t.name}</option>)
+                    }
+                  </optgroup>
+                )}
               </select>
               <button
                 onClick={() => handleAddViewMember(viewMembersOpen)}
@@ -728,6 +754,10 @@ export function BoardView({
           )}
           onOpenItem={handleOpenItem}
           onBulkDelete={handleBulkDelete}
+          onColumnSettings={colKey => {
+            const col = rawCols.find(c => c.col_key === colKey)
+            if (col) setColSettingsCol(col)
+          }}
           loading={false}
         />
       </div>
