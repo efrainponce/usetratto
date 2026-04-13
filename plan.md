@@ -632,7 +632,7 @@ El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita cr
 
 ### Tareas
 
-- [ ] **10.1** `ColumnSettingsPanel` — componente genérico (drawer o modal) que recibe `column` y `boardId`, muestra y guarda toda la configuración:
+- [x] **10.1** `ColumnSettingsPanel` — componente genérico (drawer o modal) que recibe `column` y `boardId`, muestra y guarda toda la configuración:
   ```
   Secciones:
   ├── General: nombre editable, kind (tipo), col_key (readonly)
@@ -643,13 +643,13 @@ El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita cr
   └── Permisos: quién puede ver/editar (reusa lógica ya implementada)
   ```
 
-- [ ] **10.2** Integrar en panel Columnas del BoardView: el ⋯ abre `ColumnSettingsPanel` en lugar del mini-panel de permisos actual
+- [x] **10.2** Integrar en panel Columnas del BoardView: el ⋯ abre `ColumnSettingsPanel` en lugar del mini-panel de permisos actual
 
-- [ ] **10.3** Integrar en Settings → Boards → Columnas tab: el ⋯ abre el mismo `ColumnSettingsPanel` (reemplaza el panel de permisos actual de settings)
+- [x] **10.3** Integrar en Settings → Boards → Columnas tab: el ⋯ abre el mismo `ColumnSettingsPanel` (reemplaza el panel de permisos actual de settings)
 
-- [ ] **10.4** API: `PATCH /api/boards/[id]/columns/[colId]` ya existe — verificar que acepta `name`, `kind`, `settings` (jsonb con opciones/fórmula/formato)
+- [x] **10.4** API: `PATCH /api/boards/[id]/columns/[colId]` — extendido para aceptar `name`, `kind`, `settings` (jsonb con opciones/formato/target_board_id)
 
-- [ ] **10.5** Para `kind=select|multiselect`: persistir opciones en `board_columns.settings.options = [{ value, label, color }]` — mismo formato que ya usa SelectCell
+- [x] **10.5** Para `kind=select|multiselect`: persistir opciones en `board_columns.settings.options = [{ value, label, color }]` — mismo formato que ya usa SelectCell
 
 ### Decisiones clave
 - `ColumnSettingsPanel` es un componente independiente en `components/ColumnSettingsPanel.tsx`

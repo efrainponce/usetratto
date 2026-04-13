@@ -2,6 +2,16 @@
 
 ## 2026-04-13
 
+**~sesión 14**
+- Fase 10 completa: ColumnSettingsPanel — drawer deslizante derecho, tabs General/Opciones/Permisos
+- General: nombre editable, tipo (kind) con selector + advertencia al cambiar, Number format, Relation target board
+- Opciones: lista CRUD con color picker para select/multiselect — guarda en board_columns.settings.options
+- Permisos: gestión view/edit por usuario (misma API que antes)
+- PATCH /api/boards/[id]/columns/[colId]: extendido para aceptar kind + settings (jsonb)
+- BoardView: ⋯ en panel Columnas → ColumnSettingsPanel (reemplaza panel inline)
+- Settings → Boards → Columnas: ⋯ → ColumnSettingsPanel (reemplaza panel inline)
+- Build 72 rutas 0 errores
+
 **~sesión 13**
 - Fix: vistas no guardaban columnas (upsert pasaba null a campos NOT NULL — position/width); ahora persiste correctamente
 - Fix: ⋯ en vistas y columnas invisible → cambiado a siempre visible (gris claro, hover indigo)
