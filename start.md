@@ -149,16 +149,19 @@ item_values (id, item_id, column_id, value_text, value_number, value_date, value
   -- UNIQUE(item_id, column_id)
 
 -- ─── SUB-ITEMS (tabla separada — jerárquicos, universales) ───
-sub_items (id, sid, workspace_id, item_id, parent_id SELF-REF, depth, name, qty, unit_price, notes, catalog_item_id, position, created_at)
-  -- depth: 0 = línea principal, 1 = variante/detalle
-  -- catalog_item_id: FK opcional a items del board catalog (trazabilidad)
-  -- parent_id: NULL para depth=0, FK a sub_items para depth=1
+sub_items (id, sid, workspace_id, item_id, parent_id SELF-REF, depth, name, source_item_id NULL, position, created_at)
+  -- depth: 0 = L1, 1 = L2/variante — parent_id NULL para depth=0
+  -- source_item_id: FK a items del board source usado en snapshot (solo trazabilidad, no sync)
+  -- SIN qty/unit_price/notes — todo es sub_item_columns
+
+sub_item_columns (id, board_id, col_key, name, kind, position, is_hidden, required, settings jsonb, source_col_key text)
+  -- Por board (igual que board_columns). Totalmente configurables.
+  -- source_col_key: qué col_key del source board se copia en snapshot; NULL = columna manual
+  -- kind incluye 'formula' → settings: { formula: 'multiply'|'add'|'subtract'|'percent', col_a, col_b? }
+  -- Columnas formula NO se almacenan en sub_item_values — se computan en frontend
 
 sub_item_values (id, sub_item_id, column_id, value_text, value_number, value_date, value_json)
   -- UNIQUE(sub_item_id, column_id)
-
--- ─── SUB-ITEM VIEWS (qué columnas de sub-items se muestran por board/stage) ───
-sub_item_views (id, board_id, stage_id, name, column_ids, show_variants, created_at)
 
 -- ─── COMUNICACIÓN ───
 item_channels (id, workspace_id, item_id, name, type, team_id, position, created_at)
@@ -431,14 +434,12 @@ createServiceClient() → solo server/API, bypassa RLS, para admin ops
 
 ## Sub-items: reglas de UX
 
-1. **Solo desde catálogo** cuando existe board catalog → ProductPicker obligatorio. Si no hay catálogo, crear inline.
-2. **Columnas core en sub_items** (no EAV): `qty`, `unit_price`, `notes` — universales para quotes.
-3. **2 niveles visuales máximo:**
-   - L1 (depth=0): fila principal, expandible con chevron
-   - L2 (depth=1): sub-fila indentada (variantes, tallas, etc.)
-   - NO hay L3 visual. Si se necesita detalle extra → detail panel inline.
-4. **Auto-variantes ⚡**: columna multiselect en L1 → botón genera L2 por cada valor.
-5. **sub_item_views** controla qué columnas se muestran según el board/stage. No hardcodear.
+1. **Source board configurable por board** (`sub_items_source_board_id`). Si existe → ProductPicker al agregar. Si no → input manual.
+2. **Ninguna columna hardcodeada** — solo `name` es obligatorio para crear. `qty`, `unit_price`, `notes` son columnas default en `sub_item_columns` (configurables/eliminables).
+3. **Snapshot al importar** — copia valores del source item punto en el tiempo. Editable post-snapshot de forma independiente. Nueva columna en sub_item_columns → vacía en sub-items existentes (no backfill automático).
+4. **Formula columns** (`kind='formula'`) — predefinidas: `multiply`, `add`, `subtract`, `percent`. Computadas en frontend, no almacenadas en DB. Read-only.
+5. **L1/L2 en schema** (`parent_id`, `depth`) — UI de variantes deferred a Fase 8 (sidebar panel). Hoy visualmente planos.
+6. **SourceSelector** en toolbar de BoardView (junto a "+ Nuevo") — elige source board y configura mapeo de columnas via modal.
 
 ---
 

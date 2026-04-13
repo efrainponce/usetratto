@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
+import { InlineSubItems, type SubItemLevels } from '@/components/InlineSubItems'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue } from '@/lib/boards'
 
@@ -34,13 +35,19 @@ type Props = {
   initialColumns: BoardColumn[]
   initialUsers:   WorkspaceUser[]
   initialItems:   BoardItem[]
+  levels?:        SubItemLevels   // configurable per board (Phase 8); defaults used if omitted
+  catalogBoardId?: string | null
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const DEFAULT_LEVELS: SubItemLevels = { l1: 'Sub-item', l2: 'Variante' }
+
 export function BoardView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
+  levels = DEFAULT_LEVELS,
+  catalogBoardId = null,
 }: Props) {
   const router = useRouter()
 
@@ -148,8 +155,22 @@ export function BoardView({
     })
   }
 
-  // ── Row click ──────────────────────────────────────────────────────────────
-  const handleRowClick = useCallback((rowId: string) => {
+  // ── Inline sub-items expansion ────────────────────────────────────────────
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
+
+  const handleExpandSubItems = useCallback((rowId: string) => {
+    setExpandedItemId(prev => prev === rowId ? null : rowId)
+  }, [])
+
+  // Update sub_items_count when inline panel changes it
+  const handleSubItemCountChange = useCallback((itemId: string, count: number) => {
+    setRawItems(prev => prev.map(i =>
+      i.id === itemId ? { ...i, sub_items_count: count } : i
+    ))
+  }, [])
+
+  // ── Open item detail ───────────────────────────────────────────────────────
+  const handleOpenItem = useCallback((rowId: string) => {
     const item = rawItems.find(i => i.id === rowId)
     if (!item?.sid) return
     router.push(`/app/b/${boardSid}/${item.sid}`)
@@ -157,7 +178,9 @@ export function BoardView({
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
+
+      {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 flex-none">
         <h1 className="text-[14px] font-semibold text-gray-800">{boardName}</h1>
         <div className="flex-1" />
@@ -171,12 +194,24 @@ export function BoardView({
           <span className="text-[15px] leading-none">+</span> Nuevo
         </button>
       </div>
+
+      {/* Table with inline expansion */}
       <div className="flex-1 overflow-hidden">
         <GenericDataTable
           columns={columns}
           rows={rows}
           onCellChange={handleCellChange}
-          onRowClick={handleRowClick}
+          onExpandSubItems={handleExpandSubItems}
+          expandedSubItemId={expandedItemId}
+          renderRowExpansion={(rowId) => (
+            <InlineSubItems
+              itemId={rowId}
+              levels={levels}
+              catalogBoardId={catalogBoardId}
+              onCountChange={(count) => handleSubItemCountChange(rowId, count)}
+            />
+          )}
+          onOpenItem={handleOpenItem}
           onBulkDelete={handleBulkDelete}
           loading={false}
         />
@@ -221,5 +256,6 @@ function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDe
         : null
     }
   }
-  return { id: item.id, sid: item.sid, cells, hasSubItems: false }
+  const count = item.sub_items_count ?? 0
+  return { id: item.id, sid: item.sid, cells, hasSubItems: count > 0, subItemsCount: count }
 }

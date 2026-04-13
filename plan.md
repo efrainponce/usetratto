@@ -69,7 +69,7 @@ Fase 10: WhatsApp + Quote Engine (features avanzadas)
   territories (id, sid, workspace_id, name, parent_id SELF-REF NULL, created_at)
   user_territories (user_id, territory_id) -- PK compuesto
 
-  boards (id, sid, slug UNIQUE per workspace, workspace_id, name, type, description, system_key, created_at)
+  boards (id, sid, slug UNIQUE per workspace, workspace_id, name, type, description, system_key, sub_items_source_board_id NULL, created_at)
   board_stages (id, sid, board_id, name, color, position, is_closed, created_at)
   board_columns (id, sid, board_id, col_key, name, kind, position, is_system, is_hidden, required, settings jsonb, created_at)
 
@@ -86,11 +86,18 @@ Fase 10: WhatsApp + Quote Engine (features avanzadas)
   item_values (id, item_id, column_id, value_text, value_number, value_date, value_json, created_at)
     -- UNIQUE(item_id, column_id)
 
-  sub_items (id, sid, workspace_id, item_id, parent_id NULL, depth smallint DEFAULT 0, name, qty, unit_price, notes, catalog_item_id NULL, position, created_at)
+  sub_items (id, sid, workspace_id, item_id, parent_id NULL, depth smallint DEFAULT 0, name, source_item_id NULL, position, created_at)
+    -- qty/unit_price/notes eliminados — son sub_item_columns ahora
+    -- source_item_id = ref al item del board-source usado en el snapshot (solo trazabilidad)
+
+  sub_item_columns (id, board_id, col_key, name, kind, position, is_hidden, required, settings jsonb, source_col_key TEXT NULL)
+    -- UNIQUE(board_id, col_key)
+    -- source_col_key = qué col_key del source board se copia en snapshot; NULL = columna manual
+    -- kind incluye 'formula' además de los tipos normales
+
   sub_item_values (id, sub_item_id, column_id, value_text, value_number, value_date, value_json)
     -- UNIQUE(sub_item_id, column_id)
-
-  sub_item_views (id, board_id, stage_id NULL, name, column_ids jsonb, show_variants boolean, created_at)
+    -- columnas kind='formula' NO se almacenan aquí; se computan en frontend
 
   item_channels (id, workspace_id, item_id, name, type, team_id NULL, position, created_at)
   channel_messages (id, workspace_id, channel_id, user_id NULL, body, type, metadata jsonb, whatsapp_sid NULL, created_at)
@@ -339,23 +346,124 @@ web/app/app/b/[boardSid]/[itemSid]/{page,ItemDetailView}.tsx
 
 ---
 
-## Fase 5 — Sub-items
+## Fase 5 — Sub-items (columnas dinámicas + snapshot)
 
-**Goal:** Sub-items jerárquicos con vistas configurables.
+**Goal:** Sub-items con columnas configurables por board, source board seleccionable, snapshot al importar. Máxima flexibilidad: ninguna columna hardcodeada excepto `name`.
+
+### Arquitectura
+
+```
+boards.sub_items_source_board_id  →  qué board se usa como fuente
+sub_item_columns (por board)      →  columnas configurables (igual que board_columns)
+sub_item_values                   →  valores celda por celda (igual que item_values)
+sub_items.source_item_id          →  ref al item original del snapshot (solo trazabilidad)
+```
+
+**Columnas `kind='formula'`** — se computan en frontend, no se almacenan en DB:
+```json
+{ "formula": "multiply", "col_a": "qty", "col_b": "unit_price" }
+```
+Tipos soportados: `multiply`, `add`, `subtract`, `percent`.
+
+**L1/L2:** `parent_id` y `depth` ya están en el schema. UI de variantes (sidebar)
+se deja para Fase 8 — hoy sub-items son planos visualmente.
+
+**Snapshot al importar:**
+- Copia valores del source item → sub_item_values (punto en el tiempo)
+- Valores editables post-snapshot de forma independiente
+- Nueva columna en sub_item_columns → empieza vacía en sub-items existentes (no backfill automático)
+- Futuro: botón "Refresh desde fuente" por sub-item (rellena solo celdas vacías)
 
 ### Tareas
 
-- [ ] **5.1** `SubItemsView.tsx`: tabla L1/L2, inline edit, chevron expand
-- [ ] **5.2** `ProductPicker.tsx`: búsqueda fuzzy en board catalog
-- [ ] **5.3** API: sub-items CRUD + sub_item_views
-- [ ] **5.4** Integrar como tab en ItemDetailView
-- [ ] **5.5** Preview en BoardView (count badge o expandible)
+- [ ] **5.0** Migration: ajustar schema
+  ```sql
+  -- sub_items: quitar qty, unit_price, notes, catalog_item_id; agregar source_item_id
+  -- CREATE TABLE sub_item_columns (id, board_id, col_key, name, kind, position,
+  --   is_hidden, required, settings jsonb, source_col_key text, UNIQUE(board_id, col_key))
+  -- sub_item_values ya existe en schema 001 — verificar
+  -- boards: agregar sub_items_source_board_id uuid NULL REFERENCES boards(id)
+  ```
+
+- [ ] **5.1** Source selector en BoardView toolbar (junto a "+ Nuevo")
+  - Dropdown: elige qué board es el source (boards del workspace)
+  - Al elegir source: modal `SourceColumnMapper` para seleccionar columnas a mapear
+    - Columnas del source board en lista izquierda
+    - Usuario elige cuáles importar + les da nombre + tipo en sub_item_columns
+    - Puede agregar columnas manuales sin source (ej. "Notas internas")
+  - API: `PATCH /api/boards/[id]` guarda `sub_items_source_board_id`
+  - API: `POST /api/boards/[id]/sub-item-columns/sync` crea/actualiza sub_item_columns
+
+- [ ] **5.2** API sub-item-columns
+  ```
+  GET    /api/boards/[id]/sub-item-columns   → columnas configuradas para sub-items
+  POST   /api/boards/[id]/sub-item-columns   → crear columna
+  PATCH  /api/sub-item-columns/[colId]       → rename, reorder, hide
+  DELETE /api/sub-item-columns/[colId]       → eliminar (con confirm si tiene datos)
+  ```
+
+- [ ] **5.3** API sub-items (refactor del CRUD existente)
+  ```
+  GET    /api/sub-items?itemId=              → sub-items + sub_item_values + columnas del board
+  POST   /api/sub-items                      → crear + snapshot (si source_item_id dado)
+  PATCH  /api/sub-items/[id]                 → actualizar name u otros campos core
+  DELETE /api/sub-items/[id]                 → cascade children
+  PUT    /api/sub-items/[id]/values          → upsert sub_item_values (igual que item_values)
+  ```
+
+- [ ] **5.4** Snapshot engine (en POST /api/sub-items)
+  ```ts
+  // Cuando viene source_item_id:
+  // 1. Leer item_values del source item
+  // 2. Por cada sub_item_column con source_col_key: copiar valor → sub_item_values
+  // 3. name = source item name (siempre)
+  ```
+
+- [ ] **5.5** `InlineSubItems` rediseñado
+  - Usa `sub_item_columns` del board para renderizar tabla dinámica (mini GenericDataTable)
+  - Barra superior: label del source + botón "+ Agregar"
+  - Agregar → si hay source board: `ProductPicker` (busca en source)
+               si no hay source: input de texto manual
+  - Formula cols: renderizadas como celdas read-only con valor computado
+  - Chevron en BoardView row → expande InlineSubItems (ya implementado)
+
+- [ ] **5.6** `ProductPicker` rediseñado
+  - Busca items en `sub_items_source_board_id`
+  - Muestra columnas configuradas en source_col_key
+  - Al seleccionar → POST /api/sub-items con source_item_id → snapshot automático
+
+- [ ] **5.7** `SubItemsView` en ItemDetailView (tab "Sub-items")
+  - Misma lógica que InlineSubItems pero vista completa (más espacio)
+  - Columnas configurables visibles, fórmulas computadas
+
+### Decisiones clave
+
+- Sin columnas hardcodeadas: `qty`, `unit_price`, `notes` son columnas default que el usuario puede renombrar/eliminar
+- Fórmulas se computan en frontend: no valor en DB, no complejidad de eval
+- L1/L2 en schema, UI plana por ahora — sidebar de variantes en Fase 8
+- Nueva columna en sub_item_columns → vacía en sub-items existentes (no backfill)
+- Un solo source board por board (múltiples sources en backlog)
 
 ### Verificación
-- [ ] Agregar sub-item desde catálogo → sid asignado
-- [ ] L1 expandible → L2 variantes
-- [ ] ⚡ Auto-variantes genera L2
-- [ ] Cada sub-item muestra su sid
+- [ ] Configurar source "Productos" → modal mapea columnas → sub_item_columns creadas
+- [ ] Agregar sub-item desde catálogo → snapshot copia valores → sid asignado
+- [ ] Editar valor post-snapshot → no afecta al producto original
+- [ ] Columna formula (qty × precio) → muestra total calculado → no editable
+- [ ] Agregar/eliminar columnas de sub-items → tabla se actualiza
+- [ ] Badge de count en BoardView row → se actualiza al agregar/eliminar
+
+### Archivos
+```
+supabase/migrations/005_sub_items_dynamic.sql
+web/components/InlineSubItems.tsx              (refactor)
+web/components/SubItemsView.tsx                (refactor)
+web/components/ProductPicker.tsx               (refactor)
+web/components/SourceColumnMapper.tsx          (nuevo — modal config)
+web/app/app/b/[boardSid]/BoardView.tsx         (source selector en toolbar)
+web/app/api/sub-items/{route,[id]/route,[id]/values/route}.ts
+web/app/api/boards/[id]/sub-item-columns/route.ts
+web/app/api/sub-item-columns/[colId]/route.ts
+```
 
 ---
 
@@ -449,7 +557,7 @@ web/app/app/b/[boardSid]/[itemSid]/{page,ItemDetailView}.tsx
 | 2 | Baja | Layout + sidebar + API boards |
 | 3 | **Alta** | LA fase crítica. Si la tabla está bien, todo es incremental |
 | 4 | Media | Reutiliza cells de Fase 3 |
-| 5 | Media-Alta | Sub-items + ProductPicker + vistas |
+| 5 | **Alta** | Sub-items dinámicos + snapshot + fórmulas + source config |
 | 6 | Media | Import ya probado, reutilizar diseño |
 | 7 | Media | Channels + activity triggers |
 | 8 | Media | Settings CRUD |

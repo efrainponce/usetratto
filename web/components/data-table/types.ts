@@ -57,11 +57,12 @@ export const DEFAULT_WIDTHS: Record<CellKind, number> = {
 export type CellValue = string | number | boolean | null | string[]
 
 export type Row = {
-  id:          string       // UUID for API calls
-  sid?:        number       // displayed as autonumber
-  cells:       Record<string, CellValue>
-  hasSubItems: boolean
-  subRows?:    Row[]        // TanStack expansion — depth=1 children
+  id:             string       // UUID for API calls
+  sid?:           number       // displayed as autonumber
+  cells:          Record<string, CellValue>
+  hasSubItems:    boolean
+  subItemsCount?: number       // L1 sub-item count for badge
+  subRows?:       Row[]        // TanStack expansion — depth=1 children
 }
 
 // ─── Cell component contract ──────────────────────────────────────────────────

@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { ColumnCell } from '@/components/data-table/cells/ColumnCell'
+import { SubItemsView } from '@/components/SubItemsView'
 import type { ColumnDef, CellValue, CellKind, ColumnSettings, NavDirection } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue } from '@/lib/boards'
 
@@ -26,13 +27,14 @@ type Props = {
   initialColumns: BoardColumn[]
   initialUsers:   WorkspaceUser[]
   initialItem:    BoardItem
+  catalogBoardId: string | null
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ItemDetailView({
   boardId, boardSid, boardName,
-  initialStages, initialColumns, initialUsers, initialItem,
+  initialStages, initialColumns, initialUsers, initialItem, catalogBoardId,
 }: Props) {
   // All data pre-fetched by server — instant render, no loading state
   const [item,       setItem]       = useState<BoardItem>(initialItem)
@@ -241,10 +243,20 @@ export function ItemDetailView({
               </button>
             ))}
           </div>
-          <div className="flex-1 overflow-y-auto p-6 text-[13px] text-gray-400 italic">
-            {activeTab === 'subitems' && <span>Sub-items — Fase 5</span>}
-            {activeTab === 'channels'  && <span>Canales — Fase 7</span>}
-            {activeTab === 'activity'  && <span>Actividad — Fase 7</span>}
+          <div className="flex-1 overflow-hidden">
+            {activeTab === 'subitems' && (
+              <SubItemsView itemId={item.id} catalogBoardId={catalogBoardId} />
+            )}
+            {activeTab === 'channels' && (
+              <div className="flex items-center justify-center h-full text-[13px] text-gray-400 italic">
+                Canales — Fase 7
+              </div>
+            )}
+            {activeTab === 'activity' && (
+              <div className="flex items-center justify-center h-full text-[13px] text-gray-400 italic">
+                Actividad — Fase 7
+              </div>
+            )}
           </div>
         </div>
 

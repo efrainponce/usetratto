@@ -41,15 +41,16 @@ export type ItemValue = {
 }
 
 export type BoardItem = {
-  id:           string
-  sid:          number
-  name:         string
-  stage_id:     string | null
-  owner_id:     string | null
-  territory_id: string | null
-  deadline:     string | null
-  position:     number
-  item_values:  ItemValue[]
+  id:               string
+  sid:              number
+  name:             string
+  stage_id:         string | null
+  owner_id:         string | null
+  territory_id:     string | null
+  deadline:         string | null
+  position:         number
+  item_values:      ItemValue[]
+  sub_items_count?: number    // L1 count for badge in BoardView
 }
 
 // ─── Board resolution (cached 60s) ───────────────────────────────────────────
@@ -150,11 +151,30 @@ export const getWorkspaceUsers = unstable_cache(
   { revalidate: 60 }
 )
 
+// ─── Catalog board (cached 60s) ───────────────────────────────────────────────
+
+export const getCatalogBoard = unstable_cache(
+  async (workspaceId: string) => {
+    const supabase = createServiceClient()
+    const { data } = await supabase
+      .from('boards')
+      .select('id, sid')
+      .eq('workspace_id', workspaceId)
+      .eq('system_key', 'catalog')
+      .maybeSingle()
+    return data ?? null
+  },
+  ['catalog-board'],
+  { revalidate: 60 }
+)
+
 // ─── Items ────────────────────────────────────────────────────────────────────
 
 export async function getBoardItems(boardId: string, workspaceId: string) {
   const supabase = createServiceClient()
-  const { data } = await supabase
+
+  // Main items query
+  const { data, error } = await supabase
     .from('items')
     .select(
       'id, sid, name, stage_id, owner_id, territory_id, deadline, position,' +
@@ -163,7 +183,28 @@ export async function getBoardItems(boardId: string, workspaceId: string) {
     .eq('board_id', boardId)
     .eq('workspace_id', workspaceId)
     .order('position')
-  return (data ?? []) as unknown as BoardItem[]
+
+  if (error) console.error('[getBoardItems] error:', error)
+  const items = (data ?? []) as unknown as BoardItem[]
+
+  if (items.length === 0) return items
+
+  // Separate lightweight query for sub-item counts (L1 only)
+  const itemIds = items.map(i => i.id)
+  const { data: subData } = await supabase
+    .from('sub_items')
+    .select('item_id')
+    .eq('workspace_id', workspaceId)
+    .eq('depth', 0)
+    .in('item_id', itemIds)
+
+  // Build count map
+  const countMap: Record<string, number> = {}
+  for (const { item_id } of subData ?? []) {
+    countMap[item_id] = (countMap[item_id] ?? 0) + 1
+  }
+
+  return items.map(i => ({ ...i, sub_items_count: countMap[i.id] ?? 0 }))
 }
 
 export async function getItemData(itemId: string, workspaceId: string) {
