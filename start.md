@@ -271,12 +271,53 @@ Toda tabla tiene `workspace_id`. RLS garantiza aislamiento total. Un workspace =
 /app/superadmin                     → Multi-workspace switcher (solo superadmin)
 ```
 
+## Librería clave: TanStack Table v8
+
+`@tanstack/react-table` — MIT, headless, zero markup.
+
+**Resuelve sin código extra:**
+- Sorting con estado
+- Row selection + shift-click
+- Column pinning (sticky first column)
+- Row expansion — el `>` de Monday (`getExpandedRowModel`, `subRows` field en data)
+- Base para virtual scrolling futuro (TanStack Virtual)
+
+**Siempre DIY encima:**
+- Cell types (TextCell, SelectCell, etc.) — dependen de nuestros column kinds
+- Edit mode por celda — nuestra lógica de editTarget
+- Keyboard navigation (flechas + Tab) — hooks de TanStack, lógica nuestra
+
+**Patrón de sub-items:** cada `Row` tiene `subRows?: Row[]`. TanStack maneja el modelo de expansión; nosotros solo renderizamos el chevron y el CSS de indentación.
+
+```tsx
+// TanStack controla qué rows son visibles (expandidas o no)
+{table.getRowModel().rows.map(row => (
+  <tr key={row.id}>
+    {row.getCanExpand() && (
+      <button onClick={row.getToggleExpandedHandler()}>
+        {row.getIsExpanded() ? '▼' : '▶'}
+      </button>
+    )}
+    {row.getVisibleCells().map(cell => (
+      <td key={cell.id}>
+        <ColumnCell column={cell.column.columnDef} value={cell.getValue()} />
+      </td>
+    ))}
+  </tr>
+))}
+```
+
+**Regla:** `GenericDataTable.tsx` usa TanStack Table internamente. Los consumers (BoardView) no saben ni les importa — siguen pasando `columns[]` + `rows[]` + `onCellChange()`.
+
+---
+
 ### Componentes principales
 
 ```
 components/
   data-table/
-    GenericDataTable.tsx         → LA tabla. Sort, inline edit, bulk select, row click.
+    GenericDataTable.tsx         → LA tabla. Usa TanStack Table v8 internamente.
+                                   Sort, inline edit, bulk select, row click, sub-item expansion.
                                    Recibe columns[] + rows[] + onCellChange().
                                    NO sabe de boards ni items — es pura data.
 
