@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import { InlineSubItems } from '@/components/InlineSubItems'
 import { SourceColumnMapper } from '@/components/SourceColumnMapper'
+import { ImportWizard } from '@/components/import/ImportWizard'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn } from '@/lib/boards'
 
@@ -57,6 +58,7 @@ export function BoardView({
   const [subItemColumns, setSubItemColumns] = useState<SubItemColumn[]>(initialSubItemColumns)
   const [sourceBoardId, setSourceBoardId]   = useState<string | null>(initialSourceBoardId)
   const [showMapper,    setShowMapper]       = useState(false)
+  const [showImport,    setShowImport]       = useState(false)
 
   // col_key → column UUID  (for item_values lookups)
   const colIdMap = useMemo(() => {
@@ -177,6 +179,16 @@ export function BoardView({
     router.push(`/app/b/${boardSid}/${item.sid}`)
   }, [rawItems, boardSid, router])
 
+  // ── Refresh items + columns after import (new columns may have been created) ─
+  const refreshAll = useCallback(async () => {
+    const [itemsRes, colsRes] = await Promise.all([
+      fetch(`/api/items?boardId=${boardId}`),
+      fetch(`/api/boards/${boardId}/columns`),
+    ])
+    if (itemsRes.ok) setRawItems(await itemsRes.json() as BoardItem[])
+    if (colsRes.ok)  setRawCols(await colsRes.json() as BoardColumn[])
+  }, [boardId])
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -208,6 +220,15 @@ export function BoardView({
               Elige un catálogo para los sub-items
             </>
           )}
+        </button>
+        <button
+          onClick={() => setShowImport(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+            <path d="M6 1v7M3 5l3 3 3-3M1 10h10" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Importar
         </button>
         <span className="text-[12px] text-gray-400">
           {rows.length} registro{rows.length !== 1 ? 's' : ''}
@@ -254,6 +275,19 @@ export function BoardView({
             setSourceBoardId(newSourceId)
             setSubItemColumns(newCols)
             setShowMapper(false)
+          }}
+        />
+      )}
+
+      {/* ImportWizard modal */}
+      {showImport && (
+        <ImportWizard
+          boardId={boardId}
+          boardColumns={rawCols}
+          onClose={() => setShowImport(false)}
+          onImported={async (_count) => {
+            setShowImport(false)
+            await refreshAll()
           }}
         />
       )}

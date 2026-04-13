@@ -343,8 +343,13 @@ components/
                                    Columnas configuradas por sub_item_views.
 
   ImportWizard.tsx              → Shell genérico. Sources pluggables.
-  ImportarAirtable.tsx          → Source adapter: PAT → base → table → fields
-  ImportarCSV.tsx               → Source adapter: file → parse → fields
+  components/import/
+    ImportWizard.tsx            → Orquestador genérico: source picker → ConnectStep → ColumnMapper → import
+    ColumnMapper.tsx            → Step genérico: mapeo + crear columna nueva inline
+    sources/types.ts            → interface ImportSource (ConnectStep, ConnectResult, ImportField)
+    sources/index.ts            → IMPORT_SOURCES registry ← agregar fuentes aquí
+    sources/AirtableSource.tsx  → ConnectStep Airtable (PAT + base + table, client-side fetch)
+    sources/CsvSource.tsx       → ConnectStep CSV (parse en cliente, drag & drop)
 
   ItemChannels.tsx              → Canales tipo Slack dentro del item
   ActivityFeed.tsx              → Feed de actividad (audit trail)
@@ -395,8 +400,7 @@ api/
   channels/[id]/messages        → GET + POST
   channels/[id]/members         → GET + POST + DELETE
 
-  import/airtable               → POST (connect + import)
-  import/csv                    → POST
+  import/bulk                   → POST (genérico — todas las fuentes envían aquí)
 
   users/me                      → GET
   workspace-users               → GET

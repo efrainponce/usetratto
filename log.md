@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 6**
+- Fase 6 completa: Import Wizard arquitectura de plugins — agregar fuente = 1 archivo + 1 línea en registry
+- `ImportWizard` genérico orquesta: source picker → ConnectStep → ColumnMapper → `/api/import/bulk`
+- `ColumnMapper` con "✦ Crear columna nueva" inline: nombre + tipo → POST columns → auto-mapea
+- `AirtableSource` + `CsvSource` como ConnectStep plugins; endpoint único `bulk` reemplaza csv+airtable
+- Build limpio 25 rutas 0 errores; `POST /api/boards/[id]/columns` nuevo
+
 **~sesión 5**
 - Fase 5 completa: migration 007 aplicada (sub_item_columns, source_item_id, drop qty/unit_price/notes/catalog_item_id)
 - APIs nuevas: sub-item-columns CRUD, sub-items con snapshot engine, /[id]/values PUT

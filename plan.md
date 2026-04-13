@@ -469,17 +469,42 @@ web/app/api/sub-item-columns/[colId]/route.ts
 
 ## Fase 6 — Import Wizard
 
-**Goal:** Importar data a cualquier board desde Airtable o CSV.
+**Goal:** Importar data a cualquier board desde cualquier fuente. Arquitectura de plugins — agregar fuente nueva = 1 archivo.
+
+### Arquitectura (implementada)
+```
+components/import/
+  ImportWizard.tsx          ← orquestador genérico: picker → ConnectStep → ColumnMapper → import
+  ColumnMapper.tsx          ← step genérico: mapear campos + crear columnas nuevas inline
+  sources/
+    types.ts                ← interface ImportSource (ConnectStep, ConnectResult, ImportField)
+    index.ts                ← IMPORT_SOURCES registry ← agregar Monday aquí
+    AirtableSource.tsx      ← ConnectStep Airtable (PAT + base + table, client-side fetch)
+    CsvSource.tsx           ← ConnectStep CSV (parse en cliente)
+
+api/import/bulk/            ← único endpoint genérico; todas las fuentes envían aquí
+```
+
+**Para agregar una fuente nueva (Monday, Notion, etc.):**
+1. Crear `sources/MondaySource.tsx` con icon + ConnectStep + `ImportSource` export
+2. Agregar a `sources/index.ts` → aparece automáticamente en el wizard
 
 ### Tareas
-- [ ] **6.1** `ImportWizard.tsx` + `ImportarAirtable.tsx` + `ImportarCSV.tsx`
-- [ ] **6.2** API: `POST /api/import/{airtable,csv}`
-- [ ] **6.3** Integrar en BoardView toolbar
+- [x] **6.1** Arquitectura de plugins: `ImportSource` interface + registry
+- [x] **6.2** `ImportWizard.tsx` genérico + `ColumnMapper.tsx` con "Crear columna nueva"
+- [x] **6.3** `AirtableSource.tsx` + `CsvSource.tsx`
+- [x] **6.4** API: `POST /api/import/bulk` (genérico) + `POST /api/boards/[id]/columns`
+- [x] **6.5** Integrar en BoardView toolbar + `refreshAll` (items + columns post-import)
+- [ ] **6.6** Refresh desde fuente (Airtable/similares): botón "Reimportar" que conserva
+  el mapping anterior y re-ejecuta `fetchAll()` → útil para sync periódica.
+  Requiere persistir `{ source_id, connect_params, field_map }` por board en DB.
+  Candidato: nueva tabla `board_import_configs (id, board_id, source_id, params jsonb, field_map jsonb)`
 
 ### Verificación
-- [ ] Import CSV a catalog → items con sids nuevos
-- [ ] Import Airtable → mapeo de columnas → items creados
+- [ ] Import CSV a catalog → items con sids nuevos, columnas nuevas creadas si aplica
+- [ ] Import Airtable → mapeo de columnas → items creados, columnas nuevas visibles
 - [ ] Funciona en CUALQUIER board
+- [ ] Agregar nueva fuente solo requiere 1 archivo nuevo + 1 línea en index.ts
 
 ---
 
