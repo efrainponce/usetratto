@@ -376,7 +376,7 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
 
 ### Tareas
 
-- [ ] **5.0** Migration: ajustar schema
+- [x] **5.0** Migration: ajustar schema
   ```sql
   -- sub_items: quitar qty, unit_price, notes, catalog_item_id; agregar source_item_id
   -- CREATE TABLE sub_item_columns (id, board_id, col_key, name, kind, position,
@@ -385,7 +385,7 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
   -- boards: agregar sub_items_source_board_id uuid NULL REFERENCES boards(id)
   ```
 
-- [ ] **5.1** Source selector en BoardView toolbar (junto a "+ Nuevo")
+- [x] **5.1** Source selector en BoardView toolbar (junto a "+ Nuevo")
   - Dropdown: elige qué board es el source (boards del workspace)
   - Al elegir source: modal `SourceColumnMapper` para seleccionar columnas a mapear
     - Columnas del source board en lista izquierda
@@ -394,7 +394,7 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
   - API: `PATCH /api/boards/[id]` guarda `sub_items_source_board_id`
   - API: `POST /api/boards/[id]/sub-item-columns/sync` crea/actualiza sub_item_columns
 
-- [ ] **5.2** API sub-item-columns
+- [x] **5.2** API sub-item-columns
   ```
   GET    /api/boards/[id]/sub-item-columns   → columnas configuradas para sub-items
   POST   /api/boards/[id]/sub-item-columns   → crear columna
@@ -402,7 +402,7 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
   DELETE /api/sub-item-columns/[colId]       → eliminar (con confirm si tiene datos)
   ```
 
-- [ ] **5.3** API sub-items (refactor del CRUD existente)
+- [x] **5.3** API sub-items (refactor del CRUD existente)
   ```
   GET    /api/sub-items?itemId=              → sub-items + sub_item_values + columnas del board
   POST   /api/sub-items                      → crear + snapshot (si source_item_id dado)
@@ -411,7 +411,7 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
   PUT    /api/sub-items/[id]/values          → upsert sub_item_values (igual que item_values)
   ```
 
-- [ ] **5.4** Snapshot engine (en POST /api/sub-items)
+- [x] **5.4** Snapshot engine (en POST /api/sub-items)
   ```ts
   // Cuando viene source_item_id:
   // 1. Leer item_values del source item
@@ -419,7 +419,7 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
   // 3. name = source item name (siempre)
   ```
 
-- [ ] **5.5** `InlineSubItems` rediseñado
+- [x] **5.5** `InlineSubItems` rediseñado
   - Usa `sub_item_columns` del board para renderizar tabla dinámica (mini GenericDataTable)
   - Barra superior: label del source + botón "+ Agregar"
   - Agregar → si hay source board: `ProductPicker` (busca en source)
@@ -427,12 +427,12 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
   - Formula cols: renderizadas como celdas read-only con valor computado
   - Chevron en BoardView row → expande InlineSubItems (ya implementado)
 
-- [ ] **5.6** `ProductPicker` rediseñado
+- [x] **5.6** `ProductPicker` rediseñado
   - Busca items en `sub_items_source_board_id`
   - Muestra columnas configuradas en source_col_key
   - Al seleccionar → POST /api/sub-items con source_item_id → snapshot automático
 
-- [ ] **5.7** `SubItemsView` en ItemDetailView (tab "Sub-items")
+- [x] **5.7** `SubItemsView` en ItemDetailView (tab "Sub-items")
   - Misma lógica que InlineSubItems pero vista completa (más espacio)
   - Columnas configurables visibles, fórmulas computadas
 
@@ -454,7 +454,7 @@ se deja para Fase 8 — hoy sub-items son planos visualmente.
 
 ### Archivos
 ```
-supabase/migrations/005_sub_items_dynamic.sql
+supabase/migrations/20260413000001_sub_items_dynamic.sql
 web/components/InlineSubItems.tsx              (refactor)
 web/components/SubItemsView.tsx                (refactor)
 web/components/ProductPicker.tsx               (refactor)

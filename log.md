@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 5**
+- Fase 5 completa: migration 007 aplicada (sub_item_columns, source_item_id, drop qty/unit_price/notes/catalog_item_id)
+- APIs nuevas: sub-item-columns CRUD, sub-items con snapshot engine, /[id]/values PUT
+- InlineSubItems + SubItemsView reescritos con columnas dinámicas + fórmulas client-side
+- SourceColumnMapper modal nuevo (2 pasos: elegir source board + mapear columnas)
+- Arquitectura de subagentes Haiku: 5 agentes en paralelo, build limpio 24 rutas 0 errores
+
 **~sesión 4**
 - Fase 5 UX refactor: `>` chevron expande sub-items inline entre rows, `→` abre detalle (row click eliminado), edit inline en tabla
 - Fix React key warning (`<Fragment key>`) + infinite loop en sub-items (`useRef` para `onCountChange`)
