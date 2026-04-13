@@ -9,3 +9,8 @@
 - /app protegido, muestra "estoy logged in"
 - Auth module con server-only + cache() + dos páginas de prueba
 - Commit inicial
+
+**~hora 2**
+- Comandos de proyecto creados: `/start` y `/end` en `.claude/commands/`
+- `/start` carga contexto mínimo (fase actual, git, log) en caveman mode
+- `/end` loggea sesión + commit + push automático
