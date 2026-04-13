@@ -524,19 +524,160 @@ api/import/bulk/            ← único endpoint genérico; todas las fuentes env
 **Goal:** Admin configura boards, stages, columns, members, teams, territories.
 
 ### Tareas
-- [ ] **8.1** Settings layout + nav
-- [ ] **8.2** Boards: CRUD + stages + columns + **members tab** (agregar users o teams con view/edit)
-- [ ] **8.3** Teams: `GroupList.tsx` genérico
-- [ ] **8.4** Territories: `GroupList.tsx` genérico
-- [ ] **8.5** Workspace config
-- [ ] **8.6** Superadmin: workspace switcher
-- [ ] **8.7** Column permissions UI (en board detail → column settings)
+- [x] **8.1** Settings layout + nav (Cursor-inspired: sidebar secundario + content area)
+- [x] **8.2** Boards: CRUD + stages + columns + members tab (view/edit + restrict_to_own)
+- [x] **8.3** Teams: CRUD + miembros
+- [x] **8.4** Territories: CRUD + jerarquía padre/hijo
+- [x] **8.5** Workspace config (nombre + zona de peligro)
+- [x] **8.6** Superadmin: workspace switcher
+- [ ] **8.7** Column permissions UI (en board detail → column → toggle quién puede ver/editar)
 - [ ] **8.8** Sub-item views: múltiples configuraciones de source por board
   - `sub_item_views (id, board_id, source_board_id, name, is_active)` — view activa = la que se muestra
   - `sub_item_columns` migra de `board_id` a `view_id` (FK a sub_item_views)
   - UI: switch de views en toolbar; crear/renombrar/archivar views
   - Cambiar source ya no destruye config anterior — cada source tiene su propia view
   - Migración: view default auto-creada por board con los sub_item_columns actuales
+- [ ] **8.9** Billing page (mock con créditos AI + storage — integración real en Fase 10)
+
+---
+
+## Fase 8.X — Board Views (vistas con permisos)
+
+**Goal:** Vistas configurables por board: columnas visibles, orden, permisos por equipo/usuario. Inspirado en Airtable pero sin layouts alternativos (no kanban, no calendar — solo grid con config diferente).
+
+### Filosofía
+
+```
+board_columns    → existen para el board completo (siempre)
+board_views      → configuraciones de visualización (cuáles columnas, en qué orden)
+board_view_columns → qué columnas muestra cada vista (is_visible + position + width)
+board_view_members → quién puede acceder a esta vista (vacío = todos los miembros del board)
+```
+
+**Columnas y vistas son independientes.** Una columna existe en el board; la vista decide si la muestra.
+
+### Reglas clave
+
+```
+1. Columna creada desde vista X:
+   → INSERT board_columns (pertenece al board)
+   → INSERT board_view_columns con is_visible=true para vista X
+   → INSERT board_view_columns con is_visible=false para TODAS las demás vistas del board
+   → En vistas futuras creadas después: no visible por default
+
+2. Column picker en vista:
+   → Muestra TODAS las columnas del board
+   → Checkbox por columna → toggle board_view_columns.is_visible
+   → Columnas ocultas por column_permissions del usuario → no aparecen en picker
+
+3. Vista sin board_view_columns para una columna:
+   → Columna visible por default (para compatibilidad con vistas pre-migración)
+
+4. Vista sin board_view_members:
+   → Visible para todos los miembros del board
+   → Con members → solo esos users/teams la ven
+
+5. column_permissions (tabla existente) = permisos a nivel BOARD (transversal a vistas)
+   board_view_members = permisos a nivel VISTA (quién ve esta configuración específica)
+   Ambas capas coexisten y se intersectan (más restrictivo gana)
+```
+
+### Schema
+
+```sql
+board_views (
+  id uuid PK,
+  sid bigint UNIQUE DEFAULT nextval('tratto_sid_seq'),
+  board_id uuid FK boards(id) ON DELETE CASCADE,
+  workspace_id uuid FK workspaces(id),
+  name text NOT NULL,               -- "Vista Ventas", "Vista Costos", "Default"
+  is_default boolean DEFAULT false, -- la view que se abre al entrar al board
+  position int DEFAULT 0,
+  created_by uuid FK users(id) NULL,
+  created_at timestamptz DEFAULT now()
+)
+
+board_view_columns (
+  id uuid PK,
+  view_id uuid FK board_views(id) ON DELETE CASCADE,
+  column_id uuid FK board_columns(id) ON DELETE CASCADE,
+  position int DEFAULT 0,
+  is_visible boolean DEFAULT true,
+  width int DEFAULT 200,
+  UNIQUE(view_id, column_id)
+)
+
+board_view_members (
+  id uuid PK,
+  view_id uuid FK board_views(id) ON DELETE CASCADE,
+  user_id uuid FK users(id) NULL,
+  team_id uuid FK teams(id) NULL,
+  CHECK: (user_id IS NOT NULL AND team_id IS NULL) OR (user_id IS NULL AND team_id IS NOT NULL)
+)
+```
+
+### API routes
+
+```
+GET    /api/boards/[id]/views           → list views del board (con column config)
+POST   /api/boards/[id]/views           → crear nueva vista
+PATCH  /api/boards/[id]/views/[viewId]  → rename, reorder, set default
+DELETE /api/boards/[id]/views/[viewId]  → eliminar (no la default)
+
+GET    /api/boards/[id]/views/[viewId]/columns     → columnas de la vista (con is_visible)
+PUT    /api/boards/[id]/views/[viewId]/columns     → bulk update (positions + visibility)
+PATCH  /api/boards/[id]/views/[viewId]/columns/[colId] → toggle visible, set width
+
+GET    /api/boards/[id]/views/[viewId]/members     → quién puede ver la vista
+POST   /api/boards/[id]/views/[viewId]/members     → agregar user/team
+DELETE /api/boards/[id]/views/[viewId]/members/[memberId] → quitar
+```
+
+### Frontend (BoardView)
+
+```
+BoardView toolbar:
+  [Vista: Default ▾] [+ Nueva vista]   → dropdown de vistas disponibles al usuario
+                                          (filtradas por board_view_members)
+
+Column picker (ojo icon en header):
+  Lista de TODAS las columnas del board con checkbox is_visible
+  Checkbox activa/desactiva → PATCH view column
+
+Crear columna desde vista:
+  → POST /api/boards/[id]/columns (board_columns)
+  → Auto-insert board_view_columns: visible=true en vista activa, false en las demás
+```
+
+### Migración de datos al activar views
+
+```sql
+-- Al crear la primera view de un board:
+-- 1. INSERT board_views (is_default=true, name='Default')
+-- 2. Para cada board_column existente: INSERT board_view_columns (is_visible=true)
+-- Boards sin views → comportamiento anterior (todas las columnas visibles)
+```
+
+### Impacto en endpoints existentes
+
+```
+GET /api/boards/[id]/columns → agregar param ?viewId=
+  Sin viewId: retorna todas las columnas del board (para settings)
+  Con viewId: retorna columnas filtradas por board_view_columns.is_visible del usuario
+
+GET /api/items?boardId= → no cambia (items no dependen de views)
+
+POST /api/boards/[id]/columns → si viene ?viewId=:
+  Auto-propaga is_visible=false a todas las demás vistas del board
+```
+
+### Decisiones de diseño
+
+- **Sin layout alternativo** (no kanban, no calendar) — solo grid con columnas configurables
+- **View default siempre existe** — no se puede eliminar
+- **column_permissions** = capa de seguridad hard (admin la configura en settings)
+  **board_view_columns** = capa de UX (usuario la configura inline en el board)
+- **Ancho de columna** guardado en `board_view_columns.width` — por vista, no global
 
 ---
 

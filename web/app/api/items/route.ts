@@ -11,7 +11,19 @@ export async function GET(req: Request) {
 
   const supabase = createServiceClient()
 
-  const { data, error } = await supabase
+  // Check if this user has restrict_to_own for this board (non-admin members only)
+  let restrictToOwn = false
+  if (auth.role === 'member' || auth.role === 'viewer') {
+    const { data: membership } = await supabase
+      .from('board_members')
+      .select('restrict_to_own')
+      .eq('board_id', boardId)
+      .eq('user_id', auth.userId)
+      .maybeSingle()
+    if (membership?.restrict_to_own) restrictToOwn = true
+  }
+
+  let query = supabase
     .from('items')
     .select(
       'id, sid, name, stage_id, owner_id, territory_id, deadline, position,' +
@@ -19,7 +31,12 @@ export async function GET(req: Request) {
     )
     .eq('board_id', boardId)
     .eq('workspace_id', auth.workspaceId)
-    .order('position')
+
+  if (restrictToOwn) {
+    query = query.eq('owner_id', auth.userId)
+  }
+
+  const { data, error } = await query.order('position')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])

@@ -82,7 +82,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = (await res.json()) as { channels: Channel[] }
         setChannels(data.channels ?? [])
-        if (data.length > 0) setSelectedChannelId(data[0].id)
+        if (data.channels && data.channels.length > 0) setSelectedChannelId(data.channels[0].id)
       } catch (e) {
         setChannelsError(e instanceof Error ? e.message : 'Error loading channels')
       } finally {

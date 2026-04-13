@@ -2,6 +2,12 @@
 
 ## 2026-04-13
 
+**~sesión 9**
+- Fase 8 Settings completa: layout Cursor-inspired, 9 páginas (profile, workspace, members, teams, territories, boards, billing, superadmin), 56 rutas build limpio
+- Permisos `restrict_to_own` en `board_members`: miembro solo ve items donde es owner; toggle en Acceso tab; enforcement en `GET /api/items`
+- Migration 010: `users.job_title` + `board_members.restrict_to_own` (pendiente aplicar en Supabase remoto)
+- Arquitectura Board Views documentada en plan.md como Fase 8.X: `board_views` + `board_view_columns` + `board_view_members` — columnas creadas en vista X son invisibles en las demás por default
+
 **~sesión 8**
 - Fase 7 completa: ItemChannels (mini Slack), ActivityFeed, 5 API routes, migration 008
 - Canales por item: lista sidebar + mensajes + @mentions (`@[Nombre](SID)`) + permisos por canal

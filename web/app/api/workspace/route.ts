@@ -8,49 +8,32 @@ export async function GET() {
 
   const supabase = createServiceClient()
   const { data, error } = await supabase
-    .from('boards')
-    .select('id, sid, slug, name, type, system_key')
-    .eq('workspace_id', auth.workspaceId)
-    .order('name')
+    .from('workspaces')
+    .select('id, sid, name')
+    .eq('id', auth.workspaceId)
+    .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request) {
   const auth = await requireAdminApi()
   if (isAuthError(auth)) return auth
 
   const body = await request.json()
-  const { name, type, description } = body
+  const { name } = body
 
   if (!name || typeof name !== 'string') {
     return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 })
   }
 
-  if (!type || !['pipeline', 'table'].includes(type)) {
-    return NextResponse.json({ error: 'El tipo debe ser pipeline o table' }, { status: 400 })
-  }
-
-  // Generate slug: lowercase, spaces→hyphens, only alphanumeric+hyphen
-  const slug = name
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-
   const supabase = createServiceClient()
   const { data, error } = await supabase
-    .from('boards')
-    .insert({
-      workspace_id: auth.workspaceId,
-      name,
-      type,
-      description: description || null,
-      slug,
-    })
-    .select('id, sid, slug, name, type, system_key')
+    .from('workspaces')
+    .update({ name })
+    .eq('id', auth.workspaceId)
+    .select('id, sid, name')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
