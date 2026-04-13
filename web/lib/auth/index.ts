@@ -1,48 +1,55 @@
-import 'server-only' // Garantiza que este módulo NUNCA se ejecute en el cliente
+import 'server-only'
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
+
+export type UserRole = 'superadmin' | 'admin' | 'member' | 'viewer'
 
 export type AuthUser = {
   userId: string
+  userSid: number
   phone: string | null
-  // workspace_id y role se agregarán en Fase 0 cuando exista la tabla users
+  name: string | null
+  role: UserRole
+  workspaceId: string
 }
 
-/**
- * getCurrentUser — cached por request.
- * Llama a supabase.auth.getUser() que valida el JWT contra los servidores
- * de Supabase (NO solo lee cookies). Esto previene tokens forjados.
- * cache() evita múltiples network calls en el mismo render.
- */
 export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
 
   if (error || !user) return null
 
+  const service = createServiceClient()
+  const { data: profile } = await service
+    .from('users')
+    .select('sid, name, role, workspace_id')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) return null
+
   return {
     userId: user.id,
+    userSid: profile.sid,
     phone: user.phone ?? null,
+    name: profile.name,
+    role: profile.role as UserRole,
+    workspaceId: profile.workspace_id,
   }
 })
 
-/**
- * requireAuth — usa en layouts y pages que requieren sesión.
- * Redirige a /login si no hay sesión válida.
- */
 export async function requireAuth(): Promise<AuthUser> {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
   return user
 }
 
-/**
- * requireAdmin — para páginas de settings/admin.
- * Se completará en Fase 0 cuando exista la tabla users con roles.
- */
 export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireAuth()
-  // TODO Fase 0: verificar role === 'admin' || 'superadmin' contra tabla users
+  if (user.role !== 'admin' && user.role !== 'superadmin') {
+    redirect('/app')
+  }
   return user
 }
