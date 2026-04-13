@@ -235,13 +235,13 @@ web/components/layout/{sidebar,header}.tsx
 
 ### Tareas
 
-- [ ] **3.1** `GenericDataTable.tsx`:
+- [x] **3.1** `GenericDataTable.tsx`:
   - Recibe: `columns: ColumnDef[]`, `rows: Row[]`, `onCellChange(rowId, colKey, value)`
   - Sort by column, sticky first column, row click, inline edit, bulk select
   - Empty state, loading state
   - **Pura presentación — no sabe de boards/items/API**
 
-- [ ] **3.2** Cell system:
+- [x] **3.2** Cell system:
   ```
   cells/types.ts             → ColumnDef, CellProps, CellValue
   cells/ColumnCell.tsx        → switch(kind) dispatcher
@@ -257,16 +257,16 @@ web/components/layout/{sidebar,header}.tsx
   cells/EmailCell.tsx
   ```
 
-- [ ] **3.3** `BoardView.tsx`:
+- [x] **3.3** `BoardView.tsx`:
   - Fetch: board + columns + items + item_values
   - Transforma → rows para GenericDataTable
   - onCellChange → PATCH items (core) o PUT item_values (custom)
   - Toolbar: "+ Nuevo", búsqueda, count
   - Row click → `/app/b/[slug]/[item.sid]`
 
-- [ ] **3.4** Server page: resuelve board por slug + workspace
+- [x] **3.4** Server page: resuelve board por slug + workspace
 
-- [ ] **3.5** API:
+- [x] **3.5** API:
   ```
   GET  /api/boards/[id]             → board + stages
   GET  /api/boards/[id]/columns     → columnas (con sid)
@@ -280,7 +280,7 @@ web/components/layout/{sidebar,header}.tsx
   GET  /api/workspace-users         → usuarios (con sid)
   ```
 
-- [ ] **3.6** `lib/boards/index.ts`: `resolveBoardBySlug()`, `getBoardItems()`
+- [x] **3.6** `lib/boards/index.ts`: `resolveBoardBySlug()`, `getBoardItems()`
 
 ### Decisiones clave
 

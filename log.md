@@ -1,5 +1,14 @@
 # log
 
+## 2026-04-13
+
+**~sesión 1**
+- Fase 3 completa: GenericDataTable (TanStack Table v8 + Virtual), 11 cell types, BoardView, 8 API routes, lib/boards
+- Sidebar rediseñada: iconos SVG por tipo de board (funnel, person, building, truck, layers), sin colores, active=negro
+- Fix col_key: BoardView usaba `_name`/`_stage` pero BD tiene `name`/`stage`; corregido + columna virtual `__sid`
+- Endpoint `/api/admin/seed` para poblar workspace CMP con boards + 28 items desde browser (idempotente)
+- `npm run build` limpio — 15 rutas
+
 ## 2026-04-12
 
 **~sesión 5**
