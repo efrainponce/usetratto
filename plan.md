@@ -1,0 +1,467 @@
+# Tratto — plan.md (Fresh Start)
+
+**Fecha:** 2026-04-12
+**Objetivo:** Reconstruir Tratto desde cero. Simple, reutilizable, modular. Zero duplicación.
+**Enfoque:** Un agente, secuencial, cada fase completa antes de la siguiente.
+
+---
+
+## Filosofía del plan
+
+```
+1. Schema primero → después UI
+2. Una cosa funcionando → después la siguiente
+3. Genérico desde el día 1 → nunca hardcodear
+4. Cada fase termina con algo que se puede probar en el browser
+5. Commit al final de cada fase, no antes
+```
+
+---
+
+## Diagrama de dependencias
+
+```
+Fase 0: Supabase schema + seed
+   ↓
+Fase 1: Auth (login funcional)
+   ↓
+Fase 2: Layout (sidebar + header + rutas)
+   ↓
+Fase 3: BoardView (tabla genérica, inline edit, CRUD items)
+   ↓
+Fase 4: ItemDetailView (detalle + info panel editable)
+   ↓
+Fase 5: Sub-items (jerárquicos, vistas configurables)
+   ↓
+Fase 6: Import wizard (Airtable + CSV, genérico)
+   ↓
+Fase 7: Canales + Activity log
+   ↓
+Fase 8: Settings (boards, stages, columns, members, teams, territories)
+   ↓
+Fase 9: Permisos (RLS real, board_members, column_permissions, territories)
+   ↓
+Fase 10: WhatsApp + Quote Engine (features avanzadas)
+```
+
+---
+
+## Fase 0 — Schema + Seed
+
+**Goal:** Base de datos limpia, probada, con data de ejemplo. `sid` en TODA entidad.
+
+### Tareas
+
+- [ ] **0.1** Crear proyecto Supabase nuevo (o reset completo)
+- [ ] **0.2** Migration 001: Core tables
+  ```sql
+  -- Secuencia global compartida:
+  CREATE SEQUENCE tratto_sid_seq START 10000000;
+  
+  -- TODA tabla con sid usa: DEFAULT nextval('tratto_sid_seq')
+  -- Entidades con sid: workspaces, users, teams, territories,
+  --   boards, board_stages, board_columns, items, sub_items
+
+  workspaces (id uuid PK, sid bigint UNIQUE DEFAULT nextval, name, created_at)
+  users (id uuid PK, sid bigint UNIQUE, name, phone UNIQUE, email, role, workspace_id FK, created_at)
+  teams (id, sid, workspace_id, name, created_at)
+  user_teams (user_id, team_id) -- PK compuesto
+  territories (id, sid, workspace_id, name, parent_id SELF-REF NULL, created_at)
+  user_territories (user_id, territory_id) -- PK compuesto
+
+  boards (id, sid, slug UNIQUE per workspace, workspace_id, name, type, description, system_key, created_at)
+  board_stages (id, sid, board_id, name, color, position, is_closed, created_at)
+  board_columns (id, sid, board_id, col_key, name, kind, position, is_system, is_hidden, required, settings jsonb, created_at)
+
+  board_members (id, board_id, user_id NULL, team_id NULL, access, created_at)
+    -- CHECK: exactly one of user_id/team_id is NOT NULL
+    -- access: 'view' | 'edit'
+    -- UNIQUE(board_id, user_id) WHERE user_id IS NOT NULL
+    -- UNIQUE(board_id, team_id) WHERE team_id IS NOT NULL
+
+  column_permissions (id, column_id, user_id NULL, team_id NULL, access, created_at)
+    -- Same XOR pattern as board_members
+
+  items (id, sid, workspace_id, board_id, stage_id NULL, name, owner_id, territory_id NULL, deadline NULL, position, created_at, updated_at)
+  item_values (id, item_id, column_id, value_text, value_number, value_date, value_json, created_at)
+    -- UNIQUE(item_id, column_id)
+
+  sub_items (id, sid, workspace_id, item_id, parent_id NULL, depth smallint DEFAULT 0, name, qty, unit_price, notes, catalog_item_id NULL, position, created_at)
+  sub_item_values (id, sub_item_id, column_id, value_text, value_number, value_date, value_json)
+    -- UNIQUE(sub_item_id, column_id)
+
+  sub_item_views (id, board_id, stage_id NULL, name, column_ids jsonb, show_variants boolean, created_at)
+
+  item_channels (id, workspace_id, item_id, name, type, team_id NULL, position, created_at)
+  channel_messages (id, workspace_id, channel_id, user_id NULL, body, type, metadata jsonb, whatsapp_sid NULL, created_at)
+  channel_members (channel_id, user_id, added_by NULL, created_at) -- PK compuesto
+  mentions (id, workspace_id, message_id, mentioned_user_id, notified boolean, replied boolean, reply_message_id NULL, created_at)
+
+  item_activity (id, workspace_id, item_id, sub_item_id NULL, actor_id NULL, action, old_value, new_value, metadata jsonb, created_at)
+
+  quote_templates (id, workspace_id, board_id, name, stage_id NULL, template_html, header_fields jsonb, line_columns jsonb, footer_fields jsonb, show_prices boolean, created_at)
+  quotes (id, workspace_id, item_id, template_id, generated_by, pdf_url, status, created_at)
+  ```
+
+- [ ] **0.3** Migration 002: Functions + Triggers
+  ```sql
+  seed_system_boards(workspace_id)   → crea 5 boards de sistema + columnas de sistema
+  handle_new_auth_user()             → trigger en auth.users, auto-provisioning
+  trg_default_channels               → auto-crea General + Sistema al insertar item en board pipeline
+  trg_item_activity                  → log automático de cambios en items y sub_items
+  trg_seed_columns                   → genera columnas de sistema al crear board
+  auto_fill_autonumber()             → trigger para columnas tipo autonumber
+  find_by_sid(bigint)                → busca cualquier entidad por sid
+  ```
+
+- [ ] **0.4** Migration 003: RLS policies
+  ```sql
+  -- workspace_isolation en TODAS las tablas
+  -- items: admin OR owner OR board_member (user directo o via team) OR territory
+  -- boards: workspace_isolation + board_members check
+  -- sub_items: hereda permisos del item padre
+  ```
+
+- [ ] **0.5** Seed data
+  ```sql
+  -- 1 workspace "CMP" (con sid)
+  -- 1 user admin (con sid, phone de test +521234567890)
+  -- 5 system boards con sus columnas de sistema (cada uno con sid)
+  -- Board "opportunities": 5 stages (Nueva, Cotización, Costeo, Presentada, Cerrada)
+  -- 10 items de ejemplo en opportunities
+  -- Board "contacts": 5 contactos ejemplo (como items, no tabla separada)
+  -- Board "accounts": 3 cuentas ejemplo
+  -- Board "catalog": 10 productos ejemplo
+  -- 1 team "Ventas" + 1 team "Compras" (con sid)
+  -- 3 territories: Norte, Centro, Sur (con sid)
+  -- board_members: team "Ventas" → board "opportunities" con 'edit'
+  ```
+
+### Verificación
+- [ ] `supabase db reset` sin errores
+- [ ] Queries: `SELECT sid, name FROM boards` retorna 5 boards con sids únicos
+- [ ] `SELECT * FROM find_by_sid(10000100)` retorna el item correcto
+- [ ] Todos los sids son únicos globalmente: `SELECT sid, COUNT(*) FROM (SELECT sid FROM boards UNION ALL SELECT sid FROM items UNION ALL SELECT sid FROM users ...) GROUP BY sid HAVING COUNT(*) > 1` → 0 filas
+- [ ] RLS: usuario solo ve datos de su workspace
+
+### Archivos
+```
+supabase/migrations/
+  001_core_schema.sql
+  002_functions_triggers.sql
+  003_rls_policies.sql
+  004_seed_data.sql
+```
+
+---
+
+## Fase 1 — Auth
+
+**Goal:** Login funcional con phone OTP. Redirect a /app si autenticado.
+
+### Tareas
+
+- [ ] **1.1** Next.js project setup: `npx create-next-app@latest web --typescript --tailwind --app`
+- [ ] **1.2** Deps: `@supabase/supabase-js`, `@supabase/ssr`
+- [ ] **1.3** Supabase clients:
+  ```
+  lib/supabase/client.ts    → createClient() para browser/server
+  lib/supabase/server.ts    → createClient() para server components
+  lib/supabase/service.ts   → createServiceClient() para API routes
+  ```
+- [ ] **1.4** Auth helpers:
+  ```
+  lib/auth/index.ts         → requireAuth(), requireAdmin(), optionalAuth()
+  lib/auth/api.ts           → requireAuthApi(), requireAdminApi()
+                               Retorna: { userId, workspaceId, role, userSid }
+  ```
+- [ ] **1.5** Middleware: refresh JWT, protect /app/* y /api/* (excepto /api/auth)
+- [ ] **1.6** Login page: phone input → OTP → redirect a /app
+- [ ] **1.7** Logout: `POST /api/auth/logout`
+- [ ] **1.8** Test OTP en Supabase Dashboard: `+521234567890` → `123456`
+
+### Verificación
+- [ ] Login con número de test → redirect a /app
+- [ ] /app sin sesión → redirect a /login
+- [ ] API sin sesión → 401
+
+### Archivos
+```
+web/middleware.ts
+web/lib/supabase/{client,server,service}.ts
+web/lib/auth/{index,api}.ts
+web/app/login/page.tsx
+web/app/api/auth/logout/route.ts
+```
+
+---
+
+## Fase 2 — Layout
+
+**Goal:** Shell de la app: sidebar con boards dinámicos, header, navegación.
+
+### Tareas
+
+- [ ] **2.1** Layout: `app/app/layout.tsx`
+- [ ] **2.2** Sidebar:
+  - Logo "T" + nombre workspace
+  - Boards del workspace (fetch desde API), cada uno navega a `/app/b/[slug]`
+  - System boards arriba, custom abajo (separador visual)
+  - Settings icon, Superadmin button (condicional), Logout
+- [ ] **2.3** Header: pageName dinámico + breadcrumb
+- [ ] **2.4** API: `GET /api/boards` → boards del workspace con sid y slug
+- [ ] **2.5** Redirect: `/app` → `/app/b/oportunidades`
+- [ ] **2.6** Placeholder en `/app/b/[boardSlug]/page.tsx`
+
+### Verificación
+- [ ] Login → sidebar con 5 boards de sistema (mostrando nombre, no sid)
+- [ ] Click en board → navega a `/app/b/[slug]`
+- [ ] Cada board muestra su sid en algún lugar sutil (tooltip o badge)
+
+### Archivos
+```
+web/app/app/layout.tsx
+web/app/app/page.tsx
+web/app/app/b/[boardSlug]/page.tsx
+web/app/api/boards/route.ts
+web/components/layout/{sidebar,header}.tsx
+```
+
+---
+
+## Fase 3 — BoardView (la tabla)
+
+**Goal:** Tabla genérica estilo Airtable que funciona para CUALQUIER board.
+
+### Tareas
+
+- [ ] **3.1** `GenericDataTable.tsx`:
+  - Recibe: `columns: ColumnDef[]`, `rows: Row[]`, `onCellChange(rowId, colKey, value)`
+  - Sort by column, sticky first column, row click, inline edit, bulk select
+  - Empty state, loading state
+  - **Pura presentación — no sabe de boards/items/API**
+
+- [ ] **3.2** Cell system:
+  ```
+  cells/types.ts             → ColumnDef, CellProps, CellValue
+  cells/ColumnCell.tsx        → switch(kind) dispatcher
+  cells/TextCell.tsx
+  cells/NumberCell.tsx
+  cells/DateCell.tsx
+  cells/SelectCell.tsx        → opciones desde column.settings.options o board_stages
+  cells/MultiSelectCell.tsx
+  cells/PeopleCell.tsx        → dropdown de workspace users
+  cells/BooleanCell.tsx
+  cells/RelationCell.tsx      → picker de items de otro board (target_board_id en settings)
+  cells/PhoneCell.tsx
+  cells/EmailCell.tsx
+  ```
+
+- [ ] **3.3** `BoardView.tsx`:
+  - Fetch: board + columns + items + item_values
+  - Transforma → rows para GenericDataTable
+  - onCellChange → PATCH items (core) o PUT item_values (custom)
+  - Toolbar: "+ Nuevo", búsqueda, count
+  - Row click → `/app/b/[slug]/[item.sid]`
+
+- [ ] **3.4** Server page: resuelve board por slug + workspace
+
+- [ ] **3.5** API:
+  ```
+  GET  /api/boards/[id]             → board + stages
+  GET  /api/boards/[id]/columns     → columnas (con sid)
+  GET  /api/items?boardId=          → items con values
+  POST /api/items                   → crear (retorna sid)
+  PATCH /api/items/[id]             → campos core
+  DELETE /api/items/[id]
+  DELETE /api/items/bulk
+  GET  /api/items/[id]/values
+  PUT  /api/items/[id]/values       → upsert
+  GET  /api/workspace-users         → usuarios (con sid)
+  ```
+
+- [ ] **3.6** `lib/boards/index.ts`: `resolveBoardBySlug()`, `getBoardItems()`
+
+### Decisiones clave
+
+- Columnas de sistema (`is_system=true`) se renderizan con el mismo ColumnCell que custom. La diferencia es que `onCellChange` para system columns hace PATCH a `items.*`, para custom hace PUT a `item_values`.
+- Stages se muestran en SelectCell con badge de color, opciones de `board_stages`.
+- Owner se muestra en PeopleCell con avatar + nombre.
+- RelationCell muestra el nombre del item target, con picker que busca items del `target_board_id`.
+- La tabla muestra `sid` como primera columna (readonly, tipo autonumber visual).
+
+### Verificación
+- [ ] `/app/b/oportunidades` → tabla con 10 items, columnas de sistema visibles
+- [ ] `/app/b/contactos` → misma tabla, distintas columnas (phone, email, account)
+- [ ] Inline edit de stage, owner, deadline funciona
+- [ ] Crear item → aparece con sid nuevo
+- [ ] Bulk delete funciona
+- [ ] Sort por columna funciona
+- [ ] La columna sid se muestra en cada fila
+
+### Archivos
+```
+web/components/data-table/GenericDataTable.tsx
+web/components/cells/{types,ColumnCell,TextCell,NumberCell,DateCell,SelectCell,MultiSelectCell,PeopleCell,BooleanCell,RelationCell,PhoneCell,EmailCell}.tsx
+web/app/app/b/[boardSlug]/{page,BoardView}.tsx
+web/app/api/items/{route,[id]/route,[id]/values/route,bulk/route}.ts
+web/app/api/boards/[id]/{route,columns/route}.ts
+web/app/api/workspace-users/route.ts
+web/lib/boards/index.ts
+```
+
+---
+
+## Fase 4 — ItemDetailView
+
+**Goal:** Página de detalle universal con panel de info editable + tabs.
+
+### Tareas
+
+- [ ] **4.1** Server page: resuelve item por sid, board por slug
+- [ ] **4.2** `ItemDetailView.tsx`:
+  - Header: nombre editable + stage badge + sid visible
+  - Info panel: campos core + custom editables (mismo cell system)
+  - Tabs: Sub-items (placeholder) | Canales (placeholder) | Actividad (placeholder)
+  - Prev/Next navigation por sid, breadcrumb al board
+- [ ] **4.3** API: `GET /api/items/[id]` → item completo con values + board info
+
+### Verificación
+- [ ] Click en row → `/app/b/oportunidades/10000107` → detalle con sid en header
+- [ ] Editar fields → guarda
+- [ ] Breadcrumb → volver al board
+- [ ] Prev/Next funciona
+
+### Archivos
+```
+web/app/app/b/[boardSlug]/[itemSid]/{page,ItemDetailView}.tsx
+```
+
+---
+
+## Fase 5 — Sub-items
+
+**Goal:** Sub-items jerárquicos con vistas configurables.
+
+### Tareas
+
+- [ ] **5.1** `SubItemsView.tsx`: tabla L1/L2, inline edit, chevron expand
+- [ ] **5.2** `ProductPicker.tsx`: búsqueda fuzzy en board catalog
+- [ ] **5.3** API: sub-items CRUD + sub_item_views
+- [ ] **5.4** Integrar como tab en ItemDetailView
+- [ ] **5.5** Preview en BoardView (count badge o expandible)
+
+### Verificación
+- [ ] Agregar sub-item desde catálogo → sid asignado
+- [ ] L1 expandible → L2 variantes
+- [ ] ⚡ Auto-variantes genera L2
+- [ ] Cada sub-item muestra su sid
+
+---
+
+## Fase 6 — Import Wizard
+
+**Goal:** Importar data a cualquier board desde Airtable o CSV.
+
+### Tareas
+- [ ] **6.1** `ImportWizard.tsx` + `ImportarAirtable.tsx` + `ImportarCSV.tsx`
+- [ ] **6.2** API: `POST /api/import/{airtable,csv}`
+- [ ] **6.3** Integrar en BoardView toolbar
+
+### Verificación
+- [ ] Import CSV a catalog → items con sids nuevos
+- [ ] Import Airtable → mapeo de columnas → items creados
+- [ ] Funciona en CUALQUIER board
+
+---
+
+## Fase 7 — Canales + Activity Log
+
+**Goal:** Comunicación interna + audit trail.
+
+### Tareas
+- [ ] **7.1** `ItemChannels.tsx` + `ActivityFeed.tsx`
+- [ ] **7.2** API: channels, messages, members, activity
+- [ ] **7.3** Integrar como tabs en ItemDetailView
+
+---
+
+## Fase 8 — Settings
+
+**Goal:** Admin configura boards, stages, columns, members, teams, territories.
+
+### Tareas
+- [ ] **8.1** Settings layout + nav
+- [ ] **8.2** Boards: CRUD + stages + columns + **members tab** (agregar users o teams con view/edit)
+- [ ] **8.3** Teams: `GroupList.tsx` genérico
+- [ ] **8.4** Territories: `GroupList.tsx` genérico
+- [ ] **8.5** Workspace config
+- [ ] **8.6** Superadmin: workspace switcher
+- [ ] **8.7** Column permissions UI (en board detail → column settings)
+
+---
+
+## Fase 9 — Permisos granulares
+
+**Goal:** RLS real con board_members y column_permissions.
+
+### Tareas
+- [ ] **9.1** RLS refinado: board_members (user o team) con access level
+- [ ] **9.2** Column visibility: frontend filtra columnas según column_permissions del user
+- [ ] **9.3** Territory filtering en items
+- [ ] **9.4** Verificar: member sin acceso al board → NO ve items
+
+---
+
+## Fase 10 — WhatsApp + Quote Engine
+
+**Goal:** Features avanzadas sobre base sólida.
+
+### Tareas
+- [ ] **10.1** Edge Functions: twilio_webhook, mentions-trigger, daily-digest
+- [ ] **10.2** Quote templates CRUD
+- [ ] **10.3** PDF generation
+- [ ] **10.4** Tab "Cotización" en ItemDetailView
+
+---
+
+## Ideas incorporadas (vs versión anterior)
+
+| # | Cambio | Impacto |
+|---|--------|---------|
+| 1 | `sid` en TODA entidad | `find_by_sid()` universal, WhatsApp bot busca cualquier cosa |
+| 2 | `board_members` (user OR team) | Reemplaza `board_teams`, más flexible (personas individuales) |
+| 3 | `column_permissions` | Visibilidad/edición por columna, estilo Monday |
+| 4 | Board types simplificados | `pipeline` / `table` en vez de `crm` / `work` / `object` |
+| 5 | No tablas contacts/accounts/vendors | Todo es un item, zero CRUD duplicado |
+| 6 | Columna `relation` | Reemplaza FK físicos, configurable desde UI |
+| 7 | `col_key` estable | Código referencia columnas sin hardcodear UUIDs |
+| 8 | 1 agente secuencial | Sin GitButler, sin parallelismo, sin conflictos |
+
+---
+
+## Estimación
+
+| Fase | Complejidad | Nota |
+|------|------------|------|
+| 0 | Media | 4 SQL files, fundamento de todo |
+| 1 | Baja | Auth standard con Supabase |
+| 2 | Baja | Layout + sidebar + API boards |
+| 3 | **Alta** | LA fase crítica. Si la tabla está bien, todo es incremental |
+| 4 | Media | Reutiliza cells de Fase 3 |
+| 5 | Media-Alta | Sub-items + ProductPicker + vistas |
+| 6 | Media | Import ya probado, reutilizar diseño |
+| 7 | Media | Channels + activity triggers |
+| 8 | Media | Settings CRUD |
+| 9 | Baja | SQL policies + frontend filtering |
+| 10 | Alta | WhatsApp + PDF |
+
+---
+
+## Checklist pre-cada-fase
+
+1. ✅ Fase anterior completa y probada
+2. ✅ `npm run build` pasa sin errores
+3. ✅ Commit limpio en main
+4. ✅ Leer la fase completa antes de escribir código
+5. ✅ Identificar si necesita migration nueva
