@@ -73,7 +73,7 @@ export const resolveBoardBySid = unstable_cache(
     const supabase = createServiceClient()
     const { data, error } = await supabase
       .from('boards')
-      .select('id, sid, slug, name, type, system_key, sub_items_source_board_id')
+      .select('id, sid, slug, name, type, system_key, sub_items_source_board_id, workspace_id')
       .eq('workspace_id', workspaceId)
       .eq('sid', sid)
       .maybeSingle()
@@ -245,4 +245,46 @@ export async function getItemData(itemId: string, workspaceId: string) {
     .eq('workspace_id', workspaceId)
     .single()
   return (data ?? null) as unknown as BoardItem | null
+}
+
+// ─── Board views ──────────────────────────────────────────────────────────────
+
+export type BoardViewColumn = {
+  id:        string
+  column_id: string
+  is_visible: boolean
+  position:  number
+  width:     number
+}
+
+export type BoardView = {
+  id:         string
+  sid:        number
+  name:       string
+  is_default: boolean
+  position:   number
+  columns:    BoardViewColumn[]
+}
+
+export async function getBoardViews(boardId: string, workspaceId: string): Promise<BoardView[]> {
+  const supabase = createServiceClient()
+  const { data: existing } = await supabase
+    .from('board_views')
+    .select('id, sid, name, is_default, position, board_view_columns(id, column_id, is_visible, position, width)')
+    .eq('board_id', boardId)
+    .order('position')
+
+  if (existing && existing.length > 0) {
+    return existing.map(v => ({ ...v, columns: v.board_view_columns ?? [] }))
+  }
+
+  // Auto-create Default view
+  const { data: created } = await supabase
+    .from('board_views')
+    .insert({ board_id: boardId, workspace_id: workspaceId, name: 'Default', is_default: true, position: 0 })
+    .select('id, sid, name, is_default, position')
+    .single()
+
+  if (!created) return []
+  return [{ ...created, columns: [] }]
 }

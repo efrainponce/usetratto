@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import { InlineSubItems } from '@/components/InlineSubItems'
 import { SourceColumnMapper } from '@/components/SourceColumnMapper'
 import { ImportWizard } from '@/components/import/ImportWizard'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
-import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn } from '@/lib/boards'
+import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView } from '@/lib/boards'
 
 // System col_keys that map directly to items table fields
 const ITEMS_FIELD: Record<string, keyof BoardItem> = {
@@ -39,6 +39,7 @@ type Props = {
   initialItems:          BoardItem[]
   initialSubItemColumns: SubItemColumn[]
   initialSourceBoardId:  string | null
+  initialViews:          BoardView[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ type Props = {
 export function BoardView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
-  initialSubItemColumns, initialSourceBoardId,
+  initialSubItemColumns, initialSourceBoardId, initialViews,
 }: Props) {
   const router = useRouter()
 
@@ -60,6 +61,17 @@ export function BoardView({
   const [showMapper,    setShowMapper]       = useState(false)
   const [showImport,    setShowImport]       = useState(false)
 
+  // View management
+  const [views,        setViews]        = useState<BoardView[]>(initialViews)
+  const [activeViewId, setActiveViewId] = useState<string | null>(initialViews[0]?.id ?? null)
+  const [addingView,   setAddingView]   = useState(false)
+  const [newViewName,  setNewViewName]  = useState('')
+  const [renamingViewId, setRenamingViewId] = useState<string | null>(null)
+  const [renameValue,    setRenameValue]    = useState('')
+  const [showColPicker,  setShowColPicker]  = useState(false)
+  const newViewInputRef = useRef<HTMLInputElement>(null)
+  const colPickerRef = useRef<HTMLDivElement>(null)
+
   // col_key → column UUID  (for item_values lookups)
   const colIdMap = useMemo(() => {
     const map: Record<string, string> = {}
@@ -67,10 +79,18 @@ export function BoardView({
     return map
   }, [rawCols])
 
+  // Active view lookup
+  const activeView = views.find(v => v.id === activeViewId) ?? null
+
   // ColumnDef[] — virtual __sid first, then board columns
   const columns = useMemo((): ColumnDef[] => {
     const dataCols: ColumnDef[] = rawCols
       .filter(c => !c.is_hidden)
+      .filter(c => {
+        if (!activeView || activeView.columns.length === 0) return true
+        const vc = activeView.columns.find(vc => vc.column_id === c.id)
+        return vc ? vc.is_visible : true
+      })
       .map(c => ({
         key:      c.col_key,
         label:    c.name,
@@ -81,7 +101,7 @@ export function BoardView({
         settings: augmentSettings(c, stages, users),
       }))
     return [SID_COL, ...dataCols]
-  }, [rawCols, stages, users])
+  }, [rawCols, stages, users, activeView])
 
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
@@ -189,6 +209,74 @@ export function BoardView({
     if (colsRes.ok)  setRawCols(await colsRes.json() as BoardColumn[])
   }, [boardId])
 
+  // ── View handlers ──────────────────────────────────────────────────────────
+  const handleCreateView = async () => {
+    const name = newViewName.trim()
+    if (!name) { setAddingView(false); setNewViewName(''); return }
+    const res = await fetch(`/api/boards/${boardId}/views`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    if (!res.ok) { setAddingView(false); setNewViewName(''); return }
+    const view = await res.json() as BoardView
+    setViews(prev => [...prev, { ...view, columns: [] }])
+    setActiveViewId(view.id)
+    setAddingView(false)
+    setNewViewName('')
+  }
+
+  const handleDeleteView = async (viewId: string) => {
+    await fetch(`/api/boards/${boardId}/views/${viewId}`, { method: 'DELETE' })
+    setViews(prev => prev.filter(v => v.id !== viewId))
+    if (activeViewId === viewId) {
+      setActiveViewId(views.find(v => v.id !== viewId)?.id ?? null)
+    }
+  }
+
+  const handleRenameView = async (viewId: string) => {
+    const name = renameValue.trim()
+    if (!name) { setRenamingViewId(null); return }
+    await fetch(`/api/boards/${boardId}/views/${viewId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    setViews(prev => prev.map(v => v.id === viewId ? { ...v, name } : v))
+    setRenamingViewId(null)
+  }
+
+  const handleToggleColumn = async (columnId: string, currentlyVisible: boolean) => {
+    if (!activeViewId) return
+    const newVisible = !currentlyVisible
+    // Optimistic update
+    setViews(prev => prev.map(v => {
+      if (v.id !== activeViewId) return v
+      const existing = v.columns.find(c => c.column_id === columnId)
+      if (existing) {
+        return { ...v, columns: v.columns.map(c => c.column_id === columnId ? { ...c, is_visible: newVisible } : c) }
+      }
+      return { ...v, columns: [...v.columns, { id: '', column_id: columnId, is_visible: newVisible, position: 0, width: 200 }] }
+    }))
+    await fetch(`/api/boards/${boardId}/views/${activeViewId}/columns/${columnId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_visible: newVisible }),
+    })
+  }
+
+  // Close column picker on click outside
+  useEffect(() => {
+    if (!showColPicker) return
+    const handler = (e: MouseEvent) => {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
+        setShowColPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showColPicker])
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -239,6 +327,137 @@ export function BoardView({
         >
           <span className="text-[15px] leading-none">+</span> Nuevo
         </button>
+      </div>
+
+      {/* View tab strip */}
+      <div className="flex items-center gap-0 px-4 border-b border-gray-100 flex-none bg-white">
+        {views.map(view => (
+          <button
+            key={view.id}
+            onClick={() => setActiveViewId(view.id)}
+            onDoubleClick={() => { setRenamingViewId(view.id); setRenameValue(view.name) }}
+            className={`group relative flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium transition-colors ${
+              activeViewId === view.id
+                ? 'text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {/* Grid icon */}
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none opacity-60">
+              <rect x="1" y="1" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+              <rect x="7" y="1" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+              <rect x="1" y="7" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+              <rect x="7" y="7" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+            </svg>
+
+            {renamingViewId === view.id ? (
+              <input
+                className="text-[12px] border border-indigo-300 rounded px-1 py-0 w-24 outline-none"
+                value={renameValue}
+                autoFocus
+                onChange={e => setRenameValue(e.target.value)}
+                onBlur={() => handleRenameView(view.id)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleRenameView(view.id)
+                  if (e.key === 'Escape') setRenamingViewId(null)
+                }}
+                onClick={e => e.stopPropagation()}
+              />
+            ) : (
+              <span>{view.name}</span>
+            )}
+
+            {/* Delete button — hover only, not on default */}
+            {!view.is_default && (
+              <span
+                role="button"
+                onClick={e => { e.stopPropagation(); handleDeleteView(view.id) }}
+                className="ml-0.5 opacity-0 group-hover:opacity-50 hover:!opacity-100 text-gray-400 hover:text-red-500 transition-opacity text-[13px] leading-none"
+              >×</span>
+            )}
+
+            {/* Active underline */}
+            {activeViewId === view.id && (
+              <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-indigo-500 rounded-t" />
+            )}
+          </button>
+        ))}
+
+        {/* New view input or button */}
+        {addingView ? (
+          <div className="flex items-center px-2 py-1">
+            <input
+              ref={newViewInputRef}
+              value={newViewName}
+              autoFocus
+              onChange={e => setNewViewName(e.target.value)}
+              onBlur={handleCreateView}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleCreateView()
+                if (e.key === 'Escape') { setAddingView(false); setNewViewName('') }
+              }}
+              placeholder="Nombre de vista"
+              className="text-[12px] border border-indigo-300 rounded px-2 py-0.5 w-32 outline-none focus:ring-1 focus:ring-indigo-300"
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setAddingView(true)}
+            className="flex items-center gap-1 px-2.5 py-2 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="stroke-current">
+              <path d="M5 1v8M1 5h8" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <span>Nueva vista</span>
+          </button>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Column picker */}
+        <div className="relative py-1" ref={colPickerRef}>
+          <button
+            onClick={() => setShowColPicker(p => !p)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-md transition-colors ${
+              showColPicker ? 'text-indigo-600 bg-indigo-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M1 3h10M1 6h10M1 9h10" strokeWidth="1.2" strokeLinecap="round"/>
+              <circle cx="4" cy="3" r="1.5" fill="white" strokeWidth="1.2"/>
+              <circle cx="8" cy="6" r="1.5" fill="white" strokeWidth="1.2"/>
+              <circle cx="4" cy="9" r="1.5" fill="white" strokeWidth="1.2"/>
+            </svg>
+            Columnas
+          </button>
+
+          {showColPicker && (
+            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-72 overflow-y-auto">
+              <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 mb-1">
+                Columnas visibles
+              </div>
+              {rawCols.filter(c => !c.is_hidden).map(col => {
+                const vc = activeView?.columns.find(vc => vc.column_id === col.id)
+                const isVisible = vc ? vc.is_visible : true
+                return (
+                  <label
+                    key={col.id}
+                    className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isVisible}
+                      onChange={() => handleToggleColumn(col.id, isVisible)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                    />
+                    <span className="text-[12px] text-gray-700 flex-1 truncate">{col.name}</span>
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">{col.kind.slice(0,4)}</span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Table with inline expansion */}
