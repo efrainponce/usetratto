@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -9,7 +9,7 @@ export async function GET(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify item belongs to workspace
   const { data: item } = await supabase
@@ -40,7 +40,7 @@ export async function PUT(req: Request, { params }: Context) {
 
   if (!column_id) return NextResponse.json({ error: 'column_id required' }, { status: 400 })
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify item belongs to workspace
   const { data: item } = await supabase

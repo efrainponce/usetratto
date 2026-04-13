@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function DELETE(req: Request) {
@@ -13,7 +13,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'ids array required' }, { status: 400 })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   const { error } = await supabase
     .from('items')

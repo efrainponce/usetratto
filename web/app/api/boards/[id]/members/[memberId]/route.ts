@@ -1,5 +1,5 @@
 import { requireAdminApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string; memberId: string }> }
@@ -22,7 +22,7 @@ export async function PATCH(req: Request, { params }: Context) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify board belongs to workspace
   const { data: board } = await supabase

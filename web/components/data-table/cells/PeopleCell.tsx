@@ -30,7 +30,7 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      <div className="flex items-center gap-1.5 w-full h-full px-2 py-1 cursor-default" onDoubleClick={onStartEdit}>
+      <div className="flex items-center gap-1.5 w-full h-full px-2 py-1 cursor-default" onClick={onStartEdit}>
         {selected ? (
           <>
             <Avatar name={selected.label} />

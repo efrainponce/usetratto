@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 type SubItemColumn = {
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   const itemId = new URL(req.url).searchParams.get('itemId')
   if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 })
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Get item to verify ownership and get board_id
   const { data: item } = await supabase
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'item_id required' }, { status: 400 })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Look up parent item to get board_id
   const { data: item } = await supabase

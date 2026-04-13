@@ -1,5 +1,5 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function PATCH(
@@ -20,7 +20,7 @@ export async function PATCH(
     )
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify team belongs to workspace
   const { data: team, error: fetchError } = await supabase
@@ -60,7 +60,7 @@ export async function DELETE(
 
   const { id } = await context.params
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify team belongs to workspace
   const { data: team, error: fetchError } = await supabase

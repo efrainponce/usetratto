@@ -69,8 +69,9 @@ export function BoardView({
   const [renamingViewId, setRenamingViewId] = useState<string | null>(null)
   const [renameValue,    setRenameValue]    = useState('')
   const [showColPicker,  setShowColPicker]  = useState(false)
-  const newViewInputRef = useRef<HTMLInputElement>(null)
-  const colPickerRef = useRef<HTMLDivElement>(null)
+  const newViewInputRef    = useRef<HTMLInputElement>(null)
+  const colPickerRef       = useRef<HTMLDivElement>(null)
+  const viewSubmittingRef  = useRef(false)
 
   // col_key → column UUID  (for item_values lookups)
   const colIdMap = useMemo(() => {
@@ -211,13 +212,16 @@ export function BoardView({
 
   // ── View handlers ──────────────────────────────────────────────────────────
   const handleCreateView = async () => {
+    if (viewSubmittingRef.current) return
+    viewSubmittingRef.current = true
     const name = newViewName.trim()
-    if (!name) { setAddingView(false); setNewViewName(''); return }
+    if (!name) { setAddingView(false); setNewViewName(''); viewSubmittingRef.current = false; return }
     const res = await fetch(`/api/boards/${boardId}/views`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     })
+    viewSubmittingRef.current = false
     if (!res.ok) { setAddingView(false); setNewViewName(''); return }
     const view = await res.json() as BoardView
     setViews(prev => [...prev, { ...view, columns: [] }])

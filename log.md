@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 11**
+- Fix cells: SelectCell + MultiSelectCell + PeopleCell abren con single click (era double click — no funcionaba etapa)
+- Fix bug: vista duplicada al crear — onBlur + onKeyDown Enter disparaban handleCreateView dos veces; resuelto con viewSubmittingRef
+- Fase 9.0 (pre-requisito seguridad): 35 API routes migradas de createServiceClient → createClient (user JWT); RLS ahora es enforcement real
+- Solo admin/seed y superadmin/workspaces conservan service client (legítimo: bypass intencional)
+- Build 64+ rutas 0 errores
+
 **~sesión 10**
 - Board Views (Fase 8.7): tab strip entre header y tabla, column picker dropdown, rename/delete vistas
 - Migration 011: `board_views` + `board_view_columns` aplicada en Supabase remoto

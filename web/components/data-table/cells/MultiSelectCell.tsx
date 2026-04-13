@@ -43,7 +43,7 @@ export function MultiSelectCell({ value, isEditing, column, onStartEdit, onCommi
     <div ref={containerRef} className="relative w-full h-full">
       <div
         className="flex items-center gap-1 w-full h-full px-2 py-1 cursor-default flex-wrap overflow-hidden"
-        onDoubleClick={onStartEdit}
+        onClick={onStartEdit}
       >
         {selectedOptions.length > 0
           ? selectedOptions.slice(0, 2).map(o => (

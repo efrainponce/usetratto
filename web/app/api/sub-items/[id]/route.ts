@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -21,7 +21,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('sub_items')
@@ -40,7 +40,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Cascade: also delete children (depth=1) before deleting parent
   await supabase

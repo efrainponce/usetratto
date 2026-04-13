@@ -42,7 +42,7 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
       {/* Display */}
       <div
         className="flex items-center w-full h-full px-2 py-1 cursor-default"
-        onDoubleClick={onStartEdit}
+        onClick={onStartEdit}
       >
         {selected ? (
           <Badge option={selected} />

@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient }         from '@/lib/supabase/service'
+import { createClient }         from '@/lib/supabase/server'
 import { NextResponse }                 from 'next/server'
 
 // Generic bulk import endpoint.
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'board_id and records (min 1) required' }, { status: 400 })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify board belongs to workspace
   const { data: board } = await supabase

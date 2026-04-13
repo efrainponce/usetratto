@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(req: Request) {
@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const boardId = new URL(req.url).searchParams.get('boardId')
   if (!boardId) return NextResponse.json({ error: 'boardId required' }, { status: 400 })
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Check if this user has restrict_to_own for this board (non-admin members only)
   let restrictToOwn = false
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'board_id and name required' }, { status: 400 })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Get next position
   const { data: last } = await supabase

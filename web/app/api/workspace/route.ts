@@ -1,12 +1,12 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('workspaces')
     .select('id, sid, name')
@@ -28,7 +28,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 })
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('workspaces')
     .update({ name })

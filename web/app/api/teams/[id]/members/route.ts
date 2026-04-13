@@ -1,5 +1,5 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -11,7 +11,7 @@ export async function GET(
 
   const { id } = await context.params
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('user_teams')
@@ -47,7 +47,7 @@ export async function POST(
     )
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('user_teams')
@@ -89,7 +89,7 @@ export async function DELETE(
     )
   }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   const { error } = await supabase
     .from('user_teams')

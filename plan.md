@@ -601,6 +601,7 @@ PATCH  /api/boards/[id]/views/[viewId]/columns/[colId] → toggle is_visible, se
 **Goal:** RLS real con board_members, column_permissions, view-level access.
 
 ### Tareas
+- [x] **9.0** Seguridad base: 35 API routes migradas de createServiceClient → createClient; RLS ahora es el único enforcement; service client solo en admin/seed y superadmin
 - [ ] **9.1** RLS refinado: board_members (user o team) con access level
 - [ ] **9.2** Column visibility: frontend filtra columnas según column_permissions del user
 - [ ] **9.3** Territory filtering en items

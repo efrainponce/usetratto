@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -8,7 +8,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const { id } = await params
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('item_channels')
@@ -29,7 +29,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const body = await req.json()
   const { name, position } = body as { name?: string; position?: number }
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify channel belongs to auth.workspaceId and get current type
   const { data: channel, error: fetchError } = await supabase
@@ -69,7 +69,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   const { id } = await params
 
-  const supabase = createServiceClient()
+  const supabase = await createClient()
 
   // Verify channel belongs to auth.workspaceId and get type
   const { data: channel, error: fetchError } = await supabase
