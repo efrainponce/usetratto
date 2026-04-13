@@ -294,7 +294,7 @@ export function GenericDataTable({
                     return (
                       <td
                         key={cell.id}
-                        className="border-r border-gray-100 overflow-hidden p-0"
+                        className="border-r border-gray-100 p-0"
                         style={{
                           width:    cell.column.getSize(),
                           height:   ROW_HEIGHT,
