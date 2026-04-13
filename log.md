@@ -2,6 +2,13 @@
 
 ## 2026-04-12
 
+**~sesión 5**
+- Fase 2 completa: sidebar + layout + API boards + redirect /app→/app/b/oportunidades + placeholder BoardPage
+- Auth fix: `window.location.href` en lugar de `router.push` post-OTP (cookies no se sincronizaban)
+- Auth fix: auto-provision fallback en `getCurrentUser()` — trigger `handle_new_auth_user` falla silencioso en este proyecto
+- Auth fix: phone format mismatch — Supabase guarda `521234567890`, seed tiene `+521234567890`; normalizado con `in([withPlus, withoutPlus])`
+- App corriendo: sidebar muestra 5 boards del workspace CMP, navegación activa, login→/app funciona
+
 **~hora 1**
 - Next.js 16 + Supabase instalado y corriendo en localhost:3000
 - proxy.ts (auth guard para /app y /api)

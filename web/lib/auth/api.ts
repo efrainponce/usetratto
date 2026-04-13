@@ -23,11 +23,34 @@ export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
   }
 
   const service = createServiceClient()
-  const { data: profile } = await service
+  let { data: profile } = await service
     .from('users')
     .select('sid, name, role, workspace_id')
     .eq('id', user.id)
     .single()
+
+  if (!profile) {
+    const withPlus    = user.phone ? (user.phone.startsWith('+') ? user.phone : `+${user.phone}`) : null
+    const withoutPlus = user.phone ? (user.phone.startsWith('+') ? user.phone.slice(1) : user.phone) : null
+    const phoneCandidates = [withPlus, withoutPlus].filter(Boolean) as string[]
+
+    const { data: saRow } = phoneCandidates.length
+      ? await service.from('superadmin_phones').select('workspace_id').in('phone', phoneCandidates).maybeSingle()
+      : { data: null }
+
+    const { data: newProfile } = await service
+      .from('users')
+      .upsert({
+        id:           user.id,
+        phone:        user.phone,
+        role:         saRow ? 'superadmin' : 'member',
+        workspace_id: saRow?.workspace_id ?? null,
+      }, { onConflict: 'id' })
+      .select('sid, name, role, workspace_id')
+      .maybeSingle()
+
+    profile = newProfile
+  }
 
   if (!profile) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 401 })

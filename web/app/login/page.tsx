@@ -2,12 +2,10 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 type Step = 'phone' | 'otp'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [step, setStep] = useState<Step>('phone')
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
@@ -45,8 +43,7 @@ export default function LoginPage() {
     if (error) {
       setError(error.message)
     } else {
-      router.push('/app')
-      router.refresh()
+      window.location.href = '/app'
     }
     setLoading(false)
   }

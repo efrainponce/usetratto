@@ -1,15 +1,36 @@
 import { requireAuth } from '@/lib/auth'
+import { createServiceClient } from '@/lib/supabase/service'
+import Sidebar, { type SidebarBoard } from '@/components/layout/sidebar'
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  await requireAuth()
+  const user = await requireAuth()
+  const supabase = createServiceClient()
+
+  const [{ data: workspace }, { data: boards }] = await Promise.all([
+    supabase
+      .from('workspaces')
+      .select('name')
+      .eq('id', user.workspaceId)
+      .single(),
+    supabase
+      .from('boards')
+      .select('id, sid, slug, name, type, system_key')
+      .eq('workspace_id', user.workspaceId)
+      .order('name'),
+  ])
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <main className="flex-1 overflow-auto p-8">
+    <div className="flex h-screen bg-white overflow-hidden">
+      <Sidebar
+        boards={(boards ?? []) as SidebarBoard[]}
+        user={{ name: user.name, role: user.role }}
+        workspaceName={workspace?.name ?? 'Tratto'}
+      />
+      <main className="flex-1 overflow-auto">
         {children}
       </main>
     </div>

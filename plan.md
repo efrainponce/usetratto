@@ -202,16 +202,16 @@ web/app/api/auth/logout/route.ts
 
 ### Tareas
 
-- [ ] **2.1** Layout: `app/app/layout.tsx`
-- [ ] **2.2** Sidebar:
+- [x] **2.1** Layout: `app/app/layout.tsx`
+- [x] **2.2** Sidebar:
   - Logo "T" + nombre workspace
   - Boards del workspace (fetch desde API), cada uno navega a `/app/b/[slug]`
   - System boards arriba, custom abajo (separador visual)
   - Settings icon, Superadmin button (condicional), Logout
 - [ ] **2.3** Header: pageName dinámico + breadcrumb
-- [ ] **2.4** API: `GET /api/boards` → boards del workspace con sid y slug
-- [ ] **2.5** Redirect: `/app` → `/app/b/oportunidades`
-- [ ] **2.6** Placeholder en `/app/b/[boardSlug]/page.tsx`
+- [x] **2.4** API: `GET /api/boards` → boards del workspace con sid y slug
+- [x] **2.5** Redirect: `/app` → `/app/b/oportunidades`
+- [x] **2.6** Placeholder en `/app/b/[boardSlug]/page.tsx`
 
 ### Verificación
 - [ ] Login → sidebar con 5 boards de sistema (mostrando nombre, no sid)
