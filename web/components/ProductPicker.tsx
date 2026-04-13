@@ -4,59 +4,52 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type CatalogItem = {
-  id:         string
-  sid:        number
-  name:       string
-  unit_price: number | null   // from item_values where col_key='price' if exists
+type Item = {
+  id: string
+  sid: number
+  name: string
 }
 
 type Props = {
-  catalogBoardId: string
-  onSelect:       (item: CatalogItem) => void
-  onClose:        () => void
+  sourceBoardId: string
+  onSelect: (item: { id: string; sid: number; name: string }) => void
+  onClose: () => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ProductPicker({ catalogBoardId, onSelect, onClose }: Props) {
-  const [query,   setQuery]   = useState('')
-  const [items,   setItems]   = useState<CatalogItem[]>([])
+export function ProductPicker({ sourceBoardId, onSelect, onClose }: Props) {
+  const [query, setQuery] = useState('')
+  const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // ── Load catalog items on mount ────────────────────────────────────────────
+  // ── Load items from source board on mount ──────────────────────────────────
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
 
-    fetch(`/api/items?boardId=${catalogBoardId}`)
+    fetch(`/api/items?boardId=${sourceBoardId}`)
       .then(r => r.json())
       .then((data: Array<{
         id: string
         sid: number
         name: string
-        item_values: Array<{ column_id: string; value_number: number | null; value_text: string | null }>
       }>) => {
         if (cancelled) return
-        // Try to find a price column by looking at value_number fields
-        const mapped: CatalogItem[] = data.map(item => {
-          const priceValue = item.item_values?.find(v => v.value_number !== null)
-          return {
-            id:         item.id,
-            sid:        item.sid,
-            name:       item.name,
-            unit_price: priceValue?.value_number ?? null,
-          }
-        })
+        const mapped: Item[] = data.map(item => ({
+          id: item.id,
+          sid: item.sid,
+          name: item.name,
+        }))
         setItems(mapped)
         setLoading(false)
       })
       .catch(() => { if (!cancelled) setLoading(false) })
 
     return () => { cancelled = true }
-  }, [catalogBoardId])
+  }, [sourceBoardId])
 
   // ── Filtered list (fuzzy by name) ──────────────────────────────────────────
 
@@ -100,7 +93,7 @@ export function ProductPicker({ catalogBoardId, onSelect, onClose }: Props) {
 
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h2 className="text-[14px] font-semibold text-gray-800">Seleccionar producto</h2>
+            <h2 className="text-[14px] font-semibold text-gray-800">Seleccionar item</h2>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-700 transition-colors"
@@ -116,7 +109,7 @@ export function ProductPicker({ catalogBoardId, onSelect, onClose }: Props) {
             <input
               ref={inputRef}
               type="text"
-              placeholder="Buscar producto..."
+              placeholder="Buscar item..."
               value={query}
               onChange={e => setQuery(e.target.value)}
               className="w-full text-[13px] px-3 py-1.5 rounded-lg border border-gray-200 focus:border-indigo-400 outline-none transition-colors bg-gray-50 focus:bg-white"
@@ -133,7 +126,7 @@ export function ProductPicker({ catalogBoardId, onSelect, onClose }: Props) {
 
             {!loading && filtered.length === 0 && (
               <div className="flex items-center justify-center py-8 text-[13px] text-gray-400 italic">
-                {query ? 'Sin resultados' : 'Catálogo vacío'}
+                {query ? 'Sin resultados' : 'Sin items'}
               </div>
             )}
 
@@ -141,19 +134,12 @@ export function ProductPicker({ catalogBoardId, onSelect, onClose }: Props) {
               <button
                 key={item.id}
                 onClick={() => onSelect(item)}
-                className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-indigo-50 transition-colors text-left border-b border-gray-50"
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50 transition-colors text-left border-b border-gray-50"
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[11px] text-gray-400 font-mono flex-none">
-                    {item.sid}
-                  </span>
-                  <span className="text-[13px] text-gray-800 truncate">{item.name}</span>
-                </div>
-                {item.unit_price !== null && (
-                  <span className="flex-none text-[13px] text-gray-600 font-medium">
-                    ${item.unit_price.toLocaleString('es-MX')}
-                  </span>
-                )}
+                <span className="text-[11px] text-gray-400 font-mono flex-none">
+                  {item.sid}
+                </span>
+                <span className="text-[13px] text-gray-800 truncate">{item.name}</span>
               </button>
             ))}
           </div>
@@ -161,7 +147,7 @@ export function ProductPicker({ catalogBoardId, onSelect, onClose }: Props) {
           {/* Footer count */}
           {!loading && (
             <div className="px-4 py-2 border-t border-gray-100 text-[11px] text-gray-400">
-              {filtered.length} producto{filtered.length !== 1 ? 's' : ''}
+              {filtered.length} item{filtered.length !== 1 ? 's' : ''}
             </div>
           )}
         </div>

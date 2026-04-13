@@ -3,9 +3,10 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
-import { InlineSubItems, type SubItemLevels } from '@/components/InlineSubItems'
+import { InlineSubItems } from '@/components/InlineSubItems'
+import { SourceColumnMapper } from '@/components/SourceColumnMapper'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
-import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue } from '@/lib/boards'
+import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn } from '@/lib/boards'
 
 // System col_keys that map directly to items table fields
 const ITEMS_FIELD: Record<string, keyof BoardItem> = {
@@ -28,26 +29,23 @@ const SID_COL: ColumnDef = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
-  boardId:        string
-  boardSid:       number
-  boardName:      string
-  initialStages:  BoardStage[]
-  initialColumns: BoardColumn[]
-  initialUsers:   WorkspaceUser[]
-  initialItems:   BoardItem[]
-  levels?:        SubItemLevels   // configurable per board (Phase 8); defaults used if omitted
-  catalogBoardId?: string | null
+  boardId:               string
+  boardSid:              number
+  boardName:             string
+  initialStages:         BoardStage[]
+  initialColumns:        BoardColumn[]
+  initialUsers:          WorkspaceUser[]
+  initialItems:          BoardItem[]
+  initialSubItemColumns: SubItemColumn[]
+  initialSourceBoardId:  string | null
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const DEFAULT_LEVELS: SubItemLevels = { l1: 'Sub-item', l2: 'Variante' }
-
 export function BoardView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
-  levels = DEFAULT_LEVELS,
-  catalogBoardId = null,
+  initialSubItemColumns, initialSourceBoardId,
 }: Props) {
   const router = useRouter()
 
@@ -56,6 +54,9 @@ export function BoardView({
   const [stages,   setStages]   = useState<BoardStage[]>(initialStages)
   const [users,    setUsers]    = useState<WorkspaceUser[]>(initialUsers)
   const [rawItems, setRawItems] = useState<BoardItem[]>(initialItems)
+  const [subItemColumns, setSubItemColumns] = useState<SubItemColumn[]>(initialSubItemColumns)
+  const [sourceBoardId, setSourceBoardId]   = useState<string | null>(initialSourceBoardId)
+  const [showMapper,    setShowMapper]       = useState(false)
 
   // col_key → column UUID  (for item_values lookups)
   const colIdMap = useMemo(() => {
@@ -184,6 +185,16 @@ export function BoardView({
       <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 flex-none">
         <h1 className="text-[14px] font-semibold text-gray-800">{boardName}</h1>
         <div className="flex-1" />
+        <button
+          onClick={() => setShowMapper(true)}
+          className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+            <circle cx="6" cy="6" r="4" strokeWidth="1.5"/>
+            <path d="M6 3v1M6 8v1M3 6h1M8 6h1" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          {sourceBoardId ? 'Fuente configurada' : 'Configurar fuente'}
+        </button>
         <span className="text-[12px] text-gray-400">
           {rows.length} registro{rows.length !== 1 ? 's' : ''}
         </span>
@@ -206,8 +217,9 @@ export function BoardView({
           renderRowExpansion={(rowId) => (
             <InlineSubItems
               itemId={rowId}
-              levels={levels}
-              catalogBoardId={catalogBoardId}
+              boardId={boardId}
+              subItemColumns={subItemColumns}
+              sourceBoardId={sourceBoardId}
               onCountChange={(count) => handleSubItemCountChange(rowId, count)}
             />
           )}
@@ -216,6 +228,21 @@ export function BoardView({
           loading={false}
         />
       </div>
+
+      {/* SourceColumnMapper modal */}
+      {showMapper && (
+        <SourceColumnMapper
+          boardId={boardId}
+          currentSourceBoardId={sourceBoardId}
+          currentColumns={subItemColumns}
+          onClose={() => setShowMapper(false)}
+          onSaved={(newSourceId, newCols) => {
+            setSourceBoardId(newSourceId)
+            setSubItemColumns(newCols)
+            setShowMapper(false)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ColumnCell } from '@/components/data-table/cells/ColumnCell'
 import { SubItemsView } from '@/components/SubItemsView'
 import type { ColumnDef, CellValue, CellKind, ColumnSettings, NavDirection } from '@/components/data-table/types'
-import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue } from '@/lib/boards'
+import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn } from '@/lib/boards'
 
 // System col_keys that map directly to items table fields
 const ITEMS_FIELD: Record<string, keyof BoardItem> = {
@@ -20,27 +20,30 @@ type Tab = 'subitems' | 'channels' | 'activity'
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
-  boardId:        string
-  boardSid:       number
-  boardName:      string
-  initialStages:  BoardStage[]
-  initialColumns: BoardColumn[]
-  initialUsers:   WorkspaceUser[]
-  initialItem:    BoardItem
-  catalogBoardId: string | null
+  boardId:               string
+  boardSid:              number
+  boardName:             string
+  initialStages:         BoardStage[]
+  initialColumns:        BoardColumn[]
+  initialUsers:          WorkspaceUser[]
+  initialItem:           BoardItem
+  initialSubItemColumns: SubItemColumn[]
+  initialSourceBoardId:  string | null
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ItemDetailView({
   boardId, boardSid, boardName,
-  initialStages, initialColumns, initialUsers, initialItem, catalogBoardId,
+  initialStages, initialColumns, initialUsers, initialItem, initialSubItemColumns, initialSourceBoardId,
 }: Props) {
   // All data pre-fetched by server — instant render, no loading state
-  const [item,       setItem]       = useState<BoardItem>(initialItem)
-  const [stages]                    = useState<BoardStage[]>(initialStages)
-  const [users]                     = useState<WorkspaceUser[]>(initialUsers)
-  const [rawCols]                   = useState<BoardColumn[]>(initialColumns)
+  const [item,             setItem]             = useState<BoardItem>(initialItem)
+  const [stages]                                = useState<BoardStage[]>(initialStages)
+  const [users]                                 = useState<WorkspaceUser[]>(initialUsers)
+  const [rawCols]                               = useState<BoardColumn[]>(initialColumns)
+  const [subItemColumns]                        = useState<SubItemColumn[]>(initialSubItemColumns)
+  const [sourceBoardId]                         = useState<string | null>(initialSourceBoardId)
   const [editTarget, setEditTarget] = useState<string | null>(null)
   const [activeTab,  setActiveTab]  = useState<Tab>('subitems')
 
@@ -245,7 +248,12 @@ export function ItemDetailView({
           </div>
           <div className="flex-1 overflow-hidden">
             {activeTab === 'subitems' && (
-              <SubItemsView itemId={item.id} catalogBoardId={catalogBoardId} />
+              <SubItemsView
+                itemId={item.id}
+                boardId={boardId}
+                subItemColumns={subItemColumns}
+                sourceBoardId={sourceBoardId}
+              />
             )}
             {activeTab === 'channels' && (
               <div className="flex items-center justify-center h-full text-[13px] text-gray-400 italic">

@@ -1,132 +1,278 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { ProductPicker } from './ProductPicker'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type SubItem = {
-  id:              string
-  sid:             number
-  parent_id:       string | null
-  depth:           0 | 1
-  name:            string
-  qty:             number
-  unit_price:      number
-  notes:           string | null
-  catalog_item_id: string | null
-  position:        number
-  children?:       SubItem[]     // populated client-side for L1 rows
+type SubItemColumn = {
+  id: string
+  board_id: string
+  col_key: string
+  name: string
+  kind: string
+  position: number
+  is_hidden: boolean
+  required: boolean
+  settings: Record<string, unknown>
+  source_col_key: string | null
 }
 
-type EditTarget = { id: string; field: 'name' | 'qty' | 'unit_price' | 'notes' } | null
+type SubItemValue = {
+  column_id: string
+  col_key: string
+  value_text: string | null
+  value_number: number | null
+  value_date: string | null
+  value_json: unknown
+}
+
+type SubItemData = {
+  id: string
+  sid: number
+  parent_id: string | null
+  depth: 0 | 1
+  name: string
+  source_item_id: string | null
+  position: number
+  values: SubItemValue[]
+  children?: SubItemData[]
+}
+
+type ApiResponse = {
+  columns: SubItemColumn[]
+  items: SubItemData[]
+}
+
+type EditTarget = { id: string; field: string } | null
 
 type Props = {
-  itemId:         string
-  catalogBoardId: string | null
+  itemId: string
+  boardId: string
+  subItemColumns: SubItemColumn[]
+  sourceBoardId: string | null
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function SubItemsView({ itemId, catalogBoardId }: Props) {
-  const [rows,       setRows]       = useState<SubItem[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [expanded,   setExpanded]   = useState<Set<string>>(new Set())
+export function SubItemsView({
+  itemId,
+  boardId,
+  subItemColumns,
+  sourceBoardId,
+}: Props) {
+  const [rows, setRows] = useState<SubItemData[]>([])
+  const [columns, setColumns] = useState<SubItemColumn[]>(subItemColumns)
+  const [loading, setLoading] = useState(true)
+  const [expandedL1, setExpandedL1] = useState<Set<string>>(new Set())
   const [editTarget, setEditTarget] = useState<EditTarget>(null)
   const [showPicker, setShowPicker] = useState(false)
-  const [addingL2For, setAddingL2For] = useState<string | null>(null)  // parent_id for new L2
+  const [addingL2For, setAddingL2For] = useState<string | null>(null)
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Load ────────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true)
-    const res  = await fetch(`/api/sub-items?itemId=${itemId}`)
-    const flat = (await res.json()) as SubItem[]
+    try {
+      const res = await fetch(`/api/sub-items?itemId=${itemId}`)
+      const { columns: apiColumns, items: flat } = (await res.json()) as ApiResponse
 
-    // Group L2 under L1
-    const l1Map: Record<string, SubItem> = {}
-    const l1: SubItem[] = []
+      setColumns(apiColumns)
 
-    for (const row of flat) {
-      if (row.depth === 0) {
-        l1Map[row.id] = { ...row, children: [] }
-        l1.push(l1Map[row.id])
+      // Build tree: L1 with children
+      const l1Map: Record<string, SubItemData> = {}
+      const l1: SubItemData[] = []
+
+      for (const item of flat) {
+        if (item.depth === 0) {
+          l1Map[item.id] = { ...item, children: [] }
+          l1.push(l1Map[item.id])
+        }
       }
-    }
-    for (const row of flat) {
-      if (row.depth === 1 && row.parent_id && l1Map[row.parent_id]) {
-        l1Map[row.parent_id].children!.push(row)
+
+      for (const item of flat) {
+        if (item.depth === 1 && item.parent_id && l1Map[item.parent_id]) {
+          l1Map[item.parent_id].children!.push(item)
+        }
       }
+
+      setRows(l1)
+    } catch (e) {
+      console.error('Failed to load sub-items:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [itemId])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // ── Compute formula (client-side) ───────────────────────────────────────────
+
+  function computeFormula(
+    col: SubItemColumn,
+    row: SubItemData
+  ): number | null {
+    if (col.kind !== 'formula') return null
+
+    const s = col.settings as {
+      formula: 'multiply' | 'add' | 'subtract' | 'percent'
+      col_a: string
+      col_b: string
     }
 
-    setRows(l1)
-    setLoading(false)
-  }, [itemId])
-
-  useEffect(() => { load() }, [load])
-
-  // ── Mutations ─────────────────────────────────────────────────────────────
-
-  const patch = useCallback(async (id: string, field: string, value: unknown) => {
-    // Optimistic update
-    setRows(prev => patchTree(prev, id, { [field]: value }))
-    setEditTarget(null)
-    await fetch(`/api/sub-items/${id}`, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ [field]: value }),
-    })
-  }, [])
-
-  const remove = useCallback(async (id: string, depth: 0 | 1, parentId: string | null) => {
-    // Optimistic removal
-    if (depth === 0) {
-      setRows(prev => prev.filter(r => r.id !== id))
-    } else {
-      setRows(prev => prev.map(r =>
-        r.id === parentId
-          ? { ...r, children: (r.children ?? []).filter(c => c.id !== id) }
-          : r
-      ))
+    const valsByKey: Record<string, number | null> = {}
+    for (const v of row.values) {
+      valsByKey[v.col_key] = v.value_number
     }
-    await fetch(`/api/sub-items/${id}`, { method: 'DELETE' })
-  }, [])
 
-  const createL1 = useCallback(async (name: string, catalogItemId?: string, unitPrice?: number) => {
-    const res  = await fetch('/api/sub-items', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        item_id:         itemId,
-        name,
-        catalog_item_id: catalogItemId ?? null,
-        unit_price:      unitPrice ?? 0,
-      }),
-    })
-    const created = await res.json() as SubItem
-    setRows(prev => [...prev, { ...created, children: [] }])
-  }, [itemId])
+    const a = valsByKey[s.col_a]
+    const b = valsByKey[s.col_b]
+    if (a == null || b == null) return null
 
-  const createL2 = useCallback(async (parentId: string, name: string) => {
-    const res  = await fetch('/api/sub-items', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ item_id: itemId, name, parent_id: parentId, depth: 1 }),
-    })
-    const created = await res.json() as SubItem
-    setRows(prev => prev.map(r =>
-      r.id === parentId
-        ? { ...r, children: [...(r.children ?? []), created] }
-        : r
-    ))
-    setExpanded(s => new Set([...s, parentId]))
-    setAddingL2For(null)
-  }, [itemId])
+    switch (s.formula) {
+      case 'multiply':
+        return a * b
+      case 'add':
+        return a + b
+      case 'subtract':
+        return a - b
+      case 'percent':
+        return (a * b) / 100
+      default:
+        return null
+    }
+  }
 
-  // ── Toggle expand ──────────────────────────────────────────────────────────
+  // ── Create ──────────────────────────────────────────────────────────────────
+
+  const createL1 = useCallback(
+    async (name: string, source_item_id?: string) => {
+      if (!name.trim()) return
+
+      try {
+        const res = await fetch('/api/sub-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            item_id: itemId,
+            name: name.trim(),
+            depth: 0,
+            source_item_id: source_item_id ?? null,
+          }),
+        })
+
+        const created = (await res.json()) as SubItemData
+
+        setRows((prev) => [...prev, { ...created, children: [] }])
+      } catch (e) {
+        console.error('Failed to create L1:', e)
+      }
+    },
+    [itemId]
+  )
+
+  const createL2 = useCallback(
+    async (parentId: string, name: string) => {
+      if (!name.trim()) return
+
+      try {
+        const res = await fetch('/api/sub-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            item_id: itemId,
+            parent_id: parentId,
+            name: name.trim(),
+            depth: 1,
+          }),
+        })
+
+        const created = (await res.json()) as SubItemData
+
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === parentId
+              ? { ...r, children: [...(r.children ?? []), created] }
+              : r
+          )
+        )
+
+        setExpandedL1((s) => new Set([...s, parentId]))
+        setAddingL2For(null)
+      } catch (e) {
+        console.error('Failed to create L2:', e)
+      }
+    },
+    [itemId]
+  )
+
+  // ── Edit field ──────────────────────────────────────────────────────────────
+
+  const editField = useCallback(
+    async (id: string, field: string, value: unknown) => {
+      setEditTarget(null)
+
+      // Optimistic update
+      setRows((prev) => patchTree(prev, id, { [field]: value }))
+
+      try {
+        if (field === 'name') {
+          await fetch(`/api/sub-items/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: value }),
+          })
+        } else {
+          // Assume field is a column_id
+          const columnId = field
+          await fetch(`/api/sub-items/${id}/values`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              column_id: columnId,
+              value,
+            }),
+          })
+        }
+      } catch (e) {
+        console.error('Failed to update:', e)
+        load()
+      }
+    },
+    [load]
+  )
+
+  // ── Delete ──────────────────────────────────────────────────────────────────
+
+  const remove = useCallback(
+    async (id: string, depth: 0 | 1, parentId: string | null) => {
+      // Optimistic removal
+      if (depth === 0) {
+        setRows((prev) => prev.filter((r) => r.id !== id))
+      } else {
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === parentId
+              ? { ...r, children: (r.children ?? []).filter((c) => c.id !== id) }
+              : r
+          )
+        )
+      }
+
+      try {
+        await fetch(`/api/sub-items/${id}`, { method: 'DELETE' })
+      } catch (e) {
+        console.error('Failed to delete:', e)
+        load()
+      }
+    },
+    [load]
+  )
 
   const toggleExpand = (id: string) => {
-    setExpanded(prev => {
+    setExpandedL1((prev) => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
       return next
@@ -143,22 +289,30 @@ export function SubItemsView({ itemId, catalogBoardId }: Props) {
     )
   }
 
+  const displayCols = columns.filter((c) => !c.is_hidden && c.kind !== 'formula')
+  const formulaCols = columns.filter((c) => !c.is_hidden && c.kind === 'formula')
+
   return (
     <div className="flex flex-col h-full">
-
-      {/* ── Table header ────────────────────────────────────────────────── */}
+      {/* ── Header ────────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide select-none">
-        <div className="w-5 flex-none" />           {/* chevron */}
-        <div className="w-16 flex-none">#</div>     {/* sid */}
-        <div className="flex-1 min-w-0">Nombre</div>
-        <div className="w-16 flex-none text-right">Cant.</div>
-        <div className="w-24 flex-none text-right">Precio</div>
-        <div className="w-24 flex-none text-right">Total</div>
-        <div className="w-32 flex-none">Notas</div>
-        <div className="w-7 flex-none" />           {/* delete */}
+        <div className="w-5 flex-none" />
+        <div className="w-16 flex-none">#</div>
+        <div className="w-40 flex-none">Nombre</div>
+        {displayCols.map((c) => (
+          <div key={c.id} className="w-24 flex-none text-right">
+            {c.name}
+          </div>
+        ))}
+        {formulaCols.map((c) => (
+          <div key={c.id} className="w-24 flex-none text-right">
+            {c.name}
+          </div>
+        ))}
+        <div className="w-7 flex-none" />
       </div>
 
-      {/* ── Rows ────────────────────────────────────────────────────────── */}
+      {/* ── Rows ────────────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         {rows.length === 0 && (
           <div className="flex items-center justify-center py-12 text-[13px] text-gray-400 italic">
@@ -166,43 +320,48 @@ export function SubItemsView({ itemId, catalogBoardId }: Props) {
           </div>
         )}
 
-        {rows.map(row => (
-          <div key={row.id}>
-
-            {/* L1 row */}
+        {rows.map((row) => (
+          <Fragment key={row.id}>
             <SubItemRow
               row={row}
               depth={0}
-              isExpanded={expanded.has(row.id)}
+              isExpanded={expandedL1.has(row.id)}
+              displayCols={displayCols}
+              formulaCols={formulaCols}
               editTarget={editTarget}
               onToggleExpand={() => toggleExpand(row.id)}
-              onStartEdit={(field) => setEditTarget({ id: row.id, field })}
-              onCommit={(field, val) => patch(row.id, field, val)}
+              onStartEdit={(f) => setEditTarget({ id: row.id, field: f })}
+              onCommit={(f, v) => editField(row.id, f, v)}
               onCancel={() => setEditTarget(null)}
               onDelete={() => remove(row.id, 0, null)}
-              onAddChild={() => { setExpanded(s => new Set([...s, row.id])); setAddingL2For(row.id) }}
+              onAddChild={() => {
+                setExpandedL1((s) => new Set([...s, row.id]))
+                setAddingL2For(row.id)
+              }}
+              computeFormula={computeFormula}
             />
 
-            {/* L2 rows (when expanded) */}
-            {expanded.has(row.id) && (
+            {expandedL1.has(row.id) && (
               <>
-                {(row.children ?? []).map(child => (
+                {(row.children ?? []).map((child) => (
                   <SubItemRow
                     key={child.id}
                     row={child}
                     depth={1}
                     isExpanded={false}
+                    displayCols={displayCols}
+                    formulaCols={formulaCols}
                     editTarget={editTarget}
                     onToggleExpand={() => {}}
-                    onStartEdit={(field) => setEditTarget({ id: child.id, field })}
-                    onCommit={(field, val) => patch(child.id, field, val)}
+                    onStartEdit={(f) => setEditTarget({ id: child.id, field: f })}
+                    onCommit={(f, v) => editField(child.id, f, v)}
                     onCancel={() => setEditTarget(null)}
                     onDelete={() => remove(child.id, 1, row.id)}
                     onAddChild={() => {}}
+                    computeFormula={computeFormula}
                   />
                 ))}
 
-                {/* Inline L2 add row */}
                 {addingL2For === row.id && (
                   <InlineAddRow
                     depth={1}
@@ -212,31 +371,31 @@ export function SubItemsView({ itemId, catalogBoardId }: Props) {
                 )}
               </>
             )}
-          </div>
+          </Fragment>
         ))}
       </div>
 
-      {/* ── Footer: add L1 ──────────────────────────────────────────────── */}
+      {/* ── Footer ────────────────────────────────────────────────────────────── */}
       <div className="flex-none border-t border-gray-100 px-4 py-2 flex items-center gap-3">
-        {catalogBoardId ? (
+        {sourceBoardId ? (
           <button
             onClick={() => setShowPicker(true)}
             className="flex items-center gap-1.5 text-[13px] text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
           >
             <span className="text-lg leading-none">+</span>
-            Agregar desde catálogo
+            Agregar desde fuente
           </button>
         ) : (
           <InlineAddButton onAdd={(name) => createL1(name)} />
         )}
       </div>
 
-      {/* ── ProductPicker modal ──────────────────────────────────────────── */}
-      {showPicker && catalogBoardId && (
+      {/* ── ProductPicker modal ───────────────────────────────────────────────── */}
+      {showPicker && sourceBoardId && (
         <ProductPicker
-          catalogBoardId={catalogBoardId}
-          onSelect={({ name, unit_price, id }) => {
-            createL1(name, id, unit_price ?? undefined)
+          sourceBoardId={sourceBoardId}
+          onSelect={({ name, id }) => {
+            createL1(name, id)
             setShowPicker(false)
           }}
           onClose={() => setShowPicker(false)}
@@ -248,42 +407,64 @@ export function SubItemsView({ itemId, catalogBoardId }: Props) {
 
 // ─── SubItemRow ───────────────────────────────────────────────────────────────
 
-type RowProps = {
-  row:           SubItem
-  depth:         0 | 1
-  isExpanded:    boolean
-  editTarget:    EditTarget
-  onToggleExpand: () => void
-  onStartEdit:   (field: 'name' | 'qty' | 'unit_price' | 'notes') => void
-  onCommit:      (field: string, value: unknown) => void
-  onCancel:      () => void
-  onDelete:      () => void
-  onAddChild:    () => void
-}
-
 function SubItemRow({
-  row, depth, isExpanded, editTarget,
-  onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild,
-}: RowProps) {
-  const isEditing = (f: 'name' | 'qty' | 'unit_price' | 'notes') =>
+  row,
+  depth,
+  isExpanded,
+  displayCols,
+  formulaCols,
+  editTarget,
+  onToggleExpand,
+  onStartEdit,
+  onCommit,
+  onCancel,
+  onDelete,
+  onAddChild,
+  computeFormula,
+}: {
+  row: SubItemData
+  depth: 0 | 1
+  isExpanded: boolean
+  displayCols: SubItemColumn[]
+  formulaCols: SubItemColumn[]
+  editTarget: EditTarget
+  onToggleExpand: () => void
+  onStartEdit: (f: string) => void
+  onCommit: (f: string, v: unknown) => void
+  onCancel: () => void
+  onDelete: () => void
+  onAddChild: () => void
+  computeFormula: (col: SubItemColumn, row: SubItemData) => number | null
+}) {
+  const isEditing = (f: string) =>
     editTarget?.id === row.id && editTarget.field === f
 
   const indent = depth === 1 ? 'pl-5' : ''
-  const total  = row.qty * row.unit_price
 
   return (
-    <div className={`flex items-center gap-2 px-4 py-1 hover:bg-gray-50 group border-b border-gray-50 ${indent}`}>
-
-      {/* Chevron (only L1 with children or ability to add) */}
+    <div
+      className={`flex items-center gap-2 px-4 py-1 hover:bg-gray-50 group border-b border-gray-50 ${indent}`}
+    >
+      {/* Chevron */}
       <div className="w-5 flex-none flex items-center justify-center">
         {depth === 0 && (
           <button
             onClick={onToggleExpand}
             className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded"
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              className="stroke-current"
+            >
               <path
-                d={isExpanded ? 'M2 4l4 4 4-4' : 'M4 2l4 4-4 4'}
+                d={
+                  isExpanded
+                    ? 'M2 4l4 4 4-4'
+                    : 'M4 2l4 4-4 4'
+                }
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -291,79 +472,88 @@ function SubItemRow({
             </svg>
           </button>
         )}
-        {depth === 1 && <span className="text-gray-300 text-[10px]">└</span>}
+        {depth === 1 && (
+          <span className="text-gray-300 text-[10px]">└</span>
+        )}
       </div>
 
       {/* SID */}
-      <div className="w-16 flex-none text-[12px] text-gray-400 font-mono">{row.sid}</div>
+      <div className="w-16 flex-none text-[12px] text-gray-400 font-mono">
+        {row.sid}
+      </div>
 
       {/* Name */}
-      <div className="flex-1 min-w-0">
+      <div className="w-40 flex-none">
         <EditableCell
           value={row.name}
           isEditing={isEditing('name')}
           kind="text"
           onStartEdit={() => onStartEdit('name')}
-          onCommit={v => onCommit('name', v)}
+          onCommit={(v) => onCommit('name', v)}
           onCancel={onCancel}
         />
       </div>
 
-      {/* Qty */}
-      <div className="w-16 flex-none text-right">
-        <EditableCell
-          value={row.qty}
-          isEditing={isEditing('qty')}
-          kind="number"
-          onStartEdit={() => onStartEdit('qty')}
-          onCommit={v => onCommit('qty', Number(v))}
-          onCancel={onCancel}
-          align="right"
-        />
-      </div>
+      {/* Display columns */}
+      {displayCols.map((col) => {
+        const val = row.values.find((v) => v.column_id === col.id)
+        return (
+          <div key={col.id} className="w-24 flex-none text-right">
+            <EditableCell
+              value={
+                col.kind === 'number'
+                  ? val?.value_number ?? ''
+                  : val?.value_text ?? ''
+              }
+              isEditing={isEditing(col.id)}
+              kind={col.kind === 'number' ? 'number' : 'text'}
+              onStartEdit={() => onStartEdit(col.id)}
+              onCommit={(v) => onCommit(col.id, v)}
+              onCancel={onCancel}
+              align="right"
+            />
+          </div>
+        )
+      })}
 
-      {/* Unit price */}
-      <div className="w-24 flex-none text-right">
-        <EditableCell
-          value={row.unit_price}
-          isEditing={isEditing('unit_price')}
-          kind="number"
-          onStartEdit={() => onStartEdit('unit_price')}
-          onCommit={v => onCommit('unit_price', Number(v))}
-          onCancel={onCancel}
-          align="right"
-          prefix="$"
-        />
-      </div>
+      {/* Formula columns (readonly) */}
+      {formulaCols.map((col) => {
+        const result = computeFormula(col, row)
+        return (
+          <div
+            key={col.id}
+            className="w-24 flex-none text-right text-[13px] text-gray-700 font-medium"
+          >
+            {result !== null
+              ? result.toLocaleString('es-MX', {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 2,
+                })
+              : '—'}
+          </div>
+        )
+      })}
 
-      {/* Total (readonly) */}
-      <div className="w-24 flex-none text-right text-[13px] text-gray-700 font-medium pr-1">
-        ${total.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-      </div>
-
-      {/* Notes */}
-      <div className="w-32 flex-none">
-        <EditableCell
-          value={row.notes ?? ''}
-          isEditing={isEditing('notes')}
-          kind="text"
-          onStartEdit={() => onStartEdit('notes')}
-          onCommit={v => onCommit('notes', v || null)}
-          onCancel={onCancel}
-          placeholder="—"
-        />
-      </div>
-
-      {/* Actions (visible on hover) */}
+      {/* Actions */}
       <div className="w-7 flex-none flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {depth === 0 && (
           <button
             onClick={onAddChild}
-            title="Agregar variante"
+            title="Agregar sub-item"
             className="text-gray-400 hover:text-indigo-600 transition-colors"
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
-              <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              className="stroke-current"
+            >
+              <path
+                d="M6 2v8M2 6h8"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
         )}
@@ -372,8 +562,18 @@ function SubItemRow({
           title="Eliminar"
           className="text-gray-400 hover:text-red-500 transition-colors"
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
-            <path d="M2 2l8 8M10 2l-8 8" strokeWidth="1.5" strokeLinecap="round" />
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            className="stroke-current"
+          >
+            <path
+              d="M2 2l8 8M10 2l-8 8"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
         </button>
       </div>
@@ -383,21 +583,23 @@ function SubItemRow({
 
 // ─── EditableCell ─────────────────────────────────────────────────────────────
 
-type EditableCellProps = {
-  value:       string | number
-  isEditing:   boolean
-  kind:        'text' | 'number'
-  onStartEdit: () => void
-  onCommit:    (v: string | number) => void
-  onCancel:    () => void
-  align?:      'left' | 'right'
-  prefix?:     string
-  placeholder?: string
-}
-
 function EditableCell({
-  value, isEditing, kind, onStartEdit, onCommit, onCancel, align = 'left', prefix, placeholder,
-}: EditableCellProps) {
+  value,
+  isEditing,
+  kind,
+  onStartEdit,
+  onCommit,
+  onCancel,
+  align = 'left',
+}: {
+  value: string | number
+  isEditing: boolean
+  kind: 'text' | 'number'
+  onStartEdit: () => void
+  onCommit: (v: string | number) => void
+  onCancel: () => void
+  align?: 'left' | 'right'
+}) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -414,17 +616,25 @@ function EditableCell({
         className={`w-full text-[13px] bg-white border border-indigo-400 rounded px-1 py-0.5 outline-none ${
           align === 'right' ? 'text-right' : ''
         }`}
-        onBlur={e => onCommit(kind === 'number' ? Number(e.target.value) : e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter')  onCommit(kind === 'number' ? Number(e.currentTarget.value) : e.currentTarget.value)
+        onBlur={(e) =>
+          onCommit(kind === 'number' ? Number(e.target.value) : e.target.value)
+        }
+        onKeyDown={(e) => {
+          if (e.key === 'Enter')
+            onCommit(
+              kind === 'number'
+                ? Number(e.currentTarget.value)
+                : e.currentTarget.value
+            )
           if (e.key === 'Escape') onCancel()
         }}
       />
     )
   }
 
-  const display = value === '' || value === 0 && kind === 'text' ? (placeholder ?? '') : value
-  const isEmpty = display === '' || display === (placeholder ?? '')
+  const display =
+    value === '' || (value === 0 && kind === 'text') ? '' : value
+  const isEmpty = display === ''
 
   return (
     <div
@@ -433,7 +643,7 @@ function EditableCell({
         align === 'right' ? 'text-right' : ''
       } ${isEmpty ? 'text-gray-400' : 'text-gray-800'}`}
     >
-      {!isEmpty && prefix}{isEmpty ? (placeholder ?? '—') : display}
+      {isEmpty ? '—' : display}
     </div>
   )
 }
@@ -446,24 +656,28 @@ function InlineAddRow({
   onCancel,
 }: {
   depth: 0 | 1
-  onAdd:   (name: string) => void
+  onAdd: (name: string) => void
   onCancel: () => void
 }) {
   const indent = depth === 1 ? 'pl-10' : 'pl-7'
+
   return (
-    <div className={`flex items-center gap-2 px-4 py-1 border-b border-gray-50 ${indent}`}>
+    <div
+      className={`flex items-center gap-2 px-4 py-1 border-b border-gray-50 ${indent}`}
+    >
       <input
         autoFocus
         placeholder="Nombre..."
         className="flex-1 text-[13px] border border-indigo-400 rounded px-2 py-0.5 outline-none"
-        onKeyDown={e => {
+        onKeyDown={(e) => {
           if (e.key === 'Enter' && e.currentTarget.value.trim()) {
             onAdd(e.currentTarget.value.trim())
           }
           if (e.key === 'Escape') onCancel()
         }}
-        onBlur={e => {
-          if (e.currentTarget.value.trim()) onAdd(e.currentTarget.value.trim())
+        onBlur={(e) => {
+          if (e.currentTarget.value.trim())
+            onAdd(e.currentTarget.value.trim())
           else onCancel()
         }}
       />
@@ -491,7 +705,10 @@ function InlineAddButton({ onAdd }: { onAdd: (name: string) => void }) {
   return (
     <InlineAddRow
       depth={0}
-      onAdd={name => { onAdd(name); setAdding(false) }}
+      onAdd={(name) => {
+        onAdd(name)
+        setAdding(false)
+      }}
       onCancel={() => setAdding(false)}
     />
   )
@@ -499,10 +716,15 @@ function InlineAddButton({ onAdd }: { onAdd: (name: string) => void }) {
 
 // ─── Tree helpers ─────────────────────────────────────────────────────────────
 
-function patchTree(rows: SubItem[], id: string, patch: Partial<SubItem>): SubItem[] {
-  return rows.map(r => {
+function patchTree(
+  rows: SubItemData[],
+  id: string,
+  patch: Partial<SubItemData>
+): SubItemData[] {
+  return rows.map((r) => {
     if (r.id === id) return { ...r, ...patch }
-    if (r.children) return { ...r, children: patchTree(r.children, id, patch) }
+    if (r.children)
+      return { ...r, children: patchTree(r.children, id, patch) }
     return r
   })
 }

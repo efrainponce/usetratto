@@ -53,6 +53,19 @@ export type BoardItem = {
   sub_items_count?: number    // L1 count for badge in BoardView
 }
 
+export type SubItemColumn = {
+  id:             string
+  board_id:       string
+  col_key:        string
+  name:           string
+  kind:           string
+  position:       number
+  is_hidden:      boolean
+  required:       boolean
+  settings:       Record<string, unknown>
+  source_col_key: string | null
+}
+
 // ─── Board resolution (cached 60s) ───────────────────────────────────────────
 
 export const resolveBoardBySid = unstable_cache(
@@ -60,7 +73,7 @@ export const resolveBoardBySid = unstable_cache(
     const supabase = createServiceClient()
     const { data, error } = await supabase
       .from('boards')
-      .select('id, sid, slug, name, type, system_key')
+      .select('id, sid, slug, name, type, system_key, sub_items_source_board_id')
       .eq('workspace_id', workspaceId)
       .eq('sid', sid)
       .maybeSingle()
@@ -167,6 +180,19 @@ export const getCatalogBoard = unstable_cache(
   ['catalog-board'],
   { revalidate: 60 }
 )
+
+// ─── Sub-item columns ────────────────────────────────────────────────────────
+
+export async function getSubItemColumns(boardId: string): Promise<SubItemColumn[]> {
+  const supabase = createServiceClient()
+  const { data } = await supabase
+    .from('sub_item_columns')
+    .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+    .eq('board_id', boardId)
+    .eq('is_hidden', false)
+    .order('position')
+  return (data ?? []) as SubItemColumn[]
+}
 
 // ─── Items ────────────────────────────────────────────────────────────────────
 

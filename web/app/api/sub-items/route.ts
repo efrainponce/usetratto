@@ -2,6 +2,39 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
+type SubItemColumn = {
+  id: string
+  board_id: string
+  col_key: string
+  name: string
+  kind: string
+  position: number
+  is_hidden: boolean
+  required: boolean
+  settings: Record<string, unknown>
+  source_col_key: string | null
+}
+
+type SubItemValue = {
+  column_id: string
+  col_key: string
+  value_text: string | null
+  value_number: number | null
+  value_date: string | null
+  value_json: unknown
+}
+
+type SubItemData = {
+  id: string
+  sid: number
+  parent_id: string | null
+  depth: 0 | 1
+  name: string
+  source_item_id: string | null
+  position: number
+  values: SubItemValue[]
+}
+
 export async function GET(req: Request) {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
@@ -11,79 +44,282 @@ export async function GET(req: Request) {
 
   const supabase = createServiceClient()
 
-  const { data, error } = await supabase
+  // Get item to verify ownership and get board_id
+  const { data: item } = await supabase
+    .from('items')
+    .select('board_id')
+    .eq('id', itemId)
+    .eq('workspace_id', auth.workspaceId)
+    .single()
+
+  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Get sub_item_columns for the board
+  const { data: columns } = await supabase
+    .from('sub_item_columns')
+    .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+    .eq('board_id', item.board_id)
+    .order('position')
+
+  // Get sub_items with their values
+  const { data: subItems } = await supabase
     .from('sub_items')
-    .select('id, sid, parent_id, depth, name, qty, unit_price, notes, catalog_item_id, position')
+    .select('id, sid, parent_id, depth, name, source_item_id, position')
     .eq('item_id', itemId)
     .eq('workspace_id', auth.workspaceId)
     .order('depth')
     .order('position')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  if (!subItems || subItems.length === 0) {
+    return NextResponse.json({
+      columns: columns ?? [],
+      items: [],
+    })
+  }
+
+  // Get sub_item_values for all sub_items
+  const subItemIds = subItems.map(s => s.id)
+  const { data: values } = await supabase
+    .from('sub_item_values')
+    .select('sub_item_id, column_id, value_text, value_number, value_date, value_json')
+    .in('sub_item_id', subItemIds)
+
+  // Build colIdToKey map
+  const colIdToKey: Record<string, string> = {}
+  if (columns) {
+    for (const col of columns) {
+      colIdToKey[col.id] = col.col_key
+    }
+  }
+
+  // Group values by sub_item_id and add col_key
+  const valuesBySubItemId: Record<string, SubItemValue[]> = {}
+  if (values) {
+    for (const v of values) {
+      if (!valuesBySubItemId[v.sub_item_id]) {
+        valuesBySubItemId[v.sub_item_id] = []
+      }
+      valuesBySubItemId[v.sub_item_id].push({
+        column_id: v.column_id,
+        col_key: colIdToKey[v.column_id] ?? '',
+        value_text: v.value_text,
+        value_number: v.value_number,
+        value_date: v.value_date,
+        value_json: v.value_json,
+      })
+    }
+  }
+
+  // Build response items
+  const items: SubItemData[] = subItems.map(si => ({
+    id: si.id,
+    sid: si.sid,
+    parent_id: si.parent_id,
+    depth: si.depth,
+    name: si.name,
+    source_item_id: si.source_item_id,
+    position: si.position,
+    values: valuesBySubItemId[si.id] ?? [],
+  }))
+
+  return NextResponse.json({
+    columns: columns ?? [],
+    items,
+  })
 }
 
 export async function POST(req: Request) {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
-  const body = await req.json()
-  const {
-    item_id,
-    name,
-    qty = 1,
-    unit_price = 0,
-    notes = null,
-    parent_id = null,
-    depth = 0,
-    catalog_item_id = null,
-  } = body as {
+  const body = await req.json() as {
     item_id: string
-    name: string
-    qty?: number
-    unit_price?: number
-    notes?: string | null
+    name?: string
     parent_id?: string | null
-    depth?: number
-    catalog_item_id?: string | null
+    depth?: 0 | 1
+    source_item_id?: string | null
   }
 
-  if (!item_id || !name) {
-    return NextResponse.json({ error: 'item_id and name required' }, { status: 400 })
+  if (!body.item_id) {
+    return NextResponse.json({ error: 'item_id required' }, { status: 400 })
   }
 
   const supabase = createServiceClient()
 
-  // Get next position within same parent
+  // Look up parent item to get board_id
+  const { data: item } = await supabase
+    .from('items')
+    .select('board_id')
+    .eq('id', body.item_id)
+    .eq('workspace_id', auth.workspaceId)
+    .single()
+
+  if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+
+  const boardId = item.board_id
+  const depth = body.depth ?? 0
+  const parentId = body.parent_id ?? null
+
+  // Get board to check sub_items_source_board_id
+  const { data: board } = await supabase
+    .from('boards')
+    .select('sub_items_source_board_id')
+    .eq('id', boardId)
+    .single()
+
+  // Determine final name
+  let finalName = body.name
+  if (!finalName && body.source_item_id) {
+    const { data: sourceItem } = await supabase
+      .from('items')
+      .select('name')
+      .eq('id', body.source_item_id)
+      .single()
+    finalName = sourceItem?.name ?? 'Nuevo'
+  }
+  if (!finalName) {
+    finalName = 'Nuevo'
+  }
+
+  // Get next position in same (item_id, depth, parent_id) group
   const { data: last } = await supabase
     .from('sub_items')
     .select('position')
-    .eq('item_id', item_id)
+    .eq('item_id', body.item_id)
     .eq('depth', depth)
-    .eq(parent_id ? 'parent_id' : 'depth', parent_id ?? depth)  // group by parent
+    .eq(parentId ? 'parent_id' : 'depth', parentId ?? depth)
     .order('position', { ascending: false })
     .limit(1)
     .maybeSingle()
 
   const position = (last?.position ?? -1) + 1
 
-  const { data, error } = await supabase
+  // Insert sub_item
+  const { data: subItem, error: insertError } = await supabase
     .from('sub_items')
     .insert({
-      workspace_id:    auth.workspaceId,
-      item_id,
-      parent_id,
+      workspace_id: auth.workspaceId,
+      item_id: body.item_id,
+      parent_id: parentId,
       depth,
-      name,
-      qty,
-      unit_price,
-      notes,
-      catalog_item_id,
+      name: finalName,
+      source_item_id: body.source_item_id ?? null,
       position,
     })
-    .select('id, sid, parent_id, depth, name, qty, unit_price, notes, catalog_item_id, position')
+    .select('id, sid, parent_id, depth, name, source_item_id, position')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data, { status: 201 })
+  if (insertError || !subItem) {
+    return NextResponse.json({ error: insertError?.message ?? 'Insert failed' }, { status: 500 })
+  }
+
+  // Snapshot logic: if source_item_id and source_board exists
+  if (body.source_item_id && board?.sub_items_source_board_id) {
+    // Get sub_item_columns with source_col_key
+    const { data: sourceColumns } = await supabase
+      .from('sub_item_columns')
+      .select('id, source_col_key')
+      .eq('board_id', boardId)
+      .not('source_col_key', 'is', null)
+
+    if (sourceColumns && sourceColumns.length > 0) {
+      const sourceColKeys = sourceColumns
+        .map(c => c.source_col_key)
+        .filter((k): k is string => k !== null)
+
+      // Get board_columns from source board
+      const { data: boardCols } = await supabase
+        .from('board_columns')
+        .select('id, col_key')
+        .eq('board_id', board.sub_items_source_board_id)
+        .in('col_key', sourceColKeys)
+
+      if (boardCols && boardCols.length > 0) {
+        // Build map: source_col_key → board_column.id
+        const sourceColKeyToId: Record<string, string> = {}
+        for (const bc of boardCols) {
+          sourceColKeyToId[bc.col_key] = bc.id
+        }
+
+        // Get item_values from source item
+        const boardColIds = boardCols.map(bc => bc.id)
+        const { data: itemVals } = await supabase
+          .from('item_values')
+          .select('column_id, value_text, value_number, value_date, value_json')
+          .eq('item_id', body.source_item_id)
+          .in('column_id', boardColIds)
+
+        if (itemVals && itemVals.length > 0) {
+          // Build map: board_column.id → item_value
+          const valsByColId: Record<string, typeof itemVals[0]> = {}
+          for (const v of itemVals) {
+            valsByColId[v.column_id] = v
+          }
+
+          // Insert sub_item_values
+          const toInsert = []
+          for (const srcCol of sourceColumns) {
+            if (!srcCol.source_col_key) continue
+            const boardColId = sourceColKeyToId[srcCol.source_col_key]
+            if (!boardColId) continue
+            const val = valsByColId[boardColId]
+            if (!val) continue
+
+            toInsert.push({
+              sub_item_id: subItem.id,
+              column_id: srcCol.id,
+              value_text: val.value_text,
+              value_number: val.value_number,
+              value_date: val.value_date,
+              value_json: val.value_json,
+            })
+          }
+
+          if (toInsert.length > 0) {
+            await supabase.from('sub_item_values').insert(toInsert)
+          }
+        }
+      }
+    }
+  }
+
+  // Fetch the created sub_item with its values
+  const { data: columns } = await supabase
+    .from('sub_item_columns')
+    .select('id, col_key')
+    .eq('board_id', boardId)
+
+  const colIdToKey: Record<string, string> = {}
+  if (columns) {
+    for (const col of columns) {
+      colIdToKey[col.id] = col.col_key
+    }
+  }
+
+  const { data: values } = await supabase
+    .from('sub_item_values')
+    .select('column_id, value_text, value_number, value_date, value_json')
+    .eq('sub_item_id', subItem.id)
+
+  const itemValues: SubItemValue[] = (values ?? []).map(v => ({
+    column_id: v.column_id,
+    col_key: colIdToKey[v.column_id] ?? '',
+    value_text: v.value_text,
+    value_number: v.value_number,
+    value_date: v.value_date,
+    value_json: v.value_json,
+  }))
+
+  const result: SubItemData = {
+    id: subItem.id,
+    sid: subItem.sid,
+    parent_id: subItem.parent_id,
+    depth: subItem.depth,
+    name: subItem.name,
+    source_item_id: subItem.source_item_id,
+    position: subItem.position,
+    values: itemValues,
+  }
+
+  return NextResponse.json(result, { status: 201 })
 }

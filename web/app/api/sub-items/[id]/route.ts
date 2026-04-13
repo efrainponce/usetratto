@@ -9,14 +9,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
-  const body = await req.json() as Partial<{
-    name:       string
-    qty:        number
-    unit_price: number
-    notes:      string | null
-  }>
+  const body = await req.json() as Partial<{ name: string }>
 
-  const allowed = ['name', 'qty', 'unit_price', 'notes'] as const
+  const allowed = ['name'] as const
   const patch: Record<string, unknown> = {}
   for (const k of allowed) {
     if (k in body) patch[k] = body[k]
@@ -33,7 +28,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     .update(patch)
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
-    .select('id, sid, parent_id, depth, name, qty, unit_price, notes, catalog_item_id, position')
+    .select('id, sid, parent_id, depth, name, source_item_id, position')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
