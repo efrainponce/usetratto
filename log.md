@@ -2,6 +2,12 @@
 
 ## 2026-04-13
 
+**~sesión 8**
+- Fase 7 completa: ItemChannels (mini Slack), ActivityFeed, 5 API routes, migration 008
+- Canales por item: lista sidebar + mensajes + @mentions (`@[Nombre](SID)`) + permisos por canal
+- SIDs cambiados de secuencial a random 8 dígitos via `generate_sid()` + `sid_registry` (migration 009)
+- Migration 008+009 aplicadas en Supabase remoto; build limpio 30 rutas 0 errores
+
 **~sesión 7**
 - AirtableSource rediseñado: 3 pasos numerados (API Key → Base → Tabla), dropdowns desde API real
 - Paso completado = círculo verde con ✓; activo = indigo con ring; línea verde entre pasos

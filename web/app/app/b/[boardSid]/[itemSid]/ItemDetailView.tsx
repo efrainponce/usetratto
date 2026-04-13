@@ -4,6 +4,8 @@ import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { ColumnCell } from '@/components/data-table/cells/ColumnCell'
 import { SubItemsView } from '@/components/SubItemsView'
+import { ItemChannels } from '@/components/ItemChannels'
+import { ActivityFeed } from '@/components/ActivityFeed'
 import type { ColumnDef, CellValue, CellKind, ColumnSettings, NavDirection } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn } from '@/lib/boards'
 
@@ -256,14 +258,13 @@ export function ItemDetailView({
               />
             )}
             {activeTab === 'channels' && (
-              <div className="flex items-center justify-center h-full text-[13px] text-gray-400 italic">
-                Canales — Fase 7
-              </div>
+              <ItemChannels
+                itemId={item.id}
+                workspaceUsers={users}
+              />
             )}
             {activeTab === 'activity' && (
-              <div className="flex items-center justify-center h-full text-[13px] text-gray-400 italic">
-                Actividad — Fase 7
-              </div>
+              <ActivityFeed itemId={item.id} />
             )}
           </div>
         </div>

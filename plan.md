@@ -513,9 +513,9 @@ api/import/bulk/            ← único endpoint genérico; todas las fuentes env
 **Goal:** Comunicación interna + audit trail.
 
 ### Tareas
-- [ ] **7.1** `ItemChannels.tsx` + `ActivityFeed.tsx`
-- [ ] **7.2** API: channels, messages, members, activity
-- [ ] **7.3** Integrar como tabs en ItemDetailView
+- [x] **7.1** `ItemChannels.tsx` + `ActivityFeed.tsx`
+- [x] **7.2** API: channels, messages, members, activity
+- [x] **7.3** Integrar como tabs en ItemDetailView
 
 ---
 
