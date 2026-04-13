@@ -84,7 +84,7 @@ La secuencia `tratto_sid_seq` es **compartida** entre TODAS las entidades. Esto 
 | items | ✅ | 10000100 |
 | sub_items | ✅ | 10000200 |
 
-Adicionalmente, `boards` tienen `slug` (text, UNIQUE per workspace) para URLs amigables.
+Adicionalmente, `boards` tienen `slug` (text, UNIQUE per workspace) como nombre legible en DB — **no se usa en URLs**. Las URLs siempre usan `sid`.
 
 **En la UI:** siempre mostrar `sid`, nunca uuid. En URLs usar `sid` para boards e items — nunca slug, nunca uuid.
 
@@ -110,7 +110,7 @@ boards (id, sid, slug, workspace_id, name, type, description, system_key, create
   --   pipeline = tiene stages (oportunidades, soporte, proyectos)
   --   table    = sin stages, es directorio/catálogo (contactos, productos, vendors)
   -- system_key: NULL para boards custom, string para boards de sistema
-  -- slug: URL-friendly, UNIQUE per workspace
+  -- slug: identificador legible, UNIQUE per workspace, solo para referencia interna — NO en URLs
 
 board_stages (id, sid, board_id, name, color, position, is_closed, created_at)
 
@@ -260,7 +260,7 @@ Toda tabla tiene `workspace_id`. RLS garantiza aislamiento total. Un workspace =
 
 ```
 /login                              → OTP phone auth
-/app                                → Redirect a board "opportunities" (o primer board)
+/app                                → Redirect dinámico: busca board con system_key='opportunities' → /app/b/[sid]
 /app/b/[boardSid]                  → BoardView (lista universal)
 /app/b/[boardSid]/[itemSid]        → ItemDetailView (detalle universal)
 /app/settings                       → Configuración

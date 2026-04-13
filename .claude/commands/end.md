@@ -13,9 +13,15 @@ Format:
 ```
 Max 5 bullets. Concrete, no fluff. Write to @log.md.
 
-**2. Plan**
+**2. Plan + Start**
 Read @plan.md. Mark every task completed this session with `[x]` (was `[ ]`).
 Only mark tasks that were actually finished and verified. Write to @plan.md.
+
+Also scan @plan.md and @start.md for stale references:
+- Route patterns (e.g. `[boardSlug]` → `[boardSid]`, hardcoded slugs in URLs)
+- Function names that were renamed
+- Architectural decisions that changed this session
+Fix any stale references in both files before committing.
 
 **3. Commit**
 Run: git status --short && git diff --stat

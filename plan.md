@@ -205,7 +205,7 @@ web/app/api/auth/logout/route.ts
 - [x] **2.1** Layout: `app/app/layout.tsx`
 - [x] **2.2** Sidebar:
   - Logo "T" + nombre workspace
-  - Boards del workspace (fetch desde API), cada uno navega a `/app/b/[slug]`
+  - Boards del workspace (fetch desde API), cada uno navega a `/app/b/[board.sid]`
   - System boards arriba, custom abajo (separador visual)
   - Settings icon, Superadmin button (condicional), Logout
 - [ ] **2.3** Header: pageName dinámico + breadcrumb
@@ -215,7 +215,7 @@ web/app/api/auth/logout/route.ts
 
 ### Verificación
 - [ ] Login → sidebar con 5 boards de sistema (mostrando nombre, no sid)
-- [ ] Click en board → navega a `/app/b/[slug]`
+- [ ] Click en board → navega a `/app/b/[board.sid]` (ej: `/app/b/10000020`)
 - [ ] Cada board muestra su sid en algún lugar sutil (tooltip o badge)
 
 ### Archivos
@@ -262,7 +262,7 @@ web/components/layout/{sidebar,header}.tsx
   - Transforma → rows para GenericDataTable
   - onCellChange → PATCH items (core) o PUT item_values (custom)
   - Toolbar: "+ Nuevo", búsqueda, count
-  - Row click → `/app/b/[slug]/[item.sid]`
+  - Row click → `/app/b/[board.sid]/[item.sid]`
 
 - [x] **3.4** Server page: resuelve board por SID + workspace
 
@@ -280,7 +280,7 @@ web/components/layout/{sidebar,header}.tsx
   GET  /api/workspace-users         → usuarios (con sid)
   ```
 
-- [x] **3.6** `lib/boards/index.ts`: `resolveBoardBySlug()`, `getBoardItems()`
+- [x] **3.6** `lib/boards/index.ts`: `resolveBoardBySid()`, `getFirstBoard()`, `getBoardItems()`
 
 ### Decisiones clave
 
@@ -291,8 +291,8 @@ web/components/layout/{sidebar,header}.tsx
 - La tabla muestra `sid` como primera columna (readonly, tipo autonumber visual).
 
 ### Verificación
-- [ ] `/app/b/oportunidades` → tabla con 10 items, columnas de sistema visibles
-- [ ] `/app/b/contactos` → misma tabla, distintas columnas (phone, email, account)
+- [ ] `/app/b/[sid_opportunities]` → tabla con 10 items, columnas de sistema visibles
+- [ ] `/app/b/[sid_contacts]` → misma tabla, distintas columnas (phone, email, account)
 - [ ] Inline edit de stage, owner, deadline funciona
 - [ ] Crear item → aparece con sid nuevo
 - [ ] Bulk delete funciona
