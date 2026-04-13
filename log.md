@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 7**
+- AirtableSource rediseñado: 3 pasos numerados (API Key → Base → Tabla), dropdowns desde API real
+- Paso completado = círculo verde con ✓; activo = indigo con ring; línea verde entre pasos
+- Auto-detección de tipo: 30+ tipos Airtable → kind Tratto (`singleSelect→select`, etc.) via `sourceKind` en `ImportField`
+- ColumnMapper simplificado: crear columna = inline nombre editable + badge tipo auto + botón Crear (sin picker)
+- `__airtable_id` capturado en todos los registros para future refresh/sync
+
 **~sesión 6**
 - Fase 6 completa: Import Wizard arquitectura de plugins — agregar fuente = 1 archivo + 1 línea en registry
 - `ImportWizard` genérico orquesta: source picker → ConnectStep → ColumnMapper → `/api/import/bulk`

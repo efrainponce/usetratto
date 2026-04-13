@@ -5,8 +5,10 @@ import type { ComponentType } from 'react'
 // ─── Field from the source (Airtable field, CSV header, Monday column, etc.) ─
 
 export type ImportField = {
-  key:   string   // stable key used in fetchAll() records
-  label: string   // display name shown in the mapper
+  key:        string    // stable key used in fetchAll() records
+  label:      string    // display name shown in the mapper
+  sourceKind?: string   // source system's type hint (e.g. Airtable 'number', 'date')
+                        // ColumnMapper uses this to auto-detect the Tratto kind on create
 }
 
 // ─── Result returned by a ConnectStep once connection is established ──────────
