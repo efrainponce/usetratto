@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import { InlineSubItems } from '@/components/InlineSubItems'
 import { SourceColumnMapper } from '@/components/SourceColumnMapper'
@@ -365,6 +366,35 @@ export function BoardView({
       setTerritoriesLoaded(true)
     }
   }, [territoriesLoaded])
+
+  // ── Supabase Realtime — live item updates for all users on this board ────────
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`board-items-${boardId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'items', filter: `board_id=eq.${boardId}` },
+        async (payload: { eventType: string; old: { id?: string }; new: { id?: string } }) => {
+          if (payload.eventType === 'DELETE') {
+            setRawItems(prev => prev.filter(i => i.id !== payload.old.id))
+            return
+          }
+          const id = payload.new.id
+          if (!id) return
+          const res = await fetch(`/api/items/${id}`)
+          if (!res.ok) return
+          const item = await res.json() as BoardItem
+          setRawItems(prev => {
+            const exists = prev.some(i => i.id === item.id)
+            if (exists) return prev.map(i => i.id === item.id ? item : i)
+            return [...prev, item]
+          })
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [boardId])
 
   // Close column picker on click outside
   useEffect(() => {

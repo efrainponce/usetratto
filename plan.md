@@ -41,7 +41,11 @@ Fase 8: Settings + Board Views (tab strip, column visibility por vista)
    ↓
 Fase 9: Permisos (RLS real, board_members, column_permissions, view members)
    ↓
-Fase 10: WhatsApp + Quote Engine (features avanzadas)
+Fase 10: Column Settings Editor (nombre, tipo, opciones, fórmulas, relation)
+   ↓
+Fase 11: Quote Engine (templates PDF, cotizaciones desde items)
+   ↓
+Fase 12: WhatsApp Integration (Claude AI + Twilio + Edge Functions)
 ```
 
 ---
@@ -659,15 +663,94 @@ El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita cr
 
 ---
 
-## Fase 11 — WhatsApp + Quote Engine
+## Fase 11 — Quote Engine
 
-**Goal:** Features avanzadas sobre base sólida.
+**Goal:** Generación de cotizaciones PDF desde items del pipeline. Templates configurables por board, líneas = sub-items.
+
+### Arquitectura
+
+```
+quote_templates (id, workspace_id, board_id, name, stage_id, template_html,
+                 header_fields, line_columns, footer_fields, show_prices, created_at)
+quotes          (id, workspace_id, item_id, template_id, generated_by,
+                 pdf_url, status, created_at)
+```
+
+- `header_fields`: qué columnas del item van en el encabezado (cliente, fecha, folio)
+- `line_columns`: qué sub_item_columns van como líneas de la cotización
+- `footer_fields`: subtotal, impuestos, total — derivados de fórmulas de sub-items
+- `template_html`: HTML Handlebars con vars `{{item.name}}`, `{{lines}}`, etc.
+- PDF generado via Edge Function (Puppeteer o similar), guardado en Supabase Storage
 
 ### Tareas
-- [ ] **11.1** Edge Functions: twilio_webhook, mentions-trigger, daily-digest
-- [ ] **11.2** Quote templates CRUD
-- [ ] **11.3** PDF generation
-- [ ] **11.4** Tab "Cotización" en ItemDetailView
+- [ ] **11.1** Migration: `quote_templates` + `quotes` (ya en schema 001, solo verificar)
+- [ ] **11.2** Settings → Boards → tab "Cotizaciones": CRUD de templates
+  - Editor visual: elegir header_fields, line_columns, footer_fields
+  - Preview en tiempo real
+- [ ] **11.3** Edge Function `generate-quote`:
+  - Recibe `item_id` + `template_id`
+  - Fetch item + sub-items + values
+  - Render HTML con Handlebars
+  - PDF con Puppeteer → upload Supabase Storage → retorna URL
+- [ ] **11.4** API: `POST /api/quotes` → llama Edge Function → guarda en `quotes`
+- [ ] **11.5** Tab "Cotización" en ItemDetailView:
+  - Lista de cotizaciones previas
+  - Botón "Generar cotización" → elige template → genera → muestra PDF
+  - Descarga + link compartible
+
+### Verificación
+- [ ] Generar cotización desde oportunidad con 3 sub-items → PDF descargable
+- [ ] Template con logo, datos de empresa, líneas con precios
+- [ ] Historial de cotizaciones por item
+
+---
+
+## Fase 12 — WhatsApp Integration
+
+**Goal:** Usuarios en campo operan Tratto desde WhatsApp. Claude AI parsea intención y ejecuta acciones.
+
+### Flujos principales
+
+```
+1. Vendedor crea item desde WA:
+   "agregar oportunidad: Empresa XYZ, $50k, etapa propuesta"
+   → Claude AI → POST /api/items → responde con sid
+
+2. Vendedor consulta desde WA:
+   "qué tengo pendiente hoy"
+   → Claude AI → GET /api/items?owner=me&deadline=today → lista
+
+3. Respuesta a mención:
+   Canal: "@Juan revisa el contrato"
+   → Juan recibe WA → responde desde WA → mensaje vuelve al canal
+
+4. Digest diario (8:30 AM MX):
+   Items vencidos + menciones pendientes + actividad reciente
+```
+
+### Tareas
+- [ ] **12.1** Edge Function `twilio-webhook`:
+  - Recibe mensaje WA entrante
+  - Llama Claude API con contexto del usuario (boards, items recientes)
+  - Claude decide acción: create_item | query_items | reply_mention | unknown
+  - Ejecuta acción vía API interna
+  - Responde al usuario por WA
+- [ ] **12.2** Edge Function `mentions-trigger`:
+  - Cron cada 2 min
+  - Busca `mentions WHERE notified=false`
+  - Envía WA con preview del mensaje + link al canal
+  - Marca `notified=true`
+- [ ] **12.3** Edge Function `daily-digest`:
+  - Cron 8:30 AM America/Mexico_City
+  - Por usuario activo: items overdue + items due today + menciones sin responder
+  - Mensaje WA formateado
+- [ ] **12.4** Edge Function `whatsapp-outbound`:
+  - Sender genérico: `sendWhatsApp(phone, message)`
+  - Usado por mentions-trigger, daily-digest, y twilio-webhook para respuestas
+- [ ] **12.5** UI: Settings → Workspace → tab "WhatsApp"
+  - Conectar número Twilio
+  - Test de envío
+  - Log de mensajes recientes
 
 ---
 

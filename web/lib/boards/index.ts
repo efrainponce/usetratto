@@ -181,57 +181,65 @@ export const getCatalogBoard = unstable_cache(
   { revalidate: 60 }
 )
 
-// ─── Sub-item columns ────────────────────────────────────────────────────────
+// ─── Sub-item columns (cached 60s — changes rarely) ─────────────────────────
 
-export async function getSubItemColumns(boardId: string): Promise<SubItemColumn[]> {
-  const supabase = createServiceClient()
-  const { data } = await supabase
-    .from('sub_item_columns')
-    .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
-    .eq('board_id', boardId)
-    .eq('is_hidden', false)
-    .order('position')
-  return (data ?? []) as SubItemColumn[]
-}
+export const getSubItemColumns = unstable_cache(
+  async (boardId: string): Promise<SubItemColumn[]> => {
+    const supabase = createServiceClient()
+    const { data } = await supabase
+      .from('sub_item_columns')
+      .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+      .eq('board_id', boardId)
+      .eq('is_hidden', false)
+      .order('position')
+    return (data ?? []) as SubItemColumn[]
+  },
+  ['sub-item-columns'],
+  { revalidate: 60 }
+)
 
-// ─── Items ────────────────────────────────────────────────────────────────────
+// ─── Items (cached 15s — changes frequently, short TTL until Realtime) ───────
 
-export async function getBoardItems(boardId: string, workspaceId: string) {
-  const supabase = createServiceClient()
+export const getBoardItems = unstable_cache(
+  async (boardId: string, workspaceId: string) => {
+    const supabase = createServiceClient()
 
-  // Main items query
-  const { data, error } = await supabase
-    .from('items')
-    .select(
-      'id, sid, name, stage_id, owner_id, territory_id, deadline, position,' +
-      'item_values(column_id, value_text, value_number, value_date, value_json)'
-    )
-    .eq('board_id', boardId)
-    .eq('workspace_id', workspaceId)
-    .order('position')
+    // Main items query
+    const { data, error } = await supabase
+      .from('items')
+      .select(
+        'id, sid, name, stage_id, owner_id, territory_id, deadline, position,' +
+        'item_values(column_id, value_text, value_number, value_date, value_json)'
+      )
+      .eq('board_id', boardId)
+      .eq('workspace_id', workspaceId)
+      .order('position')
 
-  if (error) console.error('[getBoardItems] error:', error)
-  const items = (data ?? []) as unknown as BoardItem[]
+    if (error) console.error('[getBoardItems] error:', error)
+    const items = (data ?? []) as unknown as BoardItem[]
 
-  if (items.length === 0) return items
+    if (items.length === 0) return items
 
-  // Separate lightweight query for sub-item counts (L1 only)
-  const itemIds = items.map(i => i.id)
-  const { data: subData } = await supabase
-    .from('sub_items')
-    .select('item_id')
-    .eq('workspace_id', workspaceId)
-    .eq('depth', 0)
-    .in('item_id', itemIds)
+    // Separate lightweight query for sub-item counts (L1 only)
+    const itemIds = items.map(i => i.id)
+    const { data: subData } = await supabase
+      .from('sub_items')
+      .select('item_id')
+      .eq('workspace_id', workspaceId)
+      .eq('depth', 0)
+      .in('item_id', itemIds)
 
-  // Build count map
-  const countMap: Record<string, number> = {}
-  for (const { item_id } of subData ?? []) {
-    countMap[item_id] = (countMap[item_id] ?? 0) + 1
-  }
+    // Build count map
+    const countMap: Record<string, number> = {}
+    for (const { item_id } of subData ?? []) {
+      countMap[item_id] = (countMap[item_id] ?? 0) + 1
+    }
 
-  return items.map(i => ({ ...i, sub_items_count: countMap[i.id] ?? 0 }))
-}
+    return items.map(i => ({ ...i, sub_items_count: countMap[i.id] ?? 0 }))
+  },
+  ['board-items'],
+  { revalidate: 15 }
+)
 
 export async function getItemData(itemId: string, workspaceId: string) {
   const supabase = createServiceClient()
@@ -266,25 +274,29 @@ export type BoardView = {
   columns:    BoardViewColumn[]
 }
 
-export async function getBoardViews(boardId: string, workspaceId: string): Promise<BoardView[]> {
-  const supabase = createServiceClient()
-  const { data: existing } = await supabase
-    .from('board_views')
-    .select('id, sid, name, is_default, position, board_view_columns(id, column_id, is_visible, position, width)')
-    .eq('board_id', boardId)
-    .order('position')
+export const getBoardViews = unstable_cache(
+  async (boardId: string, workspaceId: string): Promise<BoardView[]> => {
+    const supabase = createServiceClient()
+    const { data: existing } = await supabase
+      .from('board_views')
+      .select('id, sid, name, is_default, position, board_view_columns(id, column_id, is_visible, position, width)')
+      .eq('board_id', boardId)
+      .order('position')
 
-  if (existing && existing.length > 0) {
-    return existing.map(v => ({ ...v, columns: v.board_view_columns ?? [] }))
-  }
+    if (existing && existing.length > 0) {
+      return existing.map(v => ({ ...v, columns: v.board_view_columns ?? [] }))
+    }
 
-  // Auto-create Default view
-  const { data: created } = await supabase
-    .from('board_views')
-    .insert({ board_id: boardId, workspace_id: workspaceId, name: 'Default', is_default: true, position: 0 })
-    .select('id, sid, name, is_default, position')
-    .single()
+    // Auto-create Default view (only runs once per board, then cached)
+    const { data: created } = await supabase
+      .from('board_views')
+      .insert({ board_id: boardId, workspace_id: workspaceId, name: 'Default', is_default: true, position: 0 })
+      .select('id, sid, name, is_default, position')
+      .single()
 
-  if (!created) return []
-  return [{ ...created, columns: [] }]
-}
+    if (!created) return []
+    return [{ ...created, columns: [] }]
+  },
+  ['board-views'],
+  { revalidate: 60 }
+)
