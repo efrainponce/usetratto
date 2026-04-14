@@ -208,6 +208,12 @@ function NativeRenderer({
     return colWidths[key] ?? def
   }
 
+  // Aggregates for footer
+  type AggFn = 'sum' | 'avg' | 'min' | 'max' | 'count'
+  const AGG_CYCLE: (AggFn | null)[] = [null, 'sum', 'avg', 'min', 'max', 'count']
+  const AGG_LABEL: Record<AggFn, string> = { sum: 'Σ', avg: 'x̄', min: '↓', max: '↑', count: '#' }
+  const [colAggregates, setColAggregates] = useState<Record<string, AggFn | null>>({})
+
   const startResize = useCallback((key: string, initW: number, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -226,6 +232,37 @@ function NativeRenderer({
   const onCountChangeRef = useRef(onCountChange)
   useEffect(() => { onCountChangeRef.current = onCountChange })
   useEffect(() => { onCountChangeRef.current?.(rows.length) }, [rows.length])
+
+  // Aggregate helpers
+  function computeFooterAgg(colId: string, colKind: string, fn: AggFn, getFormula?: (col: SubItemData) => number | null): number | null {
+    const nums: number[] = []
+    for (const row of rows) {
+      let v: number | null = null
+      if (colKind === 'formula' && getFormula) {
+        v = getFormula(row)
+      } else {
+        v = row.values.find(val => val.column_id === colId)?.value_number ?? null
+      }
+      if (v !== null) nums.push(v)
+    }
+    if (nums.length === 0) return null
+    switch (fn) {
+      case 'sum':   return nums.reduce((a, b) => a + b, 0)
+      case 'avg':   return nums.reduce((a, b) => a + b, 0) / nums.length
+      case 'min':   return Math.min(...nums)
+      case 'max':   return Math.max(...nums)
+      case 'count': return nums.length
+    }
+  }
+
+  function cycleAgg(colId: string) {
+    setColAggregates(prev => {
+      const cur = prev[colId] ?? null
+      const idx = AGG_CYCLE.indexOf(cur)
+      const next = AGG_CYCLE[(idx + 1) % AGG_CYCLE.length] ?? null
+      return { ...prev, [colId]: next }
+    })
+  }
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
@@ -262,7 +299,7 @@ function NativeRenderer({
       const res = await fetch('/api/sub-items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, name: name.trim(), depth: 0, source_item_id: source_item_id ?? null }),
+        body: JSON.stringify({ item_id: itemId, name: name.trim(), depth: 0, source_item_id: source_item_id ?? null, view_id: viewId }),
       })
       if (!res.ok) { console.error('[NativeRenderer] createL1 failed:', res.status, await res.text()); return }
       const created = (await res.json()) as SubItemData
@@ -300,7 +337,11 @@ function NativeRenderer({
 
   const editField = useCallback(async (id: string, field: string, value: unknown) => {
     setEditTarget(null)
-    setRows(prev => patchTree(prev, id, field === 'name' ? { name: value as string } : {}))
+    setRows(prev =>
+      field === 'name'
+        ? patchTree(prev, id, { name: value as string })
+        : patchValueInTree(prev, id, field, value)
+    )
     try {
       if (field === 'name') {
         await fetch(`/api/sub-items/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: value }) })
@@ -627,6 +668,86 @@ function NativeRenderer({
           </Fragment>
         ))}
       </div>
+
+      {/* ── Aggregate footer row ─────────────────────────────────────────── */}
+      {rows.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-1 border-t border-gray-100 bg-gray-50 flex-none text-[11px] select-none">
+          <div className="flex-none" style={{ width: cw('__expand') }} />
+          <div className="flex-none" style={{ width: cw('__sid') }} />
+          <div className="flex-none text-gray-400 italic" style={{ width: cw('__name') }}>Totales</div>
+          {displayCols.map(col => {
+            if (col.kind !== 'number') return <div key={col.id} className="flex-none" style={{ width: cw(col.id) }} />
+            const fn = colAggregates[col.id] ?? null
+            const val = fn ? computeFooterAgg(col.id, col.kind, fn) : null
+            return (
+              <div
+                key={col.id}
+                className="flex-none text-right cursor-pointer group"
+                style={{ width: cw(col.id) }}
+                onClick={() => cycleAgg(col.id)}
+                title={fn ? `${fn} — click para cambiar` : 'Click para agregar totales'}
+              >
+                {fn ? (
+                  <span className="text-gray-600 font-medium">
+                    <span className="text-gray-400 mr-1">{AGG_LABEL[fn]}</span>
+                    {val != null ? val.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+                  </span>
+                ) : (
+                  <span className="text-gray-300 group-hover:text-gray-400 transition-colors">+</span>
+                )}
+              </div>
+            )
+          })}
+          {formulaCols.map(col => {
+            const fn = colAggregates[col.id] ?? null
+            const val = fn ? computeFooterAgg(col.id, 'formula', fn, (row) => computeFormula(col, row)) : null
+            return (
+              <div
+                key={col.id}
+                className="flex-none text-right cursor-pointer group"
+                style={{ width: cw(col.id) }}
+                onClick={() => cycleAgg(col.id)}
+                title={fn ? `${fn} — click para cambiar` : 'Click para agregar totales'}
+              >
+                {fn ? (
+                  <span className="text-indigo-600 font-medium">
+                    <span className="text-indigo-300 mr-1">{AGG_LABEL[fn]}</span>
+                    {val != null ? val.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+                  </span>
+                ) : (
+                  <span className="text-gray-300 group-hover:text-gray-400 transition-colors">+</span>
+                )}
+              </div>
+            )
+          })}
+          {rollupCols.map(col => {
+            const fn = colAggregates[col.id] ?? null
+            const val = fn ? computeFooterAgg(col.id, 'rollup', fn, (row) => {
+              const cfg = col.settings.rollup_config as RollupConfig | undefined
+              return cfg ? computeRollup(cfg, row) : null
+            }) : null
+            return (
+              <div
+                key={col.id}
+                className="flex-none text-right cursor-pointer group"
+                style={{ width: cw(col.id) }}
+                onClick={() => cycleAgg(col.id)}
+                title={fn ? `${fn} — click para cambiar` : 'Click para agregar totales'}
+              >
+                {fn ? (
+                  <span className="text-teal-600 font-medium">
+                    <span className="text-teal-300 mr-1">{AGG_LABEL[fn]}</span>
+                    {val != null ? val.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+                  </span>
+                ) : (
+                  <span className="text-gray-300 group-hover:text-gray-400 transition-colors">+</span>
+                )}
+              </div>
+            )
+          })}
+          <div className="w-7 flex-none" />
+        </div>
+      )}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       <div className="flex-none border-t border-gray-100 px-4 py-2">
@@ -1323,5 +1444,25 @@ function patchTree(rows: SubItemData[], id: string, patch: Partial<SubItemData>)
     if (r.id === id) return { ...r, ...patch }
     if (r.children) return { ...r, children: patchTree(r.children, id, patch) }
     return r
+  })
+}
+
+function patchValueInTree(rows: SubItemData[], id: string, columnId: string, value: unknown): SubItemData[] {
+  return rows.map(row => {
+    if (row.id === id) {
+      const isNum = typeof value === 'number'
+      const existing = row.values.find(v => v.column_id === columnId)
+      const newVal = existing
+        ? { ...existing, value_number: isNum ? (value as number) : existing.value_number, value_text: !isNum ? (value as string) : existing.value_text }
+        : { column_id: columnId, col_key: '', value_number: isNum ? (value as number) : null, value_text: !isNum ? (value as string) : null, value_date: null, value_json: null }
+      const newValues = existing
+        ? row.values.map(v => v.column_id === columnId ? newVal : v)
+        : [...row.values, newVal]
+      return { ...row, values: newValues }
+    }
+    if (row.children?.length) {
+      return { ...row, children: patchValueInTree(row.children, id, columnId, value) }
+    }
+    return row
   })
 }

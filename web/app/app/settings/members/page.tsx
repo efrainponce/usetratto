@@ -14,15 +14,24 @@ export default function MembersSettingsPage() {
   const [users, setUsers] = useState<WorkspaceUser[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [savingRole, setSavingRole] = useState<string | null>(null)
 
   // Fetch users on mount
   useEffect(() => {
     async function fetchUsers() {
       try {
-        const res = await fetch('/api/workspace-users')
-        const data = await res.json()
-        if (res.ok) {
-          setUsers(data)
+        const [usersRes, meRes] = await Promise.all([
+          fetch('/api/workspace-users'),
+          fetch('/api/users/me'),
+        ])
+        const usersData = await usersRes.json()
+        const meData = await meRes.json()
+        if (usersRes.ok) setUsers(usersData)
+        if (meRes.ok) {
+          setIsAdmin(meData.role === 'admin' || meData.role === 'superadmin')
+          setCurrentUserId(meData.id)
         }
       } catch (error) {
         console.error('Error fetching users:', error)
@@ -33,6 +42,23 @@ export default function MembersSettingsPage() {
 
     fetchUsers()
   }, [])
+
+  async function handleRoleChange(userId: string, newRole: string) {
+    setSavingRole(userId)
+    try {
+      const res = await fetch(`/api/workspace-users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: updated.role } : u))
+      }
+    } finally {
+      setSavingRole(null)
+    }
+  }
 
   // Client-side filter by name/phone
   const filteredUsers = useMemo(() => {
@@ -155,19 +181,20 @@ export default function MembersSettingsPage() {
 
                   {/* Rol */}
                   <td className="px-6 py-3">
-                    <select
-                      defaultValue={user.role}
-                      onChange={(e) => {
-                        // TODO: Call PATCH /api/workspace-users/[id]/role
-                        // For now, just show the select without saving
-                        console.log(`Change role for ${user.id} to ${e.target.value}`)
-                      }}
-                      className="text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    >
-                      <option value="viewer">Visualizador</option>
-                      <option value="member">Miembro</option>
-                      <option value="admin">Administrador</option>
-                    </select>
+                    {user.role === 'superadmin' ? (
+                      <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700 font-medium">Superadmin</span>
+                    ) : (
+                      <select
+                        value={user.role}
+                        disabled={(!isAdmin && user.id !== currentUserId) || savingRole === user.id}
+                        onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                        className="text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gray-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <option value="viewer">Visualizador</option>
+                        <option value="member">Miembro</option>
+                        <option value="admin">Administrador</option>
+                      </select>
+                    )}
                   </td>
 
                   {/* Actions */}

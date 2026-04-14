@@ -989,17 +989,24 @@ Tab "Rollup" (visible solo si kind='rollup'):
 
 ### Tareas
 - [x] **14.0** Battery bar en `SubItemsView` — rollup visual de status: L2→L1 collapsed, barra segmentada por color/stage, `done/total · X% completado`. kind='rollup' implícito sobre columna status.
-- [ ] **14.1** `lib/rollup-engine.ts` — motor puro con todos los aggregates
-- [ ] **14.2** Soporte kind='rollup' en `sub_item_columns` — evaluar en NativeRow al renderizar L1
-- [ ] **14.3** Soporte kind='rollup' en `board_columns` — pre-calcular aggregates en endpoint de items + renderizar en GenericDataTable
-- [ ] **14.4** ColumnSettingsPanel: tab "Rollup" con selector de nivel + columna fuente + función
-- [ ] **14.5** Recalculo reactivo: editar un L2 → L1 rollup actualiza; editar un L1 → Item rollup actualiza
+- [x] **14.1** `lib/rollup-engine.ts` — motor puro con todos los aggregates (sum/avg/count/min/max/count_not_empty, children + descendants)
+- [x] **14.2** Soporte kind='rollup' en `sub_item_columns` — evaluar en NativeRow al renderizar L1; rollups computados ANTES que fórmulas para que puedan usarse como operandos
+- [x] **14.3** Soporte kind='rollup' en `board_columns` — pre-calcular aggregates en `GET /api/items` + `RollupCell` (teal) en GenericDataTable
+- [x] **14.4** ColumnSettingsPanel: tab "Rollup" con selector de nivel + columna fuente + función; fetch `/api/boards/[id]/sub-item-columns`
+- [x] **14.5** Recalculo reactivo: editar un L2 → L1 rollup actualiza inmediatamente (optimistic patch en árbol de estado); fila de totales en pie de tabla con sum/avg/min/max/count por columna numérica, fórmula y rollup — click cicla función
 
 ### Verificación
 - [ ] `sum(L2.cantidad)` visible en cada L1 de sub-items
 - [ ] `sum(L1.total_formula)` visible como columna en la tabla de Oportunidades
 - [ ] Editar cantidad en L2 → total en L1 cambia inmediatamente (sin refresh)
 - [ ] `count_not_empty(L1.firma)` → "Firmas completadas: 3/5" en el item
+
+### Bugs y mejoras completadas en esta fase
+- [x] **14.B1** Fix hydration mismatch en `GenericDataTable` — `columnSizing` inicializa como `{}`, lee localStorage solo en `useEffect`
+- [x] **14.B2** Aislamiento de vistas de sub-items — migration `view_id uuid FK sub_item_views` en `sub_items`; `POST /api/sub-items` guarda `view_id`; `nativeHandler` filtra por `view_id` con fallback legacy (`view_id IS NULL`)
+- [x] **14.B3** Botón eliminar vista de sub-items — `×` en tab strip de `SubItemsView` (solo si `views.length > 1` y `onDeleteView` provisto); endpoint `DELETE /api/boards/[id]/sub-item-views/[viewId]` usa `sub_item_views.workspace_id` directo (evita RLS en boards)
+- [x] **14.B4** Gate admin para operaciones destructivas — eliminar vistas de board, eliminar boards, eliminar vistas de sub-items: solo `admin | superadmin`; prop `userRole` en `BoardView` desde `page.tsx`
+- [x] **14.B5** Gestión de roles en `Settings → Miembros` — endpoint `PATCH /api/workspace-users/[userId]` (admin-only; no permite asignar `superadmin`); bootstrap: miembro puede auto-promoverse a admin si no existe ningún admin en el workspace; migration eleva primer miembro sin admin a `admin`
 
 ---
 

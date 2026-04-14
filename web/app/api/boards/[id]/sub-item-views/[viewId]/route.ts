@@ -65,13 +65,17 @@ export async function DELETE(_req: Request, { params }: Context) {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
+  if (auth.role !== 'admin' && auth.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 })
+  }
+
   const { id, viewId } = await params
   const supabase = await createClient()
 
-  // Verify board belongs to workspace and view belongs to board
+  // Verify view belongs to board and board belongs to this workspace
   const { data: view } = await supabase
     .from('sub_item_views')
-    .select('id, board_id')
+    .select('id, board_id, workspace_id')
     .eq('id', viewId)
     .single()
 
@@ -81,14 +85,9 @@ export async function DELETE(_req: Request, { params }: Context) {
     return NextResponse.json({ error: 'View does not belong to this board' }, { status: 400 })
   }
 
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (view.workspace_id !== auth.workspaceId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
 
   // Check that at least 1 other view exists
   const { data: otherViews, error: countError } = await supabase

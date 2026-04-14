@@ -138,6 +138,7 @@ export async function POST(req: Request) {
     parent_id?: string | null
     depth?: 0 | 1
     source_item_id?: string | null
+    view_id?: string | null
   }
 
   if (!body.item_id) {
@@ -204,6 +205,7 @@ export async function POST(req: Request) {
       depth,
       name: finalName,
       source_item_id: body.source_item_id ?? null,
+      view_id: body.view_id ?? null,
       position,
     })
     .select('id, sid, parent_id, depth, name, source_item_id, position')
