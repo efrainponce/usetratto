@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { ProductPicker } from './ProductPicker'
+import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 
 // ─── Sub-item view types ──────────────────────────────────────────────────────
 
@@ -412,6 +413,7 @@ function NativeRenderer({
 
   const displayCols = columns.filter(c => c.kind !== 'formula')
   const formulaCols = columns.filter(c => c.kind === 'formula')
+  const rollupCols  = columns.filter(c => c.kind === 'rollup')
 
   // subitem_view filter
   const showL2 = subitemView !== 'L1_only'
@@ -526,6 +528,9 @@ function NativeRenderer({
             </div>
           </div>
         ))}
+        {rollupCols.map(col => (
+          <div key={col.id} className="flex-none text-right" style={{ width: cw(col.id) }}>{col.name}</div>
+        ))}
         {/* + add column */}
         {addingCol ? (
           <AddColumnInline
@@ -560,7 +565,7 @@ function NativeRenderer({
             {!hideL1 && (
               <NativeRow
                 row={row} depth={0} isExpanded={expandedL1.has(row.id)}
-                displayCols={displayCols} formulaCols={formulaCols}
+                displayCols={displayCols} formulaCols={formulaCols} rollupCols={rollupCols}
                 editTarget={editTarget}
                 onToggleExpand={() => setExpandedL1(s => { const n = new Set(s); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n })}
                 onStartEdit={f => setEditTarget({ id: row.id, field: f })}
@@ -583,7 +588,7 @@ function NativeRenderer({
                   <NativeRow
                     key={child.id}
                     row={child} depth={1} isExpanded={false}
-                    displayCols={displayCols} formulaCols={formulaCols}
+                    displayCols={displayCols} formulaCols={formulaCols} rollupCols={rollupCols}
                     editTarget={editTarget}
                     onToggleExpand={() => {}}
                     onStartEdit={f => setEditTarget({ id: child.id, field: f })}
@@ -771,13 +776,13 @@ function BoardSubItemsRenderer({ itemId, viewId, viewName, compact }: { itemId: 
 // ─── NativeRow ────────────────────────────────────────────────────────────────
 
 function NativeRow({
-  row, depth, isExpanded, displayCols, formulaCols, editTarget,
+  row, depth, isExpanded, displayCols, formulaCols, rollupCols, editTarget,
   onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild,
   computeFormula, onExpandVariants, onOpenDetail, isLocked, onImportChildren, onRefresh,
   colWidths,
 }: {
   row: SubItemData; depth: number; isExpanded: boolean
-  displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]
+  displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]; rollupCols: SubItemColumn[]
   editTarget: EditTarget
   onToggleExpand: () => void
   onStartEdit: (f: string) => void
@@ -875,6 +880,17 @@ function NativeRow({
         const result = computeFormula(col, row)
         return (
           <div key={col.id} className="flex-none text-right text-[13px] text-indigo-700 font-medium" style={{ width: w(col.id, 96) }}>
+            {result != null ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+          </div>
+        )
+      })}
+
+      {/* Rollup columns (read-only, solo L1 que tengan children) */}
+      {rollupCols.map(col => {
+        const cfg = col.settings.rollup_config as RollupConfig | undefined
+        const result = cfg ? computeRollup(cfg, row) : null
+        return (
+          <div key={col.id} className="flex-none text-right text-[13px] text-teal-700 font-medium" style={{ width: w(col.id, 96) }}>
             {result != null ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
           </div>
         )
