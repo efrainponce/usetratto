@@ -420,6 +420,35 @@ export function BoardView({
     return () => { supabase.removeChannel(channel) }
   }, [boardId])
 
+  // ── Supabase Realtime — live column + stage updates ───────────────────────
+  useEffect(() => {
+    const supabase = createClient()
+
+    const reloadCols = async () => {
+      const res = await fetch(`/api/boards/${boardId}/columns`)
+      if (res.ok) setRawCols(await res.json() as BoardColumn[])
+    }
+
+    const reloadStages = async () => {
+      const res = await fetch(`/api/boards/${boardId}/stages`)
+      if (res.ok) setStages(await res.json() as BoardStage[])
+    }
+
+    const channel = supabase
+      .channel(`board-schema-${boardId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'board_columns', filter: `board_id=eq.${boardId}` },
+        () => reloadCols()
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'board_stages', filter: `board_id=eq.${boardId}` },
+        () => reloadStages()
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [boardId])
+
   // Close column picker on click outside
   useEffect(() => {
     if (!showColPicker) return

@@ -203,6 +203,6 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  revalidateTag('board-context', {})
+  revalidateTag('board-context')
   return NextResponse.json(column, { status: 201 })
 }
