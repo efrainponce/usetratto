@@ -147,7 +147,7 @@ export function BoardView({
         label:    c.name,
         kind:     c.kind as CellKind,
         sticky:   c.col_key === 'name',
-        editable: c.kind !== 'autonumber' && c.kind !== 'button' && c.kind !== 'formula',
+        editable: c.kind !== 'autonumber' && c.kind !== 'button' && c.kind !== 'formula' && c.kind !== 'rollup',
         sortable: true,
         settings: augmentSettings(c, stages, users),
       }))
@@ -964,6 +964,13 @@ function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDe
         cells as Record<string, unknown>
       )
       cells[col.key] = result
+    }
+  }
+
+  // Post-process rollup columns — read pre-computed values from item
+  for (const col of cols) {
+    if (col.kind === 'rollup') {
+      cells[col.key] = (item as typeof item & { sub_items_rollup?: Record<string, number | null> }).sub_items_rollup?.[col.key] ?? null
     }
   }
 

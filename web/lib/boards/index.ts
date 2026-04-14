@@ -51,6 +51,7 @@ export type BoardItem = {
   position:         number
   item_values:      ItemValue[]
   sub_items_count?: number    // L1 count for badge in BoardView
+  sub_items_rollup?: Record<string, number | null>  // col_key → valor pre-computado
 }
 
 export type SubItemColumn = {

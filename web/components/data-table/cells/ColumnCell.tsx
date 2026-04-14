@@ -16,6 +16,7 @@ import { FileCell }        from './FileCell'
 import { ButtonCell }      from './ButtonCell'
 import { SignatureCell }   from './SignatureCell'
 import { FormulaCell }     from './FormulaCell'
+import { RollupCell }      from './RollupCell'
 
 export function ColumnCell(props: CellProps) {
   switch (props.column.kind) {
@@ -34,6 +35,7 @@ export function ColumnCell(props: CellProps) {
     case 'button':      return <ButtonCell      {...props} />
     case 'signature':   return <SignatureCell   {...props} />
     case 'formula':     return <FormulaCell     {...props} />
+    case 'rollup':      return <RollupCell      {...props} />
     default:            return (
       <span className="block w-full px-2 py-1 text-[13px] text-gray-400 truncate">
         {props.value != null ? String(props.value) : '—'}

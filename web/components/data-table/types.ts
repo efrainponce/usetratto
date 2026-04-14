@@ -16,6 +16,7 @@ export type CellKind =
   | 'button'
   | 'signature'
   | 'formula'
+  | 'rollup'
 
 export type SelectOption = {
   value: string
@@ -74,6 +75,7 @@ export const DEFAULT_WIDTHS: Record<CellKind, number> = {
   file:        180,
   button:      120,
   signature:   160,
+  rollup:      100,
 }
 
 // ─── Row / cell data ──────────────────────────────────────────────────────────

@@ -39,7 +39,65 @@ export async function GET(req: Request) {
   const { data, error } = await query.order('position')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+
+  const items = (data ?? []) as Array<any & { sub_items_rollup?: Record<string, number | null> }>
+
+  // Check if board has rollup columns
+  const { data: rollupCols } = await supabase
+    .from('board_columns')
+    .select('col_key, settings')
+    .eq('board_id', boardId)
+    .eq('kind', 'rollup')
+
+  if (rollupCols && rollupCols.length > 0 && items.length > 0) {
+    // Get sub_item_columns for col_key→id mapping
+    const { data: subCols } = await supabase
+      .from('sub_item_columns')
+      .select('id, col_key')
+      .eq('board_id', boardId)
+
+    const colKeyMap: Record<string, string> = {}  // id → col_key
+    for (const sc of subCols ?? []) colKeyMap[sc.id] = sc.col_key
+
+    // Fetch all L1 sub-items with their values for these items
+    const itemIds = items.map(i => i.id)
+    const { data: subItems } = await supabase
+      .from('sub_items')
+      .select('id, item_id, sub_item_values(column_id, value_number, value_text)')
+      .in('item_id', itemIds)
+      .eq('depth', 0)
+
+    // Group sub-items by item_id, transform values to { col_key, value_number, value_text }
+    const subsByItem: Record<string, { values: { col_key: string; value_number: number | null; value_text: string | null }[] }[]> = {}
+    for (const si of subItems ?? []) {
+      if (!subsByItem[si.item_id]) subsByItem[si.item_id] = []
+      subsByItem[si.item_id].push({
+        values: (si.sub_item_values ?? []).map(v => ({
+          col_key: colKeyMap[v.column_id] ?? '',
+          value_number: v.value_number,
+          value_text: v.value_text,
+        }))
+      })
+    }
+
+    // Compute rollups for each item
+    const { computeRollup } = await import('@/lib/rollup-engine')
+    for (const item of items) {
+      const children = subsByItem[item.id] ?? []
+      const rollup: Record<string, number | null> = {}
+      for (const rc of rollupCols) {
+        const cfg = rc.settings?.rollup_config
+        if (!cfg) { rollup[rc.col_key] = null; continue }
+        rollup[rc.col_key] = computeRollup(
+          cfg as import('@/lib/rollup-engine').RollupConfig,
+          { values: [], children }
+        )
+      }
+      item.sub_items_rollup = rollup
+    }
+  }
+
+  return NextResponse.json(items)
 }
 
 export async function POST(req: Request) {
