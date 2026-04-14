@@ -594,6 +594,7 @@ function NativeRenderer({
         {addingCol ? (
           <AddColumnInline
             boardId={boardId}
+            sourceBoardId={sourceBoardId ?? undefined}
             position={columns.length}
             onCreated={col => { setColumns(prev => [...prev, col]); setAddingCol(false) }}
             onCancel={() => setAddingCol(false)}
@@ -1349,17 +1350,47 @@ function InlineAddButton({ onAdd }: { onAdd: (n: string) => void }) {
 
 // ─── AddColumnInline ──────────────────────────────────────────────────────────
 
+type SourceBoardCol = { id: string; col_key: string; name: string; kind: string }
+
+const COL_KIND_OPTIONS = [
+  { value: 'text',      label: 'Texto' },
+  { value: 'number',    label: 'Número' },
+  { value: 'date',      label: 'Fecha' },
+  { value: 'select',    label: 'Select' },
+  { value: 'boolean',   label: 'Check' },
+  { value: 'formula',   label: 'Fórmula' },
+  { value: 'rollup',    label: 'Rollup' },
+  { value: 'relation',  label: 'Relación' },
+  { value: 'signature', label: 'Firma' },
+  { value: 'file',      label: 'Archivo' },
+  { value: 'phone',     label: 'Teléfono' },
+  { value: 'email',     label: 'Email' },
+  { value: 'url',       label: 'URL' },
+]
+
 function AddColumnInline({
-  boardId, position, onCreated, onCancel,
+  boardId, sourceBoardId, position, onCreated, onCancel,
 }: {
-  boardId:   string
-  position:  number
-  onCreated: (col: SubItemColumn) => void
-  onCancel:  () => void
+  boardId:        string
+  sourceBoardId?: string
+  position:       number
+  onCreated:      (col: SubItemColumn) => void
+  onCancel:       () => void
 }) {
-  const [name,    setName]    = useState('')
-  const [kind,    setKind]    = useState('text')
-  const [saving,  setSaving]  = useState(false)
+  const [name,          setName]          = useState('')
+  const [kind,          setKind]          = useState('text')
+  const [sourceColKey,  setSourceColKey]  = useState('')
+  const [sourceCols,    setSourceCols]    = useState<SourceBoardCol[]>([])
+  const [saving,        setSaving]        = useState(false)
+
+  // Fetch source board columns so user can link a source_col_key
+  useEffect(() => {
+    if (!sourceBoardId) return
+    fetch(`/api/boards/${sourceBoardId}/columns`)
+      .then(r => r.json())
+      .then((data: SourceBoardCol[]) => setSourceCols(Array.isArray(data) ? data : []))
+      .catch(() => setSourceCols([]))
+  }, [sourceBoardId])
 
   const save = async () => {
     if (!name.trim()) { onCancel(); return }
@@ -1369,13 +1400,14 @@ function AddColumnInline({
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          col_key:  `col_${Date.now()}`,
-          name:     name.trim(),
+          col_key:        `col_${Date.now()}`,
+          name:           name.trim(),
           kind,
           position,
+          source_col_key: sourceColKey || null,
         }),
       })
-      if (!res.ok) { console.error('[AddColumnInline] failed:', res.status); onCancel(); return }
+      if (!res.ok) { console.error('[AddColumnInline] failed:', res.status, await res.text()); onCancel(); return }
       const col = (await res.json()) as SubItemColumn
       onCreated(col)
     } catch (e) {
@@ -1386,8 +1418,13 @@ function AddColumnInline({
     }
   }
 
+  // stopPropagation on the wrapper prevents resize-handle mousedown from interfering
   return (
-    <div className="flex items-center gap-1 flex-none normal-case font-normal tracking-normal">
+    <div
+      className="flex items-center gap-1 flex-none normal-case font-normal tracking-normal select-auto"
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+    >
       <input
         autoFocus
         value={name}
@@ -1404,14 +1441,29 @@ function AddColumnInline({
         value={kind}
         onChange={e => setKind(e.target.value)}
         disabled={saving}
+        onMouseDown={e => e.stopPropagation()}
         className="text-[11px] border border-gray-200 rounded px-1 py-0.5 outline-none bg-white text-gray-700"
       >
-        <option value="text">Texto</option>
-        <option value="number">Número</option>
-        <option value="date">Fecha</option>
-        <option value="select">Select</option>
-        <option value="boolean">Check</option>
+        {COL_KIND_OPTIONS.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
       </select>
+      {/* Source column picker — only for views linked to a source board */}
+      {sourceBoardId && sourceCols.length > 0 && (
+        <select
+          value={sourceColKey}
+          onChange={e => setSourceColKey(e.target.value)}
+          disabled={saving}
+          onMouseDown={e => e.stopPropagation()}
+          title="Vincular a columna del board fuente (opcional)"
+          className="text-[11px] border border-gray-200 rounded px-1 py-0.5 outline-none bg-white text-gray-500 max-w-[90px]"
+        >
+          <option value="">Sin vínculo</option>
+          {sourceCols.map(c => (
+            <option key={c.col_key} value={c.col_key}>{c.name}</option>
+          ))}
+        </select>
+      )}
       <button
         onClick={save}
         disabled={saving}
