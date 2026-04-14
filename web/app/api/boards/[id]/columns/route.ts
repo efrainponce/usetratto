@@ -12,14 +12,15 @@ export async function GET(req: Request, { params }: Context) {
 
   const { id } = await params
   const supabase = await createClient()
+  const svc      = createServiceClient()
 
-  // Verify board belongs to workspace
-  const { data: board } = await supabase
+  // Verify board belongs to workspace — service client bypasses RLS blocking
+  const { data: board } = await svc
     .from('boards')
     .select('id')
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
-    .single()
+    .maybeSingle()
 
   if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -133,9 +134,10 @@ export async function POST(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
+  const svc = createServiceClient()
 
   // Use service client for board lookup — user JWT + RLS can block this even for valid members
-  const { data: board } = await createServiceClient()
+  const { data: board } = await svc
     .from('boards')
     .select('id')
     .eq('id', id)
@@ -161,7 +163,7 @@ export async function POST(req: Request, { params }: Context) {
   let col_key   = baseKey
   let attempt   = 0
   while (true) {
-    const { data: existing } = await supabase
+    const { data: existing } = await svc
       .from('board_columns')
       .select('id')
       .eq('board_id', id)
@@ -173,7 +175,7 @@ export async function POST(req: Request, { params }: Context) {
   }
 
   // Get next position
-  const { data: last } = await supabase
+  const { data: last } = await svc
     .from('board_columns')
     .select('position')
     .eq('board_id', id)
@@ -183,9 +185,8 @@ export async function POST(req: Request, { params }: Context) {
 
   const position = (last?.position ?? -1) + 1
 
-  // Use service client for INSERT — the SID trigger writes to sid_registry which
-  // blocks under user JWT RLS. Ownership is already verified above.
-  const { data: column, error } = await createServiceClient()
+  // Service client for INSERT — SID trigger writes to sid_registry, blocked under user JWT
+  const { data: column, error } = await svc
     .from('board_columns')
     .insert({
       board_id:  id,
