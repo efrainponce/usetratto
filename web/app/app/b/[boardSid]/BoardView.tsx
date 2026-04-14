@@ -11,6 +11,7 @@ import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
 import { SubItemViewWizard } from '@/components/SubItemViewWizard'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView, SubItemView } from '@/lib/boards'
+import { computeFormula, type FormulaConfig } from '@/lib/formula-engine'
 
 // ─── Column permission type ───────────────────────────────────────────────────
 type ColPermission = {
@@ -146,7 +147,7 @@ export function BoardView({
         label:    c.name,
         kind:     c.kind as CellKind,
         sticky:   c.col_key === 'name',
-        editable: c.kind !== 'autonumber' && c.kind !== 'button',
+        editable: c.kind !== 'autonumber' && c.kind !== 'button' && c.kind !== 'formula',
         sortable: true,
         settings: augmentSettings(c, stages, users),
       }))
@@ -919,6 +920,18 @@ function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDe
         : null
     }
   }
+
+  // Post-process formula columns — compute values from other cells
+  for (const col of cols) {
+    if (col.kind === 'formula' && col.settings.formula_config) {
+      const result = computeFormula(
+        col.settings.formula_config as FormulaConfig,
+        cells as Record<string, unknown>
+      )
+      cells[col.key] = result
+    }
+  }
+
   const count = item.sub_items_count ?? 0
   return { id: item.id, sid: item.sid, cells, hasSubItems: count > 0, subItemsCount: count }
 }

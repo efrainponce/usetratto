@@ -63,6 +63,7 @@ const KIND_OPTIONS = [
   { value: 'file',        label: 'Archivo(s)' },
   { value: 'button',      label: 'Botón' },
   { value: 'signature',   label: 'Firma' },
+  { value: 'formula',     label: 'Fórmula' },
 ]
 
 const NUMBER_FORMATS = [
@@ -125,13 +126,34 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
   )
   const [savingSignatureDesc, setSavingSignatureDesc] = useState(false)
 
+  // ── Formula config state ──────────────────────────────────────────────────
+  type FormulaType = 'arithmetic' | 'if' | 'concat' | 'date_diff' | 'count_if'
+  type ArithOp = 'add' | 'subtract' | 'multiply' | 'divide' | 'percent'
+
+  const [formulaType,   setFormulaType]   = useState<FormulaType>(
+    ((column.settings?.formula_config as {type?:string}|undefined)?.type as FormulaType) ?? 'arithmetic'
+  )
+  const [arithColA,     setArithColA]     = useState<string>(
+    ((column.settings?.formula_config as {col_a?:string}|undefined)?.col_a) ?? ''
+  )
+  const [arithOp,       setArithOp]       = useState<ArithOp>(
+    ((column.settings?.formula_config as {op?:string}|undefined)?.op as ArithOp) ?? 'multiply'
+  )
+  const [arithColB,     setArithColB]     = useState<string>(
+    ((column.settings?.formula_config as {col_b?:string}|undefined)?.col_b) ?? ''
+  )
+  const [savingFormula, setSavingFormula] = useState(false)
+  // For column picker: load board columns
+  const [boardCols,     setBoardCols]     = useState<{ col_key: string; name: string; kind: string }[]>([])
+
   // ── Active tab ────────────────────────────────────────────────────────────
   const isSelect    = kind === 'select' || kind === 'multiselect'
   const isNumber    = kind === 'number'
   const isRelation  = kind === 'relation'
   const isSignature = kind === 'signature'
+  const isFormula   = kind === 'formula'
 
-  type TabId = 'general' | 'opciones' | 'permisos'
+  type TabId = 'general' | 'opciones' | 'formula' | 'permisos'
   const [tab, setTab] = useState<TabId>('general')
 
   // ── Load permissions + teams ──────────────────────────────────────────────
@@ -153,6 +175,16 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
       .then(r => (r.ok ? r.json() : []))
       .then((data: RemoteBoard[]) => setBoards(data))
   }, [isRelation])
+
+  // ── Load board columns for formula editor ────────────────────────────────
+  useEffect(() => {
+    fetch(`/api/boards/${boardId}/columns`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { col_key: string; name: string; kind: string }[]) => {
+        // Only number columns make sense for arithmetic references
+        setBoardCols(data.filter(c => c.col_key !== column.col_key))
+      })
+  }, [boardId, column.col_key])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -266,6 +298,23 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
     }
   }
 
+  async function handleSaveFormula() {
+    if (!arithColA || !arithColB) return
+    setSavingFormula(true)
+    try {
+      const formula_config = formulaType === 'arithmetic'
+        ? { type: 'arithmetic', op: arithOp, col_a: arithColA, col_b: arithColB }
+        : null
+      if (!formula_config) return
+      const updated = await patchColumn({
+        settings: { ...column.settings, formula_config },
+      })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingFormula(false)
+    }
+  }
+
   async function handleAddPermission() {
     if (!newPermId) return
     const isTeam = newPermId.startsWith('t:')
@@ -307,7 +356,8 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'general',  label: 'General' },
-    ...(isSelect ? [{ id: 'opciones' as TabId, label: 'Opciones' }] : []),
+    ...(isSelect  ? [{ id: 'opciones' as TabId, label: 'Opciones' }] : []),
+    ...(isFormula ? [{ id: 'formula'  as TabId, label: 'Fórmula'  }] : []),
     { id: 'permisos', label: 'Permisos' },
   ]
 
@@ -485,6 +535,95 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
                 >
                   {savingGeneral ? 'Guardando...' : 'Guardar cambios'}
                 </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Fórmula ─────────────────────────────────────────────────── */}
+          {tab === 'formula' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de fórmula</label>
+                <select
+                  value={formulaType}
+                  onChange={e => setFormulaType(e.target.value as FormulaType)}
+                  className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                >
+                  <option value="arithmetic">Aritmética</option>
+                  <option value="concat">Concatenar texto</option>
+                  <option value="date_diff">Diferencia de fechas</option>
+                  <option value="if">Condicional (si/entonces)</option>
+                  <option value="count_if">Contar si</option>
+                </select>
+              </div>
+
+              {formulaType === 'arithmetic' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Columna A</label>
+                    <select
+                      value={arithColA}
+                      onChange={e => setArithColA(e.target.value)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    >
+                      <option value="">— elegir columna —</option>
+                      {boardCols.filter(c => c.kind === 'number').map(c => (
+                        <option key={c.col_key} value={c.col_key}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Operación</label>
+                    <select
+                      value={arithOp}
+                      onChange={e => setArithOp(e.target.value as ArithOp)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    >
+                      <option value="multiply">× Multiplicar</option>
+                      <option value="add">+ Sumar</option>
+                      <option value="subtract">− Restar</option>
+                      <option value="divide">÷ Dividir</option>
+                      <option value="percent">% Porcentaje (A × B / 100)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Columna B</label>
+                    <select
+                      value={arithColB}
+                      onChange={e => setArithColB(e.target.value)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    >
+                      <option value="">— elegir columna —</option>
+                      {boardCols.filter(c => c.kind === 'number').map(c => (
+                        <option key={c.col_key} value={c.col_key}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {arithColA && arithColB && (
+                    <div className="rounded-md bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-700">
+                      Vista previa: {boardCols.find(c => c.col_key === arithColA)?.name ?? arithColA}{' '}
+                      {arithOp === 'multiply' ? '×' : arithOp === 'add' ? '+' : arithOp === 'subtract' ? '−' : arithOp === 'divide' ? '÷' : '%'}{' '}
+                      {boardCols.find(c => c.col_key === arithColB)?.name ?? arithColB}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSaveFormula}
+                    disabled={savingFormula || !arithColA || !arithColB}
+                    className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {savingFormula ? 'Guardando…' : 'Guardar fórmula'}
+                  </button>
+                </>
+              )}
+
+              {formulaType !== 'arithmetic' && (
+                <p className="text-[12px] text-gray-400">
+                  Este tipo de fórmula se configurará en una próxima versión.
+                </p>
               )}
             </div>
           )}

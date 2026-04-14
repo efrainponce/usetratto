@@ -15,6 +15,7 @@ export type CellKind =
   | 'file'
   | 'button'
   | 'signature'
+  | 'formula'
 
 export type SelectOption = {
   value: string
@@ -40,6 +41,8 @@ export type ColumnSettings = {
   // signature
   allowed_roles?:   string[]
   column_id?:       string           // UUID fallback para SignatureCell
+  // formula
+  formula_config?: { type: string; [key: string]: unknown }
 }
 
 export type ColumnDef = {
@@ -59,6 +62,7 @@ export const DEFAULT_WIDTHS: Record<CellKind, number> = {
   autonumber:  72,
   boolean:     60,
   date:        120,
+  formula:     100,
   number:      100,
   phone:       140,
   email:       180,
