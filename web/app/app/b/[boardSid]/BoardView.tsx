@@ -837,6 +837,11 @@ export function BoardView({
                 columnsVersion={columnsVersion}
                 onCountChange={(count) => handleSubItemCountChange(rowId, count)}
                 onAddView={() => setShowViewWizard(true)}
+                onDeleteView={async (viewId) => {
+                  if (!confirm('¿Eliminar esta vista?')) return
+                  const res = await fetch(`/api/boards/${boardId}/sub-item-views/${viewId}`, { method: 'DELETE' })
+                  if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
+                }}
                 onConfigureColumns={() => setShowMapper(true)}
                 boardSettings={boardSettings}
                 subitemView={subitemView}

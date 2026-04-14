@@ -61,6 +61,7 @@ type Props = {
   views:               SubItemView[]
   onCountChange?:      (count: number) => void
   onAddView?:          () => void
+  onDeleteView?:       (viewId: string) => void
   onConfigureColumns?: () => void
   compact?:            boolean
   columnsVersion?:     number
@@ -68,7 +69,7 @@ type Props = {
   subitemView?:        'L1_only' | 'L1_L2' | 'L2_only'
 }
 
-export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onConfigureColumns, compact, columnsVersion, boardSettings, subitemView }: Props) {
+export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onDeleteView, onConfigureColumns, compact, columnsVersion, boardSettings, subitemView }: Props) {
   const [activeViewId, setActiveViewId] = useState<string>(views[0]?.id ?? '')
   const activeView = views.find(v => v.id === activeViewId) ?? views[0]
 
@@ -113,6 +114,16 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
                     <circle cx="9" cy="8" r="1.5" strokeWidth="1.3"/>
                     <circle cx="5" cy="4" r="1.5" strokeWidth="1.3"/>
                   </svg>
+                </button>
+              )}
+              {/* × delete — visible on hover, only if there's more than 1 view */}
+              {onDeleteView && views.length > 1 && (
+                <button
+                  onClick={e => { e.stopPropagation(); onDeleteView(v.id) }}
+                  title="Eliminar vista"
+                  className="opacity-0 group-hover/tab:opacity-100 transition-opacity text-gray-300 hover:text-red-500 ml-0.5 p-0.5 rounded text-[13px] leading-none"
+                >
+                  ×
                 </button>
               )}
             </div>

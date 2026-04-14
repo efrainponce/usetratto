@@ -53,7 +53,7 @@ export async function GET(req: Request, { params }: Context) {
   const config = view.config as Record<string, unknown>
 
   switch (view.type) {
-    case 'native':         return nativeHandler(supabase, view.board_id, itemId)
+    case 'native':         return nativeHandler(supabase, view.board_id, itemId, config)
     case 'board_items':    return boardItemsHandler(supabase, config, itemId)
     case 'board_sub_items': return boardSubItemsHandler(supabase, config, itemId)
     default:               return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
@@ -64,7 +64,24 @@ export async function GET(req: Request, { params }: Context) {
 // Returns own sub_items for the item — the "snapshot" side of the feature.
 // config.source_board_id drives ProductPicker (snapshot mode) in the frontend.
 
-async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: string) {
+async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: string, config: Record<string, unknown>) {
+  const sourceBoardId = config.source_board_id as string | undefined
+
+  let subItemsQuery = supabase
+    .from('sub_items')
+    .select('id, sid, parent_id, depth, name, position, source_item_id, sub_item_values(column_id, value_text, value_number, value_date, value_json)')
+    .eq('item_id', itemId)
+    .order('depth')
+    .order('position')
+
+  // Filter by source: views with source_board_id only show sub-items that came from a source
+  // (source_item_id IS NOT NULL); manual views only show sub-items added manually (source_item_id IS NULL).
+  if (sourceBoardId) {
+    subItemsQuery = subItemsQuery.not('source_item_id', 'is', null)
+  } else {
+    subItemsQuery = subItemsQuery.is('source_item_id', null)
+  }
+
   const [colRes, itemRes] = await Promise.all([
     supabase
       .from('sub_item_columns')
@@ -72,12 +89,7 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
       .eq('board_id', boardId)
       .eq('is_hidden', false)
       .order('position'),
-    supabase
-      .from('sub_items')
-      .select('id, sid, parent_id, depth, name, position, source_item_id, sub_item_values(column_id, value_text, value_number, value_date, value_json)')
-      .eq('item_id', itemId)
-      .order('depth')
-      .order('position'),
+    subItemsQuery,
   ])
 
   if (colRes.error) return NextResponse.json({ error: colRes.error.message }, { status: 500 })
