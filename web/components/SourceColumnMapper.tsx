@@ -58,7 +58,8 @@ export function SourceColumnMapper({
   onClose,
   onSaved,
 }: Props) {
-  const [step, setStep] = useState<'board' | 'columns'>('board')
+  // If there's already a source board, skip straight to columns
+  const [step, setStep] = useState<'board' | 'columns'>(currentSourceBoardId ? 'columns' : 'board')
   const [boards, setBoards] = useState<SourceBoard[]>([])
   const [boardsLoading, setBoardsLoading] = useState(true)
 
@@ -276,7 +277,7 @@ export function SourceColumnMapper({
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <div>
               <h2 className="text-[14px] font-semibold text-gray-800">
-                {step === 'board' ? 'Seleccionar fuente' : 'Configurar columnas'}
+                {step === 'board' ? 'Seleccionar fuente' : 'Columnas de sub-items'}
               </h2>
             </div>
             <button
@@ -289,10 +290,28 @@ export function SourceColumnMapper({
             </button>
           </div>
 
-          {/* Step indicator */}
-          <div className="px-4 py-2 flex items-center gap-2 text-[11px] text-gray-400 border-b border-gray-100">
-            <div className={`w-1.5 h-1.5 rounded-full ${step === 'board' ? 'bg-indigo-600' : 'bg-gray-300'}`} />
-            <span>Paso 1 de 2</span>
+          {/* Sub-header: source board info or step indicator */}
+          <div className="px-4 py-2 flex items-center gap-2 text-[11px] border-b border-gray-100">
+            {step === 'columns' && selectedBoardId ? (
+              <>
+                <span className="text-gray-500">
+                  Fuente: <span className="font-medium text-gray-700">{boards.find(b => b.id === selectedBoardId)?.name ?? '…'}</span>
+                </span>
+                <button
+                  onClick={() => setStep('board')}
+                  className="ml-1 text-indigo-500 hover:text-indigo-700 transition-colors"
+                >
+                  Cambiar
+                </button>
+              </>
+            ) : step === 'columns' ? (
+              <span className="text-gray-400">Sin fuente — columnas manuales</span>
+            ) : (
+              <>
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                <span className="text-gray-400">Paso 1 de 2</span>
+              </>
+            )}
           </div>
 
           {/* Content */}

@@ -53,14 +53,17 @@ type EditTarget = { id: string; field: string } | null
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 type Props = {
-  itemId:         string
-  boardId:        string
-  views:          SubItemView[]
-  onCountChange?: (count: number) => void
-  compact?:       boolean
+  itemId:              string
+  boardId:             string
+  views:               SubItemView[]
+  onCountChange?:      (count: number) => void
+  onAddView?:          () => void
+  onConfigureColumns?: () => void
+  compact?:            boolean
+  columnsVersion?:     number
 }
 
-export function SubItemsView({ itemId, boardId, views, onCountChange, compact }: Props) {
+export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onConfigureColumns, compact, columnsVersion }: Props) {
   const [activeViewId, setActiveViewId] = useState<string>(views[0]?.id ?? '')
   const activeView = views.find(v => v.id === activeViewId) ?? views[0]
 
@@ -74,32 +77,61 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, compact }:
 
   return (
     <div className="flex flex-col h-full">
-      {/* ── View tabs (only if > 1) ──────────────────────────────────────── */}
-      {views.length > 1 && (
-        <div className="flex items-center border-b border-gray-100 px-4 flex-none">
-          {views.map(v => (
-            <button
-              key={v.id}
-              onClick={() => setActiveViewId(v.id)}
-              className={`px-3 py-2 text-[12px] font-medium border-b-2 -mb-px mr-1 transition-colors ${
-                activeViewId === v.id
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {v.name}
-              {v.type !== 'native' && (
-                <span className="ml-1.5 text-[10px] text-blue-400 font-normal">ref</span>
+      {/* ── View tabs ────────────────────────────────────────────────────── */}
+      <div className="flex items-center border-b border-gray-100 px-3 flex-none gap-0.5">
+        {views.map(v => {
+          const isActive = activeViewId === v.id
+          return (
+            <div key={v.id} className="flex items-center group/tab -mb-px">
+              <button
+                onClick={() => setActiveViewId(v.id)}
+                className={`px-2.5 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+                  isActive
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {v.name}
+                {v.type !== 'native' && (
+                  <span className="ml-1.5 text-[10px] text-blue-400 font-normal">ref</span>
+                )}
+              </button>
+              {/* ⚙ config button — only on active native tab */}
+              {isActive && v.type === 'native' && onConfigureColumns && (
+                <button
+                  onClick={onConfigureColumns}
+                  title="Configurar columnas"
+                  className="text-gray-400 hover:text-indigo-600 transition-colors p-0.5 rounded"
+                >
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
+                    <path d="M2 4h8M2 8h5" strokeWidth="1.5" strokeLinecap="round"/>
+                    <circle cx="9" cy="8" r="1.5" strokeWidth="1.3"/>
+                    <circle cx="5" cy="4" r="1.5" strokeWidth="1.3"/>
+                  </svg>
+                </button>
               )}
-            </button>
-          ))}
-        </div>
-      )}
+            </div>
+          )
+        })}
+        {/* + new view */}
+        {onAddView && (
+          <button
+            onClick={onAddView}
+            title="Nueva vista"
+            className="ml-1 px-2 py-1.5 text-[12px] text-gray-400 hover:text-indigo-600 transition-colors flex items-center gap-1"
+          >
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span className="text-[11px]">Vista</span>
+          </button>
+        )}
+      </div>
 
       {/* ── Renderer ─────────────────────────────────────────────────────── */}
       {activeView.type === 'native' && (
         <NativeRenderer
-          key={activeView.id}
+          key={`${activeView.id}-${columnsVersion ?? 0}`}
           itemId={itemId}
           boardId={boardId}
           viewId={activeView.id}
@@ -142,6 +174,7 @@ function NativeRenderer({
   const [editTarget,   setEditTarget]   = useState<EditTarget>(null)
   const [showPicker,   setShowPicker]   = useState(false)
   const [addingL2For,  setAddingL2For]  = useState<string | null>(null)
+  const [addingCol,    setAddingCol]    = useState(false)
 
   const onCountChangeRef = useRef(onCountChange)
   useEffect(() => { onCountChangeRef.current = onCountChange })
@@ -176,7 +209,9 @@ function NativeRenderer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_id: itemId, name: name.trim(), depth: 0, source_item_id: source_item_id ?? null }),
       })
+      if (!res.ok) { console.error('[NativeRenderer] createL1 failed:', res.status, await res.text()); return }
       const created = (await res.json()) as SubItemData
+      if (!created?.id) return
       setRows(prev => [...prev, { ...created, children: [] }])
     } catch (e) {
       console.error('[NativeRenderer] createL1 error:', e)
@@ -193,7 +228,9 @@ function NativeRenderer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_id: itemId, parent_id: parentId, name: name.trim(), depth: 1 }),
       })
+      if (!res.ok) { console.error('[NativeRenderer] createL2 failed:', res.status, await res.text()); return }
       const created = (await res.json()) as SubItemData
+      if (!created?.id) return
       setRows(prev => prev.map(r =>
         r.id === parentId ? { ...r, children: [...(r.children ?? []), created] } : r
       ))
@@ -266,6 +303,25 @@ function NativeRenderer({
         <div className="w-40 flex-none">Nombre</div>
         {displayCols.map(c => <div key={c.id} className="w-24 flex-none text-right">{c.name}</div>)}
         {formulaCols.map(c => <div key={c.id} className="w-24 flex-none text-right text-indigo-500">{c.name}</div>)}
+        {/* + add column */}
+        {addingCol ? (
+          <AddColumnInline
+            boardId={boardId}
+            position={columns.length}
+            onCreated={col => { setColumns(prev => [...prev, col]); setAddingCol(false) }}
+            onCancel={() => setAddingCol(false)}
+          />
+        ) : (
+          <button
+            onClick={() => setAddingCol(true)}
+            title="Agregar columna"
+            className="w-7 flex-none flex items-center justify-center text-gray-300 hover:text-indigo-500 transition-colors normal-case font-normal tracking-normal"
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
         <div className="w-7 flex-none" />
       </div>
 
@@ -623,6 +679,88 @@ function InlineAddButton({ onAdd }: { onAdd: (n: string) => void }) {
     </button>
   )
   return <InlineAddRow depth={0} onAdd={n => { onAdd(n); setAdding(false) }} onCancel={() => setAdding(false)} />
+}
+
+// ─── AddColumnInline ──────────────────────────────────────────────────────────
+
+function AddColumnInline({
+  boardId, position, onCreated, onCancel,
+}: {
+  boardId:   string
+  position:  number
+  onCreated: (col: SubItemColumn) => void
+  onCancel:  () => void
+}) {
+  const [name,    setName]    = useState('')
+  const [kind,    setKind]    = useState('text')
+  const [saving,  setSaving]  = useState(false)
+
+  const save = async () => {
+    if (!name.trim()) { onCancel(); return }
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/boards/${boardId}/sub-item-columns`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          col_key:  `col_${Date.now()}`,
+          name:     name.trim(),
+          kind,
+          position,
+        }),
+      })
+      if (!res.ok) { console.error('[AddColumnInline] failed:', res.status); onCancel(); return }
+      const col = (await res.json()) as SubItemColumn
+      onCreated(col)
+    } catch (e) {
+      console.error('[AddColumnInline] error:', e)
+      onCancel()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1 flex-none normal-case font-normal tracking-normal">
+      <input
+        autoFocus
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Nombre..."
+        disabled={saving}
+        className="w-28 text-[12px] border border-indigo-400 rounded px-1.5 py-0.5 outline-none bg-white"
+        onKeyDown={e => {
+          if (e.key === 'Enter') save()
+          if (e.key === 'Escape') onCancel()
+        }}
+      />
+      <select
+        value={kind}
+        onChange={e => setKind(e.target.value)}
+        disabled={saving}
+        className="text-[11px] border border-gray-200 rounded px-1 py-0.5 outline-none bg-white text-gray-700"
+      >
+        <option value="text">Texto</option>
+        <option value="number">Número</option>
+        <option value="date">Fecha</option>
+        <option value="select">Select</option>
+        <option value="boolean">Check</option>
+      </select>
+      <button
+        onClick={save}
+        disabled={saving}
+        className="text-indigo-600 hover:text-indigo-800 transition-colors text-[13px] leading-none px-0.5"
+      >
+        ✓
+      </button>
+      <button
+        onClick={onCancel}
+        className="text-gray-400 hover:text-gray-600 transition-colors text-[14px] leading-none px-0.5"
+      >
+        ×
+      </button>
+    </div>
+  )
 }
 
 // ─── LoadingState ─────────────────────────────────────────────────────────────

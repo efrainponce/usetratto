@@ -1,5 +1,14 @@
 # log
 
+## 2026-04-14
+
+**~sesión 20**
+- Fix: `POST /api/boards/[id]/sub-item-columns` 404 — `createClient()` con RLS bloqueaba lookup del board; cambiado a `createServiceClient()` en route sub-item-columns + boards/[id] PATCH/DELETE
+- Fix: columnas guardadas (201) pero UI no refrescaba — `columnsVersion` counter en BoardView → key de NativeRenderer cambia → re-fetch automático; `setSubItemColumns` acumula en vez de reemplazar
+- Wizard simplificado: eliminado modo "Referencia en vivo" — solo snapshot; step 2 = solo nombre
+- UX: botón Sub-items en toolbar muestra pills con nombres de vistas (antes solo count)
+- UX: wizard "Nueva vista" muestra sección "Vistas actuales" al abrir (referencia visual)
+
 ## 2026-04-13
 
 **~sesión 19**

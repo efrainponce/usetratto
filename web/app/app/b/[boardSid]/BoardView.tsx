@@ -89,6 +89,7 @@ export function BoardView({
   const [showImport,    setShowImport]       = useState(false)
   const [subItemViews,  setSubItemViews]     = useState<SubItemView[]>(initialSubItemViews)
   const [showViewWizard, setShowViewWizard]  = useState(false)
+  const [columnsVersion, setColumnsVersion]  = useState(0)
 
   // View management
   const [views,        setViews]        = useState<BoardView[]>(initialViews)
@@ -469,8 +470,17 @@ export function BoardView({
           </svg>
           Sub-items
           {subItemViews.length > 0 && (
-            <span className="ml-0.5 px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 text-[10px] font-medium">
-              {subItemViews.length}
+            <span className="flex items-center gap-1 ml-0.5">
+              {subItemViews.slice(0, 3).map(v => (
+                <span key={v.id} className="px-1.5 py-0 rounded bg-gray-100 text-gray-500 text-[10px] font-medium">
+                  {v.name}
+                </span>
+              ))}
+              {subItemViews.length > 3 && (
+                <span className="px-1.5 py-0 rounded bg-gray-100 text-gray-400 text-[10px]">
+                  +{subItemViews.length - 3}
+                </span>
+              )}
             </span>
           )}
         </button>
@@ -790,7 +800,10 @@ export function BoardView({
                 boardId={boardId}
                 views={subItemViews}
                 compact
+                columnsVersion={columnsVersion}
                 onCountChange={(count) => handleSubItemCountChange(rowId, count)}
+                onAddView={() => setShowViewWizard(true)}
+                onConfigureColumns={() => setShowMapper(true)}
               />
             </div>
           )}
@@ -809,6 +822,7 @@ export function BoardView({
       {showViewWizard && (
         <SubItemViewWizard
           boardId={boardId}
+          existingViews={subItemViews}
           onClose={() => setShowViewWizard(false)}
           onCreated={(newView, snapshotBoardId) => {
             setSubItemViews(prev => [...prev, newView])
@@ -827,7 +841,8 @@ export function BoardView({
           onClose={() => setShowMapper(false)}
           onSaved={(newSourceId, newCols) => {
             setSourceBoardId(newSourceId)
-            setSubItemColumns(newCols)
+            setSubItemColumns(prev => [...prev, ...newCols])
+            setColumnsVersion(v => v + 1)
             setShowMapper(false)
           }}
         />

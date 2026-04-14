@@ -1,5 +1,6 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -41,7 +42,7 @@ export async function PATCH(req: Request, { params }: Context) {
     description: string
   }>
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   // Verify board belongs to workspace
   const { data: board } = await supabase
@@ -98,7 +99,7 @@ export async function DELETE(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   // Verify board belongs to workspace
   const { data: board } = await supabase
