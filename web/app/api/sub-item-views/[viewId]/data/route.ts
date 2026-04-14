@@ -23,6 +23,8 @@ type SubItemData = {
   name: string
   position: number
   source_item_id: string | null
+  source_item_sid:  number | null
+  source_board_sid: number | null
   values: Array<SubItemValue & { col_key: string }>
   children: SubItemData[]
 }
@@ -92,13 +94,46 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
     const item: SubItemData = {
       id: row.id, sid: row.sid, parent_id: row.parent_id,
       depth: row.depth, name: row.name, position: row.position,
-      source_item_id: row.source_item_id ?? null,
+      source_item_id:  row.source_item_id ?? null,
+      source_item_sid:  null,
+      source_board_sid: null,
       values: (row.sub_item_values ?? []).map((v: SubItemValue) => ({ ...v, col_key: colKeyMap[v.column_id] ?? '' })),
       children: [],
     }
     if (row.depth === 0) { l1Map[row.id] = item; l1.push(item) }
     else if (row.depth === 1 && row.parent_id && l1Map[row.parent_id]) {
       l1Map[row.parent_id].children.push(item)
+    }
+  }
+
+  // Resolve source item SIDs for navigation links
+  const sourceIds = [...new Set(rows.map(r => r.source_item_id).filter(Boolean))] as string[]
+  if (sourceIds.length > 0) {
+    const { data: sourceItems } = await supabase
+      .from('items')
+      .select('id, sid, board_id')
+      .in('id', sourceIds)
+
+    if (sourceItems?.length) {
+      const boardIds = [...new Set(sourceItems.map(i => i.board_id))]
+      const { data: sourceBoards } = await supabase
+        .from('boards')
+        .select('id, sid')
+        .in('id', boardIds)
+
+      const boardSidMap = Object.fromEntries((sourceBoards ?? []).map(b => [b.id, b.sid]))
+      const srcMap = Object.fromEntries(sourceItems.map(i => [i.id, { item_sid: i.sid, board_sid: boardSidMap[i.board_id] ?? null }]))
+
+      const patchSids = (items: SubItemData[]) => {
+        for (const item of items) {
+          if (item.source_item_id && srcMap[item.source_item_id]) {
+            item.source_item_sid  = srcMap[item.source_item_id].item_sid
+            item.source_board_sid = srcMap[item.source_item_id].board_sid
+          }
+          if (item.children.length) patchSids(item.children)
+        }
+      }
+      patchSids(l1)
     }
   }
 

@@ -34,6 +34,8 @@ type SubItemValue = {
 type SubItemData = {
   id: string; sid: number; parent_id: string | null; depth: number
   name: string; position: number; source_item_id: string | null
+  source_item_sid:  number | null
+  source_board_sid: number | null
   values: SubItemValue[]
   children?: SubItemData[]
 }
@@ -756,12 +758,24 @@ function NativeRow({
 
       {/* Actions */}
       <div className="w-7 flex-none flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {/* Open detail */}
-        <button onClick={onOpenDetail} title="Abrir detalle" className="text-gray-400 hover:text-indigo-600 transition-colors">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
-            <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        {/* Open detail / navigate to source */}
+        {row.source_board_sid && row.source_item_sid ? (
+          <a
+            href={`/app/b/${row.source_board_sid}/${row.source_item_sid}`}
+            title="Ver en catálogo"
+            className="text-gray-400 hover:text-indigo-600 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </a>
+        ) : (
+          <button onClick={onOpenDetail} title="Abrir detalle" className="text-gray-400 hover:text-indigo-600 transition-colors">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
         {depth === 0 && row.source_item_id && onImportChildren && (
           <button onClick={onImportChildren} title="Jalar sub-items del catálogo" className="text-gray-400 hover:text-blue-500 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
