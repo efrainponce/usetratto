@@ -398,6 +398,13 @@ function NativeRenderer({
 
     const vals: Record<string, number | null> = {}
     for (const v of row.values) vals[v.col_key] = v.value_number
+
+    // Include rollup values so formulas can reference them (e.g. cantidad - sum_l2_cantidad)
+    for (const rc of columns.filter(c => c.kind === 'rollup')) {
+      const cfg = rc.settings.rollup_config as import('../lib/rollup-engine').RollupConfig | undefined
+      if (cfg) vals[rc.col_key] = computeRollup(cfg, row)
+    }
+
     const a = vals[s.col_a], b = vals[s.col_b]
     if (a == null || b == null) return null
     switch (s.formula) {
@@ -407,7 +414,7 @@ function NativeRenderer({
       case 'percent':  return (a * b) / 100
       default:         return null
     }
-  }, [])
+  }, [columns])
 
   if (loading) return <LoadingState />
 

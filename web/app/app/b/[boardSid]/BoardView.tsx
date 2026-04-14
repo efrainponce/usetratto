@@ -956,7 +956,14 @@ function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDe
     }
   }
 
-  // Post-process formula columns — compute values from other cells
+  // Post-process rollup columns first (so formulas can reference them)
+  for (const col of cols) {
+    if (col.kind === 'rollup') {
+      cells[col.key] = (item as typeof item & { sub_items_rollup?: Record<string, number | null> }).sub_items_rollup?.[col.key] ?? null
+    }
+  }
+
+  // Post-process formula columns — compute values from other cells (rollups already in cells)
   for (const col of cols) {
     if (col.kind === 'formula' && col.settings.formula_config) {
       const result = computeFormula(
@@ -964,13 +971,6 @@ function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDe
         cells as Record<string, unknown>
       )
       cells[col.key] = result
-    }
-  }
-
-  // Post-process rollup columns — read pre-computed values from item
-  for (const col of cols) {
-    if (col.kind === 'rollup') {
-      cells[col.key] = (item as typeof item & { sub_items_rollup?: Record<string, number | null> }).sub_items_rollup?.[col.key] ?? null
     }
   }
 
