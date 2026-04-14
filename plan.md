@@ -914,16 +914,16 @@ Tab "Fórmula" (visible solo si kind='formula'):
 ```
 
 ### Tareas
-- [ ] **13.1** `lib/formula-engine.ts` — motor puro con todos los tipos
-- [ ] **13.2** Extender `kind='formula'` en `board_columns` (actualmente solo en sub_item_columns) — migration si necesario, ColumnCell dispatcher
-- [ ] **13.3** ColumnSettingsPanel: tab "Fórmula" con selector de tipo + columnas de referencia
-- [ ] **13.4** GenericDataTable: evaluar fórmulas en columnas de board_columns kind='formula'
+- [x] **13.1** `lib/formula-engine.ts` — motor puro con todos los tipos
+- [x] **13.2** Extender `kind='formula'` en `board_columns` (actualmente solo en sub_item_columns) — migration si necesario, ColumnCell dispatcher
+- [x] **13.3** ColumnSettingsPanel: tab "Fórmula" con selector de tipo + columnas de referencia
+- [x] **13.4** GenericDataTable: evaluar fórmulas en columnas de board_columns kind='formula'
 
 ### Verificación
-- [ ] `Precio unitario` × `Cantidad` → columna Total computable en sub-items
-- [ ] Misma fórmula funciona en columnas del board principal (items)
+- [x] `Precio unitario` × `Cantidad` → columna Total computable en sub-items
+- [x] Misma fórmula funciona en columnas del board principal (items)
 - [ ] `date_diff(deadline, hoy)` → "días restantes" en columna de oportunidades
-- [ ] Cambiar una columna fuente → fórmula re-evalúa sin refresh
+- [x] Cambiar una columna fuente → fórmula re-evalúa sin refresh
 
 ---
 
@@ -1087,6 +1087,35 @@ Enforcement:
 - [ ] Item sin institución de contacto → no puede avanzar a Costeo → mensaje en canal con checks fallidos
 - [ ] Sub-item en stage Listo → vendor intenta editar → bloqueado; costeador sí puede
 - [ ] Firma requerida → sin firma → no avanza → con firma → avanza
+
+---
+
+### Reflexión arquitectónica: Column-level gate conditions (pendiente de diseño)
+
+**Idea del usuario:** en lugar de definir las condiciones en la etapa, definirlas en la columna.
+Cada columna puede tener una `gate_condition` que se evalúa antes de avanzar a cierta etapa.
+El gate del stage agrega automáticamente todas las columnas que tengan una condición activa.
+
+**Ventaja:** más modular. El vendedor ve en cada columna si está "bloqueando" el avance.
+**Ejemplo concreto:** columna `color_disponible` tiene condición `matches_subitem_colors = true`.
+Si los sub-items tienen colores que no existen en el catálogo → esa columna bloquea el paso a Costeo.
+
+**Alternativa a evaluar (vs diseño actual):**
+- Diseño actual (`board_stages.entry_conditions`): condiciones definidas en la etapa destino.
+- Propuesta nueva (`board_columns.settings.gate_condition`): condición vive en la columna; la etapa solo define qué condiciones activar (o todas).
+
+**Posible estructura de columna:**
+```json
+// board_columns.settings.gate_condition
+{
+  "applies_to_stage_id": "uuid-costeo",
+  "label": "Colores deben estar disponibles en catálogo",
+  "type": "if",
+  "formula_config": { "type": "if", "condition": { "col": "color_match", "operator": "=", "value": true } }
+}
+```
+
+**Decisión pendiente:** ¿conditions en la etapa (actual) o en la columna (propuesta)? Evaluar en Fase 15 antes de implementar.
 
 ---
 

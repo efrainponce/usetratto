@@ -2,6 +2,11 @@
 
 ## 2026-04-14
 
+**~sesión 23**
+- Fase 13 completa: formula engine, FormulaCell, ColumnSettingsPanel tab, BoardView pre-compute, resize handles en todas las columnas, width persistence localStorage, revalidateTag fix, realtime para board_columns/stages
+- Fix: formula column picker vacío — fetch interno en ColumnSettingsPanel fallaba silenciosamente por RLS; reemplazado con `allColumns` prop desde BoardView (ya en estado, cero fetch extra)
+- Idea documentada en plan.md Fase 15: column-level gate conditions (condición vive en la columna, el gate la agrega automáticamente) vs el diseño actual (condiciones en la etapa); decisión pendiente antes de implementar
+
 **~sesión 22**
 - Fix: L2 sub-items no renderizaban — query en `sub-item-views/[viewId]/data` ordenaba solo por `position`; L2 con position < L1 padre llegaba primero al tree-builder y se descartaba; fix: `.order('depth').order('position')`
 - Fix: columnas ocultas en vistas volvían al refresh — `getBoardViews` usaba `unstable_cache(60s)`; al persistir en DB el estado tardaba hasta 1 min en reflejarse; fix: convertido a función directa sin cache
