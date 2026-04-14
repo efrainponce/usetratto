@@ -67,20 +67,14 @@ export async function GET(req: Request, { params }: Context) {
 async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: string, config: Record<string, unknown>, viewId: string) {
   const sourceBoardId = config.source_board_id as string | undefined
 
-  let subItemsQuery = supabase
+  // Fetch all sub_items for this item — filter by view in TypeScript to avoid
+  // fragile PostgREST nested-AND-within-OR syntax.
+  const subItemsQuery = supabase
     .from('sub_items')
     .select('id, sid, parent_id, depth, name, position, source_item_id, view_id, sub_item_values(column_id, value_text, value_number, value_date, value_json)')
     .eq('item_id', itemId)
     .order('depth')
     .order('position')
-
-  // New items carry view_id; legacy items (view_id IS NULL) fall back to source_item_id check.
-  // Combine with OR so both old and new items are shown correctly per view.
-  if (sourceBoardId) {
-    subItemsQuery = subItemsQuery.or(`view_id.eq.${viewId},and(view_id.is.null,source_item_id.not.is.null)`)
-  } else {
-    subItemsQuery = subItemsQuery.or(`view_id.eq.${viewId},and(view_id.is.null,source_item_id.is.null)`)
-  }
 
   const [colRes, itemRes] = await Promise.all([
     supabase
@@ -97,7 +91,17 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
 
   const columns = colRes.data ?? []
   const colKeyMap = Object.fromEntries(columns.map(c => [c.id, c.col_key]))
-  const rows = itemRes.data ?? []
+
+  // Isolate by view:
+  //  - new items: view_id === viewId
+  //  - legacy items (view_id null): fall back to source_item_id logic per view type
+  const allRows = itemRes.data ?? []
+  const rows = allRows.filter(r => {
+    if (r.view_id === viewId) return true          // assigned to this view
+    if (r.view_id !== null)  return false          // assigned to a different view
+    // legacy (view_id null) — use source_item_id as signal
+    return sourceBoardId ? r.source_item_id !== null : r.source_item_id === null
+  })
 
   // Build L1 + children tree in one pass
   const l1Map: Record<string, SubItemData> = {}

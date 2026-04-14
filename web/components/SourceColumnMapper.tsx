@@ -212,8 +212,12 @@ export function SourceColumnMapper({
 
       // Save checked source columns
       for (const checked of checkedCols) {
-        // Skip if already mapped (check ALL columns, not just visible)
-        if (allExisting.some(c => c.source_col_key === checked.column.col_key)) {
+        // If already mapped: return existing col so UI state stays in sync, then skip POST
+        const alreadyMapped = allExisting.find(c => c.source_col_key === checked.column.col_key)
+        if (alreadyMapped) {
+          if (!savedColumns.some(c => c.id === alreadyMapped.id)) {
+            savedColumns.push(alreadyMapped)
+          }
           continue
         }
 
