@@ -26,6 +26,7 @@ type SelectOption = {
   value: string
   label: string
   color?: string
+  is_closed?: boolean
 }
 
 type ColPermission = {
@@ -216,6 +217,14 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
 
   function handleRemoveOption(value: string) {
     const newOpts = options.filter(o => o.value !== value)
+    setOptions(newOpts)
+    persistOptions(newOpts)
+  }
+
+  function handleToggleClosed(value: string) {
+    const newOpts = options.map(o =>
+      o.value === value ? { ...o, is_closed: !o.is_closed } : o
+    )
     setOptions(newOpts)
     persistOptions(newOpts)
   }
@@ -499,6 +508,22 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
                         style={{ backgroundColor: opt.color ?? '#6b7280' }}
                       />
                       <span className="text-sm text-gray-700 flex-1 truncate">{opt.label}</span>
+                      {/* Estado terminal toggle */}
+                      <button
+                        onClick={() => handleToggleClosed(opt.value)}
+                        disabled={savingOpts}
+                        title={opt.is_closed ? 'Estado terminal (click para quitar)' : 'Marcar como estado terminal'}
+                        className={`shrink-0 transition-colors disabled:opacity-50 ${
+                          opt.is_closed
+                            ? 'text-purple-500 hover:text-gray-400'
+                            : 'opacity-0 group-hover:opacity-100 text-gray-300 hover:text-purple-400'
+                        }`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+                          <rect x="2" y="5" width="8" height="6" rx="1" strokeWidth="1.4"/>
+                          <path d="M4 5V3.5a2 2 0 0 1 4 0V5" strokeWidth="1.4" strokeLinecap="round"/>
+                        </svg>
+                      </button>
                       <button
                         onClick={() => handleRemoveOption(opt.value)}
                         disabled={savingOpts}

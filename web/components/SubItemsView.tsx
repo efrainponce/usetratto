@@ -391,14 +391,15 @@ function NativeRenderer({
   const showL2 = subitemView !== 'L1_only'
   const hideL1 = subitemView === 'L2_only'
 
-  // locked check helpers
-  const statusColKey  = boardSettings?.status_sub_col_key as string | undefined
-  const closedVals    = boardSettings?.closed_sub_values  as string[] | undefined
-  const statusCol     = statusColKey ? columns.find(c => c.col_key === statusColKey) : undefined
+  // locked check — uses option.is_closed, rename-safe
+  const statusColKey = boardSettings?.status_sub_col_key as string | undefined
+  const statusCol    = statusColKey ? columns.find(c => c.col_key === statusColKey) : undefined
   const isLocked = (row: SubItemData) => {
-    if (!statusCol || !closedVals?.length) return false
+    if (!statusCol) return false
     const v = row.values.find(v => v.column_id === statusCol.id)
-    return closedVals.includes(v?.value_text ?? '')
+    if (!v?.value_text) return false
+    const opts = (statusCol.settings.options as { value: string; is_closed?: boolean }[] | undefined) ?? []
+    return opts.find(o => o.value === v.value_text)?.is_closed === true
   }
 
   return (

@@ -63,20 +63,18 @@ export async function POST(_req: Request, { params }: Context) {
 
   const boardSettings = board.settings as Record<string, unknown> || {}
   const statusSubColKey = boardSettings.status_sub_col_key as string | null
-  const closedSubValues = boardSettings.closed_sub_values as string[] | null
 
-  // If both status_sub_col_key and closed_sub_values exist, check if locked
-  if (statusSubColKey && closedSubValues && closedSubValues.length > 0) {
-    // Find the sub_item_column with col_key = status_sub_col_key
+  // Status check: verify if sub-item is locked (is_closed)
+  if (statusSubColKey) {
+    // Find the status sub_item_column
     const { data: statusCol } = await supabase
       .from('sub_item_columns')
-      .select('id')
+      .select('id, settings')
       .eq('col_key', statusSubColKey)
       .eq('board_id', parentItem.board_id)
-      .single()
+      .maybeSingle()
 
     if (statusCol) {
-      // Load sub_item_values for this column
       const { data: statusValue } = await supabase
         .from('sub_item_values')
         .select('value_text')
@@ -84,11 +82,16 @@ export async function POST(_req: Request, { params }: Context) {
         .eq('column_id', statusCol.id)
         .maybeSingle()
 
-      if (statusValue?.value_text && closedSubValues.includes(statusValue.value_text)) {
-        return NextResponse.json(
-          { error: 'Sub-item terminado — no se puede refrescar', locked: true },
-          { status: 409 }
-        )
+      if (statusValue?.value_text) {
+        const opts = (statusCol.settings as Record<string, unknown>)?.options as
+          { value: string; is_closed?: boolean }[] | undefined ?? []
+        const selectedOpt = opts.find(o => o.value === statusValue.value_text)
+        if (selectedOpt?.is_closed === true) {
+          return NextResponse.json(
+            { error: 'Sub-item terminado — no se puede refrescar', locked: true },
+            { status: 409 }
+          )
+        }
       }
     }
   }
