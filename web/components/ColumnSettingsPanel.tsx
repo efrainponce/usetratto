@@ -64,6 +64,7 @@ const KIND_OPTIONS = [
   { value: 'button',      label: 'Botón' },
   { value: 'signature',   label: 'Firma' },
   { value: 'formula',     label: 'Fórmula' },
+  { value: 'rollup',      label: 'Rollup (agrega sub-items)' },
 ]
 
 const NUMBER_FORMATS = [
@@ -147,14 +148,33 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   // Derive picker columns from prop (exclude self)
   const boardCols = allColumns.filter(c => c.col_key !== column.col_key)
 
+  // ── Rollup config state ────────────────────────────────────────────────
+  type SubItemCol = { id: string; col_key: string; name: string; kind: string }
+  const existingRollup = column.settings?.rollup_config as {
+    source_level?: string; source_col_key?: string; aggregate?: string
+  } | undefined
+
+  const [rollupSourceLevel,  setRollupSourceLevel]  = useState<'children' | 'descendants'>(
+    (existingRollup?.source_level as 'children' | 'descendants') ?? 'children'
+  )
+  const [rollupSourceColKey, setRollupSourceColKey] = useState<string>(
+    existingRollup?.source_col_key ?? ''
+  )
+  const [rollupAggregate,    setRollupAggregate]    = useState<string>(
+    existingRollup?.aggregate ?? 'sum'
+  )
+  const [subItemCols,        setSubItemCols]        = useState<SubItemCol[]>([])
+  const [savingRollup,       setSavingRollup]       = useState(false)
+
   // ── Active tab ────────────────────────────────────────────────────────────
   const isSelect    = kind === 'select' || kind === 'multiselect'
   const isNumber    = kind === 'number'
   const isRelation  = kind === 'relation'
   const isSignature = kind === 'signature'
   const isFormula   = kind === 'formula'
+  const isRollup    = kind === 'rollup'
 
-  type TabId = 'general' | 'opciones' | 'formula' | 'permisos'
+  type TabId = 'general' | 'opciones' | 'formula' | 'rollup' | 'permisos'
   const [tab, setTab] = useState<TabId>('general')
 
   // ── Load permissions + teams ──────────────────────────────────────────────
@@ -176,6 +196,14 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
       .then(r => (r.ok ? r.json() : []))
       .then((data: RemoteBoard[]) => setBoards(data))
   }, [isRelation])
+
+  // ── Load sub-item columns for rollup ─────────────────────────────────────
+  useEffect(() => {
+    if (!isRollup) return
+    fetch(`/api/boards/${boardId}/sub-item-columns`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: SubItemCol[]) => setSubItemCols(data.filter(c => c.kind === 'number' || c.kind === 'formula')))
+  }, [isRollup, boardId])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -306,6 +334,24 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
     }
   }
 
+  async function handleSaveRollup() {
+    if (!rollupSourceColKey) return
+    setSavingRollup(true)
+    try {
+      const rollup_config = {
+        source_level: rollupSourceLevel,
+        source_col_key: rollupSourceColKey,
+        aggregate: rollupAggregate,
+      }
+      const updated = await patchColumn({
+        settings: { ...column.settings, rollup_config },
+      })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingRollup(false)
+    }
+  }
+
   async function handleAddPermission() {
     if (!newPermId) return
     const isTeam = newPermId.startsWith('t:')
@@ -349,6 +395,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
     { id: 'general',  label: 'General' },
     ...(isSelect  ? [{ id: 'opciones' as TabId, label: 'Opciones' }] : []),
     ...(isFormula ? [{ id: 'formula'  as TabId, label: 'Fórmula'  }] : []),
+    ...(isRollup  ? [{ id: 'rollup'   as TabId, label: 'Rollup'   }] : []),
     { id: 'permisos', label: 'Permisos' },
   ]
 
@@ -616,6 +663,74 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
                   Este tipo de fórmula se configurará en una próxima versión.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* ── Rollup ─────────────────────────────────────────────────── */}
+          {tab === 'rollup' && isRollup && (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-500">
+                Agrega valores de sub-items hacia arriba. Solo aplica a columnas en boards (L1 → Item).
+              </p>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Agregar desde</label>
+                <select
+                  value={rollupSourceLevel}
+                  onChange={e => setRollupSourceLevel(e.target.value as 'children' | 'descendants')}
+                  className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                >
+                  <option value="children">Sub-items L1 (directos)</option>
+                  <option value="descendants">Todos los niveles</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Columna fuente</label>
+                <select
+                  value={rollupSourceColKey}
+                  onChange={e => setRollupSourceColKey(e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                >
+                  <option value="">— elegir columna de sub-items —</option>
+                  {subItemCols.map(c => (
+                    <option key={c.col_key} value={c.col_key}>{c.name}</option>
+                  ))}
+                </select>
+                {subItemCols.length === 0 && (
+                  <p className="text-[11px] text-gray-400 mt-1">No hay columnas numéricas en sub-items aún.</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Función</label>
+                <select
+                  value={rollupAggregate}
+                  onChange={e => setRollupAggregate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                >
+                  <option value="sum">Σ Suma</option>
+                  <option value="avg">∅ Promedio</option>
+                  <option value="count">N Contar filas</option>
+                  <option value="count_not_empty">N+ Contar no vacíos</option>
+                  <option value="min">↓ Mínimo</option>
+                  <option value="max">↑ Máximo</option>
+                </select>
+              </div>
+
+              {rollupSourceColKey && (
+                <div className="rounded-md bg-teal-50 border border-teal-100 px-3 py-2 text-xs text-teal-700">
+                  {rollupAggregate === 'sum' ? 'Suma' : rollupAggregate === 'avg' ? 'Promedio' : rollupAggregate === 'count' ? 'Conteo' : rollupAggregate === 'count_not_empty' ? 'Conteo no vacíos' : rollupAggregate === 'min' ? 'Mínimo' : 'Máximo'} de &quot;{subItemCols.find(c => c.col_key === rollupSourceColKey)?.name ?? rollupSourceColKey}&quot; de {rollupSourceLevel === 'children' ? 'sub-items L1' : 'todos los niveles'}
+                </div>
+              )}
+
+              <button
+                onClick={handleSaveRollup}
+                disabled={savingRollup || !rollupSourceColKey}
+                className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+              >
+                {savingRollup ? 'Guardando…' : 'Guardar rollup'}
+              </button>
             </div>
           )}
 
