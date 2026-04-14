@@ -70,10 +70,14 @@ export default function BoardsSettingsPage() {
   const [newType, setNewType] = useState<'pipeline' | 'table'>('pipeline')
   const [isCreating, setIsCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
-  // Fetch boards on mount
+  // Fetch boards + user role on mount
   useEffect(() => {
     fetchBoards()
+    fetch('/api/users/me').then(r => r.ok ? r.json() : {}).then((d: { role?: string }) => {
+      setIsAdmin(d.role === 'admin' || d.role === 'superadmin')
+    })
   }, [])
 
   async function fetchBoards() {
@@ -257,7 +261,7 @@ export default function BoardsSettingsPage() {
                   Configurar →
                 </Link>
 
-                {!board.system_key && (
+                {!board.system_key && isAdmin && (
                   <button
                     onClick={() => handleDeleteBoard(board.id)}
                     disabled={deletingId === board.id}

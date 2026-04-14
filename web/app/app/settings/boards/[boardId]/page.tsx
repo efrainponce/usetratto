@@ -96,6 +96,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   type SubItemView = { id: string; sid: number; name: string; position: number; type: SubItemViewType; config: Record<string, unknown> }
 
   const [subItemViews,          setSubItemViews]          = useState<SubItemView[]>([])
+  const [isAdmin,               setIsAdmin]               = useState(false)
   const [viewFormOpen,          setViewFormOpen]          = useState(false)
   const [viewFormName,          setViewFormName]          = useState('')
   const [viewFormType,          setViewFormType]          = useState<SubItemViewType>('native')
@@ -179,6 +180,9 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
     }
 
     fetchData()
+    fetch('/api/users/me').then(r => r.ok ? r.json() : {}).then((d: { role?: string }) => {
+      setIsAdmin(d.role === 'admin' || d.role === 'superadmin')
+    })
   }, [boardId])
 
   // ─── Stage handlers ──────────────────────────────────────────────
@@ -731,7 +735,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${typeCls}`}>{typeLabel}</span>
-                      {subItemViews.length > 1 && (
+                      {subItemViews.length > 1 && isAdmin && (
                         <button
                           onClick={() => handleDeleteSubItemView(view.id)}
                           disabled={isSaving}

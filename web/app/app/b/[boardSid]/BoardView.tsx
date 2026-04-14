@@ -70,6 +70,7 @@ type Props = {
   initialSubItemViews:   SubItemView[]
   boardSettings:         Record<string, unknown>
   subitemView:           'L1_only' | 'L1_L2' | 'L2_only'
+  userRole:              string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -78,9 +79,10 @@ export function BoardView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
   initialSubItemColumns, initialSourceBoardId, initialViews, initialSubItemViews,
-  boardSettings, subitemView,
+  boardSettings, subitemView, userRole,
 }: Props) {
   const router = useRouter()
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin'
 
   // All data pre-fetched by server — no loading state, no useEffect
   const [rawCols,  setRawCols]  = useState<BoardColumn[]>(initialColumns)
@@ -653,8 +655,8 @@ export function BoardView({
               title="Quién puede ver esta vista"
             >⋯</span>
 
-            {/* Delete button — not on default */}
-            {!view.is_default && (
+            {/* Delete button — not on default, admin only */}
+            {!view.is_default && isAdmin && (
               <span
                 role="button"
                 onClick={e => { e.stopPropagation(); handleDeleteView(view.id) }}
@@ -837,11 +839,11 @@ export function BoardView({
                 columnsVersion={columnsVersion}
                 onCountChange={(count) => handleSubItemCountChange(rowId, count)}
                 onAddView={() => setShowViewWizard(true)}
-                onDeleteView={async (viewId) => {
+                onDeleteView={isAdmin ? async (viewId) => {
                   if (!confirm('¿Eliminar esta vista?')) return
                   const res = await fetch(`/api/boards/${boardId}/sub-item-views/${viewId}`, { method: 'DELETE' })
                   if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
-                }}
+                } : undefined}
                 onConfigureColumns={() => setShowMapper(true)}
                 boardSettings={boardSettings}
                 subitemView={subitemView}

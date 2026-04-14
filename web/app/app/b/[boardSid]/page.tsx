@@ -43,6 +43,7 @@ export default async function BoardPage({ params }: Props) {
       initialSubItemViews={subItemViews}
       boardSettings={boardSettings}
       subitemView={subitemView}
+      userRole={user.role}
     />
   )
 }
