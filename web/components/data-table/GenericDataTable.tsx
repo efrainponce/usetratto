@@ -53,6 +53,8 @@ export function GenericDataTable({
   const [selection,     setSelection]     = useState<RowSelectionState>({})
   const [editingCell,   setEditingCell]   = useState<EditingCell>(null)
   const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>({})
+  const [selectedCell,  setSelectedCell]  = useState<{ rowId: string; colKey: string } | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const handleCommit = useCallback((rowId: string, colKey: string, value: CellValue) => {
     onCellChange(rowId, colKey, value)
@@ -66,16 +68,71 @@ export function GenericDataTable({
     let nextCol = colIdx
     if (dir === 'down' || dir === 'enter')  nextRow = Math.min(rowIdx + 1, rows.length - 1)
     else if (dir === 'up')                  nextRow = Math.max(rowIdx - 1, 0)
+    else if (dir === 'right')               nextCol = Math.min(colIdx + 1, columns.length - 1)
+    else if (dir === 'left')                nextCol = Math.max(colIdx - 1, 0)
     else if (dir === 'tab')                 nextCol = Math.min(colIdx + 1, columns.length - 1)
     else if (dir === 'shifttab')            nextCol = Math.max(colIdx - 1, 0)
-    const targetRow = rows[nextRow]
-    const targetCol = columns[nextCol]
-    if (targetRow && targetCol && targetCol.editable !== false) {
-      setEditingCell({ rowId: targetRow.id, colKey: targetCol.key })
-    } else {
-      setEditingCell(null)
+    const targetRow = rows[Math.max(0, Math.min(nextRow, rows.length - 1))]
+    const targetCol = columns[Math.max(0, Math.min(nextCol, columns.length - 1))]
+    if (targetRow && targetCol) {
+      setSelectedCell({ rowId: targetRow.id, colKey: targetCol.key })
     }
+    setEditingCell(null)
+    // Return focus to the table container so keyboard events keep working
+    setTimeout(() => containerRef.current?.focus(), 0)
   }, [columns, rows])
+
+  const handleContainerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    // While editing, let the cell handle keys
+    if (editingCell) return
+    if (!selectedCell) return
+
+    const { rowId, colKey } = selectedCell
+    const rowIdx = rows.findIndex(r => r.id === rowId)
+    const colIdx = columns.findIndex(c => c.key === colKey)
+
+    const moveTo = (r: number, c: number) => {
+      const tr = rows[Math.max(0, Math.min(r, rows.length - 1))]
+      const tc = columns[Math.max(0, Math.min(c, columns.length - 1))]
+      if (tr && tc) setSelectedCell({ rowId: tr.id, colKey: tc.key })
+    }
+
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault(); moveTo(rowIdx - 1, colIdx); break
+      case 'ArrowDown':
+        e.preventDefault(); moveTo(rowIdx + 1, colIdx); break
+      case 'ArrowLeft':
+        e.preventDefault(); moveTo(rowIdx, colIdx - 1); break
+      case 'ArrowRight':
+        e.preventDefault(); moveTo(rowIdx, colIdx + 1); break
+      case 'Tab':
+        e.preventDefault()
+        moveTo(rowIdx, e.shiftKey ? colIdx - 1 : colIdx + 1)
+        break
+      case 'Enter':
+      case 'F2': {
+        e.preventDefault()
+        const col = columns[colIdx]
+        if (col && col.editable !== false) {
+          setEditingCell({ rowId, colKey })
+        }
+        break
+      }
+      case 'Escape':
+        e.preventDefault()
+        setSelectedCell(null)
+        break
+      default:
+        // Printable character starts editing
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const col = columns[colIdx]
+          if (col && col.editable !== false) {
+            setEditingCell({ rowId, colKey })
+          }
+        }
+    }
+  }, [editingCell, selectedCell, rows, columns])
 
   const tanstackCols = useMemo(() => {
     const helper = createColumnHelper<Row>()
@@ -125,7 +182,10 @@ export function GenericDataTable({
             value={row.original.cells[col.key] ?? null}
             isEditing={editingCell?.rowId === row.original.id && editingCell?.colKey === col.key}
             rowId={row.original.id}
-            onStartEdit={() => setEditingCell({ rowId: row.original.id, colKey: col.key })}
+            onStartEdit={() => {
+              setSelectedCell({ rowId: row.original.id, colKey: col.key })
+              setEditingCell({ rowId: row.original.id, colKey: col.key })
+            }}
             onCommit={value => handleCommit(row.original.id, col.key, value)}
             onCancel={() => setEditingCell(null)}
             onNavigate={dir => handleNavigate(row.original.id, col.key, dir)}
@@ -228,7 +288,16 @@ export function GenericDataTable({
       )}
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-auto outline-none"
+        tabIndex={0}
+        onKeyDown={handleContainerKeyDown}
+        onClick={e => {
+          // Focus container when clicking anywhere in the table
+          containerRef.current?.focus()
+        }}
+      >
         <table
           className="border-collapse"
           style={{ width: Math.max(totalWidth, 1), tableLayout: 'fixed' }}
@@ -329,18 +398,30 @@ export function GenericDataTable({
                 >
                   {row.getVisibleCells().map(cell => {
                     const isSticky = cell.column.id in stickyLefts
+                    const isThisSelected = !cell.column.id.startsWith('__') &&
+                      selectedCell?.rowId === row.original.id &&
+                      selectedCell?.colKey === cell.column.id
                     return (
                       <td
                         key={cell.id}
-                        className="border-r border-gray-100 p-0"
+                        className="border-r border-gray-100 p-0 cursor-default"
+                        onClick={() => {
+                          if (!cell.column.id.startsWith('__')) {
+                            setSelectedCell({ rowId: row.original.id, colKey: cell.column.id })
+                            containerRef.current?.focus()
+                          }
+                        }}
                         style={{
                           width:    cell.column.getSize(),
                           height:   ROW_HEIGHT,
                           position: isSticky ? 'sticky' : undefined,
                           left:     isSticky ? stickyLefts[cell.column.id] : undefined,
-                          background: isSticky ? 'white' : undefined,
-                          boxShadow: cell.column.id === lastStickyId(columns)
-                            ? '2px 0 4px rgba(0,0,0,0.04)' : undefined,
+                          background: isSticky
+                            ? (isThisSelected ? '#eef2ff' : 'white')
+                            : (isThisSelected ? '#eef2ff' : undefined),
+                          boxShadow: isThisSelected
+                            ? 'inset 0 0 0 2px #6366f1'
+                            : (cell.column.id === lastStickyId(columns) ? '2px 0 4px rgba(0,0,0,0.04)' : undefined),
                           zIndex: isSticky ? 10 : undefined,
                         }}
                       >
