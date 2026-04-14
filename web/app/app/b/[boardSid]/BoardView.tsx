@@ -67,6 +67,8 @@ type Props = {
   initialSourceBoardId:  string | null
   initialViews:          BoardView[]
   initialSubItemViews:   SubItemView[]
+  boardSettings:         Record<string, unknown>
+  subitemView:           'L1_only' | 'L1_L2' | 'L2_only'
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -75,6 +77,7 @@ export function BoardView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
   initialSubItemColumns, initialSourceBoardId, initialViews, initialSubItemViews,
+  boardSettings, subitemView,
 }: Props) {
   const router = useRouter()
 
@@ -804,6 +807,8 @@ export function BoardView({
                 onCountChange={(count) => handleSubItemCountChange(rowId, count)}
                 onAddView={() => setShowViewWizard(true)}
                 onConfigureColumns={() => setShowMapper(true)}
+                boardSettings={boardSettings}
+                subitemView={subitemView}
               />
             </div>
           )}

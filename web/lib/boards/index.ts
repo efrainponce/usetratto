@@ -73,7 +73,7 @@ export const resolveBoardBySid = unstable_cache(
     const supabase = createServiceClient()
     const { data, error } = await supabase
       .from('boards')
-      .select('id, sid, slug, name, type, system_key, sub_items_source_board_id, workspace_id')
+      .select('id, sid, slug, name, type, system_key, sub_items_source_board_id, workspace_id, settings')
       .eq('workspace_id', workspaceId)
       .eq('sid', sid)
       .maybeSingle()

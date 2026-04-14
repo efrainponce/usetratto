@@ -61,9 +61,11 @@ type Props = {
   onConfigureColumns?: () => void
   compact?:            boolean
   columnsVersion?:     number
+  boardSettings?:      Record<string, unknown>
+  subitemView?:        'L1_only' | 'L1_L2' | 'L2_only'
 }
 
-export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onConfigureColumns, compact, columnsVersion }: Props) {
+export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onConfigureColumns, compact, columnsVersion, boardSettings, subitemView }: Props) {
   const [activeViewId, setActiveViewId] = useState<string>(views[0]?.id ?? '')
   const activeView = views.find(v => v.id === activeViewId) ?? views[0]
 
@@ -138,6 +140,8 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
           config={activeView.config}
           onCountChange={onCountChange}
           compact={compact}
+          boardSettings={boardSettings}
+          subitemView={subitemView}
         />
       )}
       {activeView.type === 'board_items' && (
@@ -156,7 +160,7 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
 // Without source_board_id → manual add form.
 
 function NativeRenderer({
-  itemId, boardId, viewId, config, onCountChange, compact,
+  itemId, boardId, viewId, config, onCountChange, compact, boardSettings, subitemView,
 }: {
   itemId:          string
   boardId:         string
@@ -164,6 +168,8 @@ function NativeRenderer({
   config:          Record<string, unknown>
   onCountChange?:  (count: number) => void
   compact?:        boolean
+  boardSettings?:  Record<string, unknown>
+  subitemView?:    'L1_only' | 'L1_L2' | 'L2_only'
 }) {
   const sourceBoardId = (config.source_board_id as string) ?? null
 
@@ -198,6 +204,14 @@ function NativeRenderer({
   }, [viewId, itemId])
 
   useEffect(() => { load() }, [load])
+
+  // ── Auto-expand L2_only ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (subitemView === 'L2_only') {
+      setExpandedL1(new Set(rows.map(r => r.id)))
+    }
+  }, [subitemView, rows])
 
   // ── Create L1 ──────────────────────────────────────────────────────────────
 
@@ -271,11 +285,57 @@ function NativeRenderer({
     }
   }, [load])
 
+  // ── Expand variants ────────────────────────────────────────────────────────
+
+  const expandVariants = useCallback(async (parentId: string) => {
+    const dims = boardSettings?.variant_dimensions as string[] | undefined
+    if (!dims || dims.length === 0) return
+
+    try {
+      const res = await fetch(`/api/sub-items/${parentId}/expand`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ column_ids: dims }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        console.error('[NativeRenderer] expand failed:', err.error ?? res.status)
+        alert(err.error ?? 'Error al explotar variantes')
+        return
+      }
+      const { created } = (await res.json()) as { created: SubItemData[]; skipped: number }
+      if (created.length === 0) { alert('No hay variantes nuevas para agregar'); return }
+      setRows(prev => prev.map(r =>
+        r.id === parentId
+          ? { ...r, children: [...(r.children ?? []), ...created] }
+          : r
+      ))
+      setExpandedL1(s => new Set([...s, parentId]))
+    } catch (e) {
+      console.error('[NativeRenderer] expandVariants error:', e)
+    }
+  }, [boardSettings])
+
   // ── Compute formula ────────────────────────────────────────────────────────
 
   const computeFormula = useCallback((col: SubItemColumn, row: SubItemData): number | null => {
     if (col.kind !== 'formula') return null
-    const s = col.settings as { formula: string; col_a: string; col_b: string }
+    const s = col.settings as {
+      formula: string
+      col_a: string
+      col_b: string
+      child_column?: string
+    }
+
+    // sum_children: sum a column across all L2 children
+    if (s.formula === 'sum_children' && s.child_column) {
+      const children = row.children ?? []
+      return children.reduce<number>((acc, child) => {
+        const val = child.values.find(v => v.col_key === s.child_column)
+        return acc + (val?.value_number ?? 0)
+      }, 0)
+    }
+
     const vals: Record<string, number | null> = {}
     for (const v of row.values) vals[v.col_key] = v.value_number
     const a = vals[s.col_a], b = vals[s.col_b]
@@ -293,6 +353,10 @@ function NativeRenderer({
 
   const displayCols = columns.filter(c => c.kind !== 'formula')
   const formulaCols = columns.filter(c => c.kind === 'formula')
+
+  // subitem_view filter
+  const showL2 = subitemView !== 'L1_only'
+  const hideL1 = subitemView === 'L2_only'
 
   return (
     <div className="flex flex-col h-full">
@@ -334,19 +398,22 @@ function NativeRenderer({
         )}
         {rows.map(row => (
           <Fragment key={row.id}>
-            <NativeRow
-              row={row} depth={0} isExpanded={expandedL1.has(row.id)}
-              displayCols={displayCols} formulaCols={formulaCols}
-              editTarget={editTarget}
-              onToggleExpand={() => setExpandedL1(s => { const n = new Set(s); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n })}
-              onStartEdit={f => setEditTarget({ id: row.id, field: f })}
-              onCommit={(f, v) => editField(row.id, f, v)}
-              onCancel={() => setEditTarget(null)}
-              onDelete={() => remove(row.id, 0, null)}
-              onAddChild={() => { setExpandedL1(s => new Set([...s, row.id])); setAddingL2For(row.id) }}
-              computeFormula={computeFormula}
-            />
-            {expandedL1.has(row.id) && (
+            {!hideL1 && (
+              <NativeRow
+                row={row} depth={0} isExpanded={expandedL1.has(row.id)}
+                displayCols={displayCols} formulaCols={formulaCols}
+                editTarget={editTarget}
+                onToggleExpand={() => setExpandedL1(s => { const n = new Set(s); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n })}
+                onStartEdit={f => setEditTarget({ id: row.id, field: f })}
+                onCommit={(f, v) => editField(row.id, f, v)}
+                onCancel={() => setEditTarget(null)}
+                onDelete={() => remove(row.id, 0, null)}
+                onAddChild={() => { setExpandedL1(s => new Set([...s, row.id])); setAddingL2For(row.id) }}
+                computeFormula={computeFormula}
+                onExpandVariants={boardSettings?.variant_dimensions ? () => expandVariants(row.id) : undefined}
+              />
+            )}
+            {showL2 && expandedL1.has(row.id) && (
               <>
                 {(row.children ?? []).map(child => (
                   <NativeRow
@@ -525,7 +592,7 @@ function BoardSubItemsRenderer({ itemId, viewId, viewName, compact }: { itemId: 
 
 function NativeRow({
   row, depth, isExpanded, displayCols, formulaCols, editTarget,
-  onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild, computeFormula,
+  onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild, computeFormula, onExpandVariants,
 }: {
   row: SubItemData; depth: number; isExpanded: boolean
   displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]
@@ -537,6 +604,7 @@ function NativeRow({
   onDelete: () => void
   onAddChild: () => void
   computeFormula: (col: SubItemColumn, row: SubItemData) => number | null
+  onExpandVariants?: () => void
 }) {
   const isEditing = (f: string) => editTarget?.id === row.id && editTarget.field === f
   const indent    = depth === 1 ? 'pl-5' : ''
@@ -600,6 +668,15 @@ function NativeRow({
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
+          </button>
+        )}
+        {depth === 0 && onExpandVariants && (
+          <button
+            onClick={onExpandVariants}
+            title="Explotar variantes"
+            className="text-gray-400 hover:text-yellow-500 transition-colors text-[10px]"
+          >
+            ⚡
           </button>
         )}
         <button onClick={onDelete} title="Eliminar" className="text-gray-400 hover:text-red-500 transition-colors">

@@ -70,6 +70,7 @@ export function InlineSubItems({
   const [editTarget, setEditTarget] = useState<EditTarget>(null)
   const [showPicker, setShowPicker] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [addingL2For, setAddingL2For] = useState<string | null>(null)
   const [addName, setAddName] = useState('')
   const addInputRef = useRef<HTMLInputElement>(null)
 
@@ -134,9 +135,19 @@ export function InlineSubItems({
     if (col.kind !== 'formula') return null
 
     const s = col.settings as {
-      formula: 'multiply' | 'add' | 'subtract' | 'percent'
+      formula: 'multiply' | 'add' | 'subtract' | 'percent' | 'sum_children'
       col_a: string
       col_b: string
+      child_column?: string
+    }
+
+    // sum_children: sum a column across all L2 children
+    if (s.formula === 'sum_children' && s.child_column) {
+      const children = row.children ?? []
+      return children.reduce<number>((acc, child) => {
+        const val = child.values.find(v => v.col_key === s.child_column)
+        return acc + (val?.value_number ?? 0)
+      }, 0)
     }
 
     const valsByKey: Record<string, number | null> = {}
@@ -149,16 +160,11 @@ export function InlineSubItems({
     if (a == null || b == null) return null
 
     switch (s.formula) {
-      case 'multiply':
-        return a * b
-      case 'add':
-        return a + b
-      case 'subtract':
-        return a - b
-      case 'percent':
-        return (a * b) / 100
-      default:
-        return null
+      case 'multiply': return a * b
+      case 'add':      return a + b
+      case 'subtract': return a - b
+      case 'percent':  return (a * b) / 100
+      default:         return null
     }
   }
 
@@ -190,6 +196,39 @@ export function InlineSubItems({
         setRows((prev) => [...prev, { ...created, children: [] }])
       } catch (e) {
         console.error('Failed to create sub-item:', e)
+      }
+    },
+    [itemId]
+  )
+
+  const createL2 = useCallback(
+    async (parentId: string, name: string) => {
+      if (!name.trim()) return
+      try {
+        const res = await fetch('/api/sub-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            item_id: itemId,
+            parent_id: parentId,
+            name: name.trim(),
+            depth: 1,
+          }),
+        })
+        if (!res.ok) { console.error('[InlineSubItems] createL2 failed:', res.status); return }
+        const created = (await res.json()) as SubItemData
+        if (!created?.id) return
+        setRows(prev =>
+          prev.map(r =>
+            r.id === parentId
+              ? { ...r, children: [...(r.children ?? []), { ...created, children: [] }] }
+              : r
+          )
+        )
+        setExpandedL1(s => new Set([...s, parentId]))
+        setAddingL2For(null)
+      } catch (e) {
+        console.error('[InlineSubItems] createL2 error:', e)
       }
     },
     [itemId]
@@ -338,7 +377,10 @@ export function InlineSubItems({
                   onCommit={(f, v) => editField(row.id, f, v)}
                   onCancel={() => setEditTarget(null)}
                   onDelete={() => remove(row.id, 0, null)}
-                  onAddChild={() => setShowAddForm(true)}
+                  onAddChild={() => {
+                    setExpandedL1(s => new Set([...s, row.id]))
+                    setAddingL2For(row.id)
+                  }}
                   computeFormula={computeFormula}
                 />
                 {expandedL1.has(row.id) &&
@@ -360,6 +402,28 @@ export function InlineSubItems({
                       computeFormula={computeFormula}
                     />
                   ))}
+                {expandedL1.has(row.id) && addingL2For === row.id && (
+                  <tr>
+                    <td />
+                    <td />
+                    <td colSpan={displayCols.length + formulaCols.length + 1} className="py-0.5 pl-3">
+                      <input
+                        autoFocus
+                        placeholder="Nombre variante..."
+                        className="w-full text-[12px] border border-indigo-400 rounded px-2 py-0.5 outline-none"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && e.currentTarget.value.trim())
+                            createL2(row.id, e.currentTarget.value.trim())
+                          if (e.key === 'Escape') setAddingL2For(null)
+                        }}
+                        onBlur={e => {
+                          if (e.currentTarget.value.trim()) createL2(row.id, e.currentTarget.value.trim())
+                          else setAddingL2For(null)
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
               </Fragment>
             ))}
           </tbody>

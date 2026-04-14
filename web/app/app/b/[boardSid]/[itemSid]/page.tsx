@@ -30,6 +30,9 @@ export default async function ItemPage({ params }: Props) {
 
   if (!itemData) notFound()
 
+  const boardSettings = (board.settings ?? {}) as Record<string, unknown>
+  const subitemView   = (boardSettings.subitem_view ?? 'L1_L2') as 'L1_only' | 'L1_L2' | 'L2_only'
+
   return (
     <ItemDetailView
       boardId={board.id}
@@ -40,6 +43,8 @@ export default async function ItemPage({ params }: Props) {
       initialUsers={users}
       initialItem={itemData}
       initialSubItemViews={subItemViews}
+      boardSettings={boardSettings}
+      subitemView={subitemView}
     />
   )
 }

@@ -30,6 +30,8 @@ type Props = {
   initialUsers:        WorkspaceUser[]
   initialItem:         BoardItem
   initialSubItemViews: SubItemView[]
+  boardSettings:       Record<string, unknown>
+  subitemView:         'L1_only' | 'L1_L2' | 'L2_only'
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -37,6 +39,7 @@ type Props = {
 export function ItemDetailView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItem, initialSubItemViews,
+  boardSettings, subitemView,
 }: Props) {
   // All data pre-fetched by server — instant render, no loading state
   const [item,          setItem]          = useState<BoardItem>(initialItem)
@@ -253,6 +256,8 @@ export function ItemDetailView({
                 itemId={item.id}
                 boardId={boardId}
                 views={subItemViews}
+                boardSettings={boardSettings}
+                subitemView={subitemView}
               />
             )}
             {activeTab === 'channels' && (

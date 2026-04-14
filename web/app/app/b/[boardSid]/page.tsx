@@ -25,6 +25,9 @@ export default async function BoardPage({ params }: Props) {
     getSubItemViews(board.id, user.workspaceId),
   ])
 
+  const boardSettings = (board.settings ?? {}) as Record<string, unknown>
+  const subitemView   = (boardSettings.subitem_view ?? 'L1_L2') as 'L1_only' | 'L1_L2' | 'L2_only'
+
   return (
     <BoardView
       boardId={board.id}
@@ -38,6 +41,8 @@ export default async function BoardPage({ params }: Props) {
       initialSourceBoardId={board.sub_items_source_board_id ?? null}
       initialViews={views}
       initialSubItemViews={subItemViews}
+      boardSettings={boardSettings}
+      subitemView={subitemView}
     />
   )
 }
