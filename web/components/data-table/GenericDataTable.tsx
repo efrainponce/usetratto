@@ -10,6 +10,7 @@ import {
   createColumnHelper,
   type SortingState,
   type RowSelectionState,
+  type ColumnSizingState,
 } from '@tanstack/react-table'
 import type { ColumnDef as ColDef, Row, CellValue, NavDirection } from './types'
 import { DEFAULT_WIDTHS } from './types'
@@ -48,22 +49,10 @@ export function GenericDataTable({
   onAddColumn,
   loading,
 }: Props) {
-  const [sorting,     setSorting]     = useState<SortingState>([])
-  const [selection,   setSelection]   = useState<RowSelectionState>({})
-  const [editingCell, setEditingCell] = useState<EditingCell>(null)
-
-  // Sticky left offsets
-  const stickyLefts = useMemo(() => {
-    const map: Record<string, number> = { __expand: 0 }
-    let offset = EXPAND_W
-    for (const col of columns) {
-      if (col.sticky) {
-        map[col.key] = offset
-        offset += col.width ?? DEFAULT_WIDTHS[col.kind]
-      }
-    }
-    return map
-  }, [columns])
+  const [sorting,       setSorting]       = useState<SortingState>([])
+  const [selection,     setSelection]     = useState<RowSelectionState>({})
+  const [editingCell,   setEditingCell]   = useState<EditingCell>(null)
+  const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>({})
 
   const handleCommit = useCallback((rowId: string, colKey: string, value: CellValue) => {
     onCellChange(rowId, colKey, value)
@@ -93,10 +82,11 @@ export function GenericDataTable({
 
     // > chevron — expand sub-items inline
     const expandCol = helper.display({
-      id:            '__expand',
-      size:          EXPAND_W,
-      enableSorting: false,
-      header:        () => null,
+      id:             '__expand',
+      size:           EXPAND_W,
+      enableSorting:  false,
+      enableResizing: false,
+      header:         () => null,
       cell: ({ row }) => {
         const count  = row.original.subItemsCount ?? 0
         const isOpen = expandedSubItemId === row.original.id
@@ -146,9 +136,10 @@ export function GenericDataTable({
 
     // ↗ open item detail
     const openCol = helper.display({
-      id:            '__open',
-      size:          OPEN_W,
-      enableSorting: false,
+      id:             '__open',
+      size:           OPEN_W,
+      enableSorting:  false,
+      enableResizing: false,
       header: () => (
         <span className="flex items-center justify-center w-full" title="Abrir detalle">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
@@ -173,15 +164,31 @@ export function GenericDataTable({
   }, [columns, editingCell, expandedSubItemId, handleCommit, handleNavigate, onExpandSubItems, onOpenItem])
 
   const table = useReactTable({
-    data:                 rows,
-    columns:              tanstackCols,
-    state:                { sorting, rowSelection: selection },
-    getRowId:             row => row.id,
-    onSortingChange:      setSorting,
-    onRowSelectionChange: setSelection,
-    getCoreRowModel:      getCoreRowModel(),
-    getSortedRowModel:    getSortedRowModel(),
+    data:                   rows,
+    columns:                tanstackCols,
+    state:                  { sorting, rowSelection: selection, columnSizing },
+    getRowId:               row => row.id,
+    onSortingChange:        setSorting,
+    onRowSelectionChange:   setSelection,
+    onColumnSizingChange:   setColumnSizing,
+    getCoreRowModel:        getCoreRowModel(),
+    getSortedRowModel:      getSortedRowModel(),
+    enableColumnResizing:   true,
+    columnResizeMode:       'onChange',
   })
+
+  // Sticky left offsets (now using actual column sizes from table)
+  const stickyLefts = useMemo(() => {
+    const map: Record<string, number> = { __expand: 0 }
+    let offset = EXPAND_W
+    for (const col of columns) {
+      if (col.sticky) {
+        map[col.key] = offset
+        offset += table.getColumn(col.key)?.getSize() ?? col.width ?? DEFAULT_WIDTHS[col.kind]
+      }
+    }
+    return map
+  }, [columns, columnSizing, table])
 
   const { rows: tableRows } = table.getRowModel()
   const headers              = table.getHeaderGroups()[0]?.headers ?? []
@@ -241,7 +248,7 @@ export function GenericDataTable({
                       key={header.id}
                       className={[
                         'text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide',
-                        'border-r border-gray-100 select-none px-2 group/th',
+                        'border-r border-gray-100 select-none px-2 group/th overflow-visible',
                         isSticky ? 'z-30' : '',
                         header.column.getCanSort() ? 'cursor-pointer hover:bg-gray-50' : '',
                       ].join(' ')}
@@ -252,6 +259,7 @@ export function GenericDataTable({
                         background: isSticky ? 'white' : undefined,
                         boxShadow: header.id === lastStickyId(columns)
                           ? '2px 0 4px rgba(0,0,0,0.04)' : undefined,
+                        overflow: 'visible',
                       }}
                       onClick={header.column.getToggleSortingHandler()}
                     >
@@ -274,6 +282,22 @@ export function GenericDataTable({
                           >⋯</button>
                         )}
                       </div>
+
+                      {!header.id.startsWith('__') && header.column.getCanResize() && (
+                        <div
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none touch-none z-10 group/resizer"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className={[
+                            'h-4 w-px rounded-full transition-colors',
+                            header.column.getIsResizing()
+                              ? 'bg-indigo-500'
+                              : 'bg-gray-200 group-hover/resizer:bg-indigo-400',
+                          ].join(' ')} />
+                        </div>
+                      )}
                     </th>
                   )
                 })}

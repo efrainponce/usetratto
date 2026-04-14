@@ -185,6 +185,32 @@ function NativeRenderer({
   const [addingCol,    setAddingCol]    = useState(false)
   const [openDetailId, setOpenDetailId] = useState<string | null>(null)
 
+  // Column widths — resizable
+  const [colWidths, setColWidths] = useState<Record<string, number>>({
+    __expand: 20,
+    __sid:    64,
+    __name:   160,
+  })
+
+  function cw(key: string, def = 96): number {
+    return colWidths[key] ?? def
+  }
+
+  const startResize = useCallback((key: string, initW: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const x0 = e.clientX
+    const w0 = colWidths[key] ?? initW
+    const move = (ev: MouseEvent) =>
+      setColWidths(p => ({ ...p, [key]: Math.max(40, w0 + ev.clientX - x0) }))
+    const up = () => {
+      document.removeEventListener('mousemove', move)
+      document.removeEventListener('mouseup', up)
+    }
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
+  }, [colWidths])
+
   const onCountChangeRef = useRef(onCountChange)
   useEffect(() => { onCountChangeRef.current = onCountChange })
   useEffect(() => { onCountChangeRef.current?.(rows.length) }, [rows.length])
@@ -406,11 +432,35 @@ function NativeRenderer({
     <div className="flex flex-col h-full">
       {/* ── Column header ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide select-none flex-none">
-        <div className="w-5 flex-none" />
-        <div className="w-16 flex-none">#</div>
-        <div className="w-40 flex-none">Nombre</div>
-        {displayCols.map(c => <div key={c.id} className="w-24 flex-none text-right">{c.name}</div>)}
-        {formulaCols.map(c => <div key={c.id} className="w-24 flex-none text-right text-indigo-500">{c.name}</div>)}
+        <div className="flex-none" style={{ width: cw('__expand') }} />
+        <div className="relative flex-none" style={{ width: cw('__sid') }}>
+          #
+          <div onMouseDown={e => startResize('__sid', 64, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
+            <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+          </div>
+        </div>
+        <div className="relative flex-none" style={{ width: cw('__name') }}>
+          Nombre
+          <div onMouseDown={e => startResize('__name', 160, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
+            <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+          </div>
+        </div>
+        {displayCols.map(c => (
+          <div key={c.id} className="relative flex-none text-right" style={{ width: cw(c.id) }}>
+            {c.name}
+            <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
+              <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+            </div>
+          </div>
+        ))}
+        {formulaCols.map(c => (
+          <div key={c.id} className="relative flex-none text-right text-indigo-500" style={{ width: cw(c.id) }}>
+            {c.name}
+            <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
+              <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+            </div>
+          </div>
+        ))}
         {/* + add column */}
         {addingCol ? (
           <AddColumnInline
@@ -459,6 +509,7 @@ function NativeRenderer({
                 isLocked={isLocked(row)}
                 onImportChildren={() => importChildren(row.id)}
                 onRefresh={() => refreshRow(row.id)}
+                colWidths={colWidths}
               />
             )}
             {showL2 && expandedL1.has(row.id) && (
@@ -477,6 +528,7 @@ function NativeRenderer({
                     onAddChild={() => {}}
                     computeFormula={computeFormula}
                     onOpenDetail={() => setOpenDetailId(child.id)}
+                    colWidths={colWidths}
                   />
                 ))}
                 {addingL2For === row.id && (
@@ -657,6 +709,7 @@ function NativeRow({
   row, depth, isExpanded, displayCols, formulaCols, editTarget,
   onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild,
   computeFormula, onExpandVariants, onOpenDetail, isLocked, onImportChildren, onRefresh,
+  colWidths,
 }: {
   row: SubItemData; depth: number; isExpanded: boolean
   displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]
@@ -673,14 +726,19 @@ function NativeRow({
   isLocked?: boolean
   onImportChildren?: () => void
   onRefresh?: () => void
+  colWidths: Record<string, number>
 }) {
   const isEditing = (f: string) => editTarget?.id === row.id && editTarget.field === f
   const indent    = depth === 1 ? 'pl-5' : ''
 
+  function w(key: string, def = 96): number {
+    return colWidths[key] ?? def
+  }
+
   return (
     <div className={`flex items-center gap-2 px-4 py-1 hover:bg-gray-50 group border-b border-gray-50 ${indent}`}>
       {/* Chevron */}
-      <div className="w-5 flex-none flex items-center justify-center">
+      <div className="flex-none flex items-center justify-center" style={{ width: w('__expand', 20) }}>
         {depth === 0 ? (
           <button onClick={onToggleExpand} className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
@@ -693,10 +751,10 @@ function NativeRow({
       </div>
 
       {/* SID */}
-      <div className="w-16 flex-none text-[12px] text-gray-400 font-mono">{row.sid}</div>
+      <div className="flex-none text-[12px] text-gray-400 font-mono" style={{ width: w('__sid', 64) }}>{row.sid}</div>
 
       {/* Name */}
-      <div className="w-40 flex-none">
+      <div className="flex-none" style={{ width: w('__name', 160) }}>
         <EditableCell
           value={row.name} isEditing={isEditing('name')} kind="text"
           onStartEdit={() => onStartEdit('name')}
@@ -712,7 +770,7 @@ function NativeRow({
           const cur  = val?.value_text ?? ''
           const opt  = opts.find(o => o.value === cur)
           return (
-            <div key={col.id} className="w-24 flex-none flex justify-end items-center">
+            <div key={col.id} className="flex-none flex justify-end items-center" style={{ width: w(col.id, 96) }}>
               {isEditing(col.id) ? (
                 <select
                   autoFocus
@@ -736,7 +794,7 @@ function NativeRow({
           )
         }
         return (
-          <div key={col.id} className="w-24 flex-none text-right">
+          <div key={col.id} className="flex-none text-right" style={{ width: w(col.id, 96) }}>
             <EditableCell
               value={col.kind === 'number' ? (val?.value_number ?? '') : (val?.value_text ?? '')}
               isEditing={isEditing(col.id)} kind={col.kind === 'number' ? 'number' : 'text'}
@@ -751,7 +809,7 @@ function NativeRow({
       {formulaCols.map(col => {
         const result = computeFormula(col, row)
         return (
-          <div key={col.id} className="w-24 flex-none text-right text-[13px] text-indigo-700 font-medium">
+          <div key={col.id} className="flex-none text-right text-[13px] text-indigo-700 font-medium" style={{ width: w(col.id, 96) }}>
             {result != null ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
           </div>
         )
