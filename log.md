@@ -2,6 +2,13 @@
 
 ## 2026-04-14
 
+**~sesión 25**
+- Fix RLS en `POST /api/sub-items`: snapshot no copiaba valores del catálogo — mismo patrón `createClient()` silenciando `sub_item_columns`; cambiado a `createServiceClient()` en todas las queries post-ownership-check
+- `SubItemDetailDrawer` upgrade: nombre grande editable + badge de estado (primer select col) + info panel con ⋯ por campo → `ColumnSettingsPanel` con `patchEndpoint=/api/sub-item-columns/[id]`
+- `ItemDetailView` info panel: ⋯ al hover en cada campo → `ColumnSettingsPanel` con tab Permisos completo
+- Column permissions parity (14.C): `column_permissions` polimórfico (nullable `column_id` + `sub_item_column_id` FK), 2 rutas nuevas, `permissionsEndpoint` prop en `ColumnSettingsPanel`; migration aplicada en remoto
+- Items y sub-items comparten 100% las features de columna: rename, tipo, opciones, fórmula, rollup, permisos view/edit por usuario/equipo
+
 **~sesión 24**
 - Fix RLS silencioso: `nativeHandler` usaba `createClient()` (JWT) → `sub_item_columns` retornaba 0 filas; cambiado a `createServiceClient()` tras validar workspace_id con `requireAuthApi()`
 - Aislamiento de columnas por vista: migration `20260414000008` agrega `view_id FK sub_item_views` en `sub_item_columns`; filtrado por `view_id` en nativeHandler, POST y AddColumnInline/SourceColumnMapper
