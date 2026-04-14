@@ -395,6 +395,9 @@ api/
   sub-items/                    → GET (?itemId=) + POST
   sub-items/[id]                → PATCH + DELETE
   sub-items/[id]/values         → PUT (upsert)
+  sub-items/[id]/expand         → POST (cartesiano → L2s desde multiselect dims)
+  sub-items/[id]/import-children → POST (copia sub-items del source como L2s)
+  sub-items/[id]/refresh        → POST (re-copia values del source; 409 si is_closed)
 
   channels/                     → GET + POST
   channels/[id]/messages        → GET + POST
@@ -442,7 +445,7 @@ createServiceClient() → solo server/API, bypassa RLS, para admin ops
 2. **Ninguna columna hardcodeada** — solo `name` es obligatorio para crear. `qty`, `unit_price`, `notes` son columnas default en `sub_item_columns` (configurables/eliminables).
 3. **Snapshot al importar** — copia valores del source item punto en el tiempo. Editable post-snapshot de forma independiente. Nueva columna en sub_item_columns → vacía en sub-items existentes (no backfill automático).
 4. **Formula columns** (`kind='formula'`) — predefinidas: `multiply`, `add`, `subtract`, `percent`. Computadas en frontend, no almacenadas en DB. Read-only.
-5. **L1/L2 en schema** (`parent_id`, `depth`) — UI de variantes deferred a Fase 8 (sidebar panel). Hoy visualmente planos.
+5. **L1/L2 implementados** (`parent_id`, `depth`) — variantes via cartesiano (`/expand`), import-children (↓), refresh (⟳ bloqueado si `is_closed`), `subitem_view` L1_only/L1_L2/L2_only por board en `boards.settings`.
 6. **SourceSelector** en toolbar de BoardView (junto a "+ Nuevo") — elige source board y configura mapeo de columnas via modal.
 
 ---

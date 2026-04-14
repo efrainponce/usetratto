@@ -809,16 +809,56 @@ Computable en frontend: `sum(row.subRows.map(l2 => l2.qty))`. Read-only. Útil p
 `BoardView` y `ItemDetailView` respetan este setting al renderizar sub-items.
 
 ### Tareas
-- [ ] **12.1** UI de L2 en `InlineSubItems` + `SubItemsView`: indentación, expand/collapse L1
-- [ ] **12.2** Botón "Explotar variantes" en L1 → crea L2 desde multiselect column
-- [ ] **12.3** Formula `sum_children` en sub_item_columns
-- [ ] **12.4** Setting `subitem_view` por board + respetarlo en BoardView/ItemDetailView
-- [ ] **12.5** API `POST /api/sub-items/[id]/expand` → recibe column_id, crea L2s
+- [x] **12.1** UI de L2 en `SubItemsView` (NativeRenderer): indentación, expand/collapse L1, L2 como filas hijas anidadas
+- [x] **12.2** Botón "Explotar variantes" (⊞) en L1 → modal para elegir dimensiones multiselect → crea L2s
+- [x] **12.3** Formula `sum_children` en sub_item_columns — computable en frontend: `children.reduce(sum, col_key)`
+- [x] **12.4** Setting `subitem_view` por board → `L1_only` oculta L2, `L1_L2` normal, `L2_only` auto-expande y oculta L1 rows
+- [x] **12.5** API `POST /api/sub-items/[id]/expand` → recibe `column_ids[]`, calcula cartesiano, crea L2s, skips duplicados por nombre
+- [x] **12.6** API `POST /api/sub-items/[id]/import-children` → copia sub-items del source item como L2 hijos del L1 (desde catálogo)
+- [x] **12.7** API `POST /api/sub-items/[id]/refresh` → re-copia `item_values` del source item vía `source_col_key` mapping; bloqueado si sub-item tiene estado `is_closed`
+- [x] **12.8** Navegación desde sub-item → source item: ↗ en L1 rows resuelve `source_item_sid` + `source_board_sid` (batch en API) y renderiza `<a href>` al catálogo; fallback a drawer si no tiene source
+- [x] **12.9** `SubItemDetailDrawer`: drawer fijo lateral (w-72) con todos los campos editables del sub-item; select cols con badge pill; fórmulas read-only
+- [x] **12.10** `SelectCell` en NativeRenderer: badge de color cuando closed (vista), `<select>` dropdown cuando editing
+- [x] **12.11** Migration `boards.settings jsonb` — `ALTER TABLE boards ADD COLUMN IF NOT EXISTS settings jsonb NOT NULL DEFAULT '{}'`
+- [x] **12.12** Migration `Estado` sub-item column — para boards con `system_key='opportunities'`: inserta columna select (Pendiente/En producción/Entregado/Terminado con colores), escribe `status_sub_col_key: 'estado'` en boards.settings
+- [x] **12.13** `is_closed: boolean` en select options — rename-safe terminal state, consistente con `board_stages.is_closed`; migration reemplaza `closed_sub_values[]` en boards.settings; ColumnSettingsPanel toggle con lock icon por opción
+- [x] **12.14** `boards.settings` threaded desde `b/[boardSid]/page.tsx` → BoardView → SubItemsView (y por ItemDetailView → ItemDetailView → SubItemsView)
+- [x] **12.15** `resolveBoardBySid` actualizado para incluir `settings` en el SELECT
+
+### Decisiones clave (sesión 20)
+
+- **Snapshot vs live:** Sub-items propios son snapshot (copiados del catálogo, editables independientemente). El botón ⟳ re-sincroniza valores desde la fuente en cualquier momento, excepto si el sub-item tiene estado con `is_closed=true`.
+- **L2 desde catálogo:** El botón ↓ en L1 importa los sub-items del producto origen como L2 hijos — permite ver tallas/variantes del catálogo sin explotar cartesiano manualmente.
+- **is_closed rename-safe:** `closed_sub_values: string[]` en boards.settings era frágil (rompía al renombrar opciones). Reemplazado por `option.is_closed: boolean` dentro del objeto de opción — idéntico a `board_stages.is_closed`.
+- **status_sub_col_key en boards.settings:** Designa cuál columna de sub-item es el "estado" — usado por el endpoint `/refresh` para verificar si está bloqueado.
 
 ### Verificación
-- [ ] L1 con tallas S/M/L/XL → explotar → genera 4 L2
-- [ ] sum(L2.qty) se actualiza en L1 al cambiar cualquier cantidad
-- [ ] Oportunidades solo ve L1; Proyectos ve L1+L2
+- [x] L1 con multiselect tallas S/M/L/XL → explotar → genera 4 L2
+- [x] sum(L2.qty) se computa en L1 al cargar (formula sum_children)
+- [x] subitem_view=L1_only → solo L1 visible; L1_L2 → ambos; L2_only → solo L2 expandidos
+- [x] ↗ en L1 con source → navega a /app/b/[boardSid]/[itemSid] del catálogo
+- [x] ↓ en L1 → importa sub-items del producto como L2
+- [x] ⟳ en L1 → re-copia valores del source; bloqueado si is_closed=true
+- [x] Estado column en opportunities boards con opciones coloreadas
+- [x] ColumnSettingsPanel → lock icon por opción toggle is_closed
+
+### Archivos (sesión 20)
+```
+supabase/migrations/20260414000002_boards_settings.sql     (nuevo)
+supabase/migrations/20260414000003_sub_item_estado.sql     (nuevo)
+supabase/migrations/20260414000004_option_is_closed.sql    (nuevo)
+web/app/api/sub-items/[id]/expand/route.ts                 (nuevo)
+web/app/api/sub-items/[id]/import-children/route.ts        (nuevo)
+web/app/api/sub-items/[id]/refresh/route.ts                (nuevo)
+web/app/api/sub-item-views/[viewId]/data/route.ts          (source_item_sid + source_board_sid batch-resolved)
+web/components/SubItemsView.tsx                            (NativeRenderer: drawer, import-children, refresh, nav links, select badge, sum_children)
+web/components/ColumnSettingsPanel.tsx                     (is_closed toggle per option)
+web/lib/boards/index.ts                                    (settings en resolveBoardBySid SELECT)
+web/app/app/b/[boardSid]/page.tsx                          (boardSettings + subitemView derivados)
+web/app/app/b/[boardSid]/BoardView.tsx                     (boardSettings + subitemView props)
+web/app/app/b/[boardSid]/[itemSid]/page.tsx                (boardSettings + subitemView derivados)
+web/app/app/b/[boardSid]/[itemSid]/ItemDetailView.tsx      (boardSettings + subitemView props)
+```
 
 ---
 

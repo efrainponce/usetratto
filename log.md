@@ -2,12 +2,15 @@
 
 ## 2026-04-14
 
+**~sesión 21**
+- plan.md actualizado: Fase 12 completa con 15 tareas marcadas [x], decisiones clave, verificaciones y archivos
+
 **~sesión 20**
 - Fix: `POST /api/boards/[id]/sub-item-columns` 404 — `createClient()` con RLS bloqueaba lookup del board; cambiado a `createServiceClient()` en route sub-item-columns + boards/[id] PATCH/DELETE
 - Fix: columnas guardadas (201) pero UI no refrescaba — `columnsVersion` counter en BoardView → key de NativeRenderer cambia → re-fetch automático; `setSubItemColumns` acumula en vez de reemplazar
-- Wizard simplificado: eliminado modo "Referencia en vivo" — solo snapshot; step 2 = solo nombre
-- UX: botón Sub-items en toolbar muestra pills con nombres de vistas (antes solo count)
-- UX: wizard "Nueva vista" muestra sección "Vistas actuales" al abrir (referencia visual)
+- Fase 12 completa: variantes L2 (expand cartesiano), import-children (↓), refresh (⟳ bloqueado si is_closed), SubItemDetailDrawer, source navigation (↗ link al catálogo)
+- Estado column migration: select con is_closed en Terminado/Entregado; boards.settings con status_sub_col_key; ColumnSettingsPanel con lock toggle por opción
+- is_closed rename-safe: reemplaza closed_sub_values[] en boards.settings; source_item_sid + source_board_sid batch-resueltos en data endpoint
 
 ## 2026-04-13
 
