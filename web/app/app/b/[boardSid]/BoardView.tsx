@@ -133,11 +133,12 @@ export function BoardView({
         return vc ? vc.is_visible : true
       })
       .map(c => ({
+        id:       c.id,
         key:      c.col_key,
         label:    c.name,
         kind:     c.kind as CellKind,
         sticky:   c.col_key === 'name',
-        editable: c.kind !== 'autonumber',
+        editable: c.kind !== 'autonumber' && c.kind !== 'button',
         sortable: true,
         settings: augmentSettings(c, stages, users),
       }))
@@ -201,6 +202,20 @@ export function BoardView({
   }, [colIdMap])
 
   // ── Create ─────────────────────────────────────────────────────────────────
+  const handleAddColumn = useCallback(async (name: string, kind: string) => {
+    const res = await fetch(`/api/boards/${boardId}/columns`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name, kind }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error ?? `HTTP ${res.status}`)
+    }
+    const col = await res.json() as BoardColumn
+    setRawCols(prev => [...prev, col])
+  }, [boardId])
+
   const handleNew = async () => {
     const res = await fetch('/api/items', {
       method:  'POST',
@@ -788,6 +803,7 @@ export function BoardView({
             const col = rawCols.find(c => c.col_key === colKey)
             if (col) setColSettingsCol(col)
           }}
+          onAddColumn={handleAddColumn}
           loading={false}
         />
       </div>

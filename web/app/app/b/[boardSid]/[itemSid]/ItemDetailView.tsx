@@ -61,10 +61,11 @@ export function ItemDetailView({
     rawCols
       .filter(c => !c.is_hidden)
       .map(c => ({
+        id:       c.id,
         key:      c.col_key,
         label:    c.name,
         kind:     c.kind as CellKind,
-        editable: c.kind !== 'autonumber',
+        editable: c.kind !== 'autonumber' && c.kind !== 'button',
         settings: augmentSettings(c, stages, users),
       })),
     [rawCols, stages, users]

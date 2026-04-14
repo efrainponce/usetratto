@@ -145,7 +145,7 @@ export const getBoardContext = unstable_cache(
     }
   },
   ['board-context'],
-  { revalidate: 60 }
+  { revalidate: 60, tags: ['board-context'] }
 )
 
 // ─── Workspace users (cached 60s) ─────────────────────────────────────────────

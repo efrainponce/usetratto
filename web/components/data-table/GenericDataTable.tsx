@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo, useRef, useCallback, Fragment, type ReactNode } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect, Fragment, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
   useReactTable,
   getCoreRowModel,
@@ -30,6 +31,7 @@ type Props = {
   onOpenItem?:          (rowId: string) => void
   onBulkDelete?:        (ids: string[]) => void
   onColumnSettings?:    (colKey: string) => void
+  onAddColumn?:         (name: string, kind: string) => Promise<void>
   loading?:             boolean
 }
 
@@ -43,6 +45,7 @@ export function GenericDataTable({
   onOpenItem,
   onBulkDelete,
   onColumnSettings,
+  onAddColumn,
   loading,
 }: Props) {
   const [sorting,     setSorting]     = useState<SortingState>([])
@@ -141,26 +144,32 @@ export function GenericDataTable({
       })
     )
 
-    // → open item detail
+    // ↗ open item detail
     const openCol = helper.display({
       id:            '__open',
       size:          OPEN_W,
       enableSorting: false,
-      header:        () => null,
+      header: () => (
+        <span className="flex items-center justify-center w-full" title="Abrir detalle">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <path d="M2 10L10 2M6 2h4v4" />
+          </svg>
+        </span>
+      ),
       cell: ({ row }) => (
         <button
           onClick={e => { e.stopPropagation(); onOpenItem?.(row.original.id) }}
           title="Abrir detalle"
           className="w-full h-full flex items-center justify-center text-gray-200 hover:text-indigo-500 transition-colors opacity-0 group-hover/row:opacity-100"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="stroke-current">
-            <path d="M2 7h10M7 2l5 5-5 5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <path d="M2 10L10 2M6 2h4v4" />
           </svg>
         </button>
       ),
     })
 
-    return [expandCol, ...dataCols, openCol]
+    return [expandCol, openCol, ...dataCols]
   }, [columns, editingCell, expandedSubItemId, handleCommit, handleNavigate, onExpandSubItems, onOpenItem])
 
   const table = useReactTable({
@@ -268,6 +277,11 @@ export function GenericDataTable({
                     </th>
                   )
                 })}
+                {onAddColumn && (
+                  <th className="border-r border-gray-100 px-1" style={{ width: 36 }}>
+                    <AddColumnButton onAdd={onAddColumn} />
+                  </th>
+                )}
               </tr>
             ))}
           </thead>
@@ -349,5 +363,133 @@ function SortDesc() {
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-none">
       <path d="M12 5v14M5 12l7 7 7-7" />
     </svg>
+  )
+}
+
+const ADD_COL_KINDS = [
+  { value: 'text',        label: 'Texto' },
+  { value: 'number',      label: 'Número' },
+  { value: 'date',        label: 'Fecha' },
+  { value: 'select',      label: 'Selección simple' },
+  { value: 'multiselect', label: 'Selección múltiple' },
+  { value: 'people',      label: 'Persona' },
+  { value: 'boolean',     label: 'Checkbox' },
+  { value: 'phone',       label: 'Teléfono' },
+  { value: 'email',       label: 'Email' },
+  { value: 'file',        label: 'Archivo(s)' },
+  { value: 'button',      label: 'Botón' },
+  { value: 'signature',   label: 'Firma' },
+]
+
+function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Promise<void> }) {
+  const [open,   setOpen]   = useState(false)
+  const [name,   setName]   = useState('')
+  const [kind,   setKind]   = useState('text')
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+  const [pos,    setPos]    = useState<{ top: number; left: number } | null>(null)
+  const btnRef   = useRef<HTMLButtonElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left })
+    }
+    setOpen(true)
+    setName('')
+    setKind('text')
+    setError(null)
+    setTimeout(() => inputRef.current?.focus(), 30)
+  }
+
+  const handleClose = () => { setOpen(false); setSaving(false); setError(null) }
+
+  const handleSubmit = async () => {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onAdd(name.trim(), kind)
+      handleClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al crear columna')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        btnRef.current   && !btnRef.current.contains(e.target as Node)
+      ) handleClose()
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose() }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown',   onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown',   onKey)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
+        className="flex items-center justify-center w-full h-full text-gray-400 hover:text-indigo-500 hover:bg-gray-50 rounded transition-colors text-[16px] leading-none"
+        title="Agregar columna"
+      >+</button>
+
+      {open && pos && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56"
+        >
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Nueva columna</p>
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter')  { e.preventDefault(); handleSubmit() }
+              if (e.key === 'Escape') { e.preventDefault(); handleClose() }
+            }}
+            placeholder="Nombre de columna"
+            className="w-full text-[13px] border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400 mb-2"
+          />
+          <select
+            value={kind}
+            onChange={e => setKind(e.target.value)}
+            className="w-full text-[13px] border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400 mb-3 bg-white"
+          >
+            {ADD_COL_KINDS.map(k => (
+              <option key={k.value} value={k.value}>{k.label}</option>
+            ))}
+          </select>
+          {error && (
+            <p className="text-[11px] text-red-600 mb-2">{error}</p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={handleClose}
+              className="flex-1 text-[12px] px-2 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors"
+            >Cancelar</button>
+            <button
+              onClick={handleSubmit}
+              disabled={!name.trim() || saving}
+              className="flex-1 text-[12px] px-2 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >{saving ? '...' : 'Crear'}</button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   )
 }

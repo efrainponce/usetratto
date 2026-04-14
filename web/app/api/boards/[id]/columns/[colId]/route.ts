@@ -1,6 +1,7 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 
 type Context = { params: Promise<{ id: string; colId: string }> }
 
@@ -70,7 +71,7 @@ export async function PATCH(req: Request, { params }: Context) {
   }
 
   if ('kind' in body && body.kind !== undefined) {
-    const validKinds = ['text','number','date','select','multiselect','people','boolean','relation','phone','email','autonumber','url']
+    const validKinds = ['text','number','date','select','multiselect','people','boolean','relation','phone','email','autonumber','url','file','button','signature']
     if (!validKinds.includes(body.kind)) {
       return NextResponse.json({ error: 'Invalid column kind' }, { status: 400 })
     }
@@ -93,6 +94,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  revalidateTag('board-context', {})
   return NextResponse.json(updated)
 }
 
@@ -137,5 +139,6 @@ export async function DELETE(req: Request, { params }: Context) {
     .eq('id', colId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  revalidateTag('board-context', {})
   return NextResponse.json({ success: true })
 }

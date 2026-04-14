@@ -15,7 +15,6 @@ export function SignatureCell({
   value,
   column,
   rowId,
-  onCommit,
 }: CellProps) {
   const sigValue = (value as unknown as SignatureValue | null) ?? null
   const [localSig, setLocalSig] = useState(sigValue)
@@ -50,7 +49,7 @@ export function SignatureCell({
       const signed = result.value_json as SignatureValue
       setLocalSig(signed)
       setShowModal(false)
-      onCommit(signed)
+      // no onCommit — signature is persisted by /signature endpoint; local state handles display
     } catch (err) {
       setError('Error de conexión. Intenta nuevamente.')
       console.error('Signature error:', err)
@@ -82,12 +81,12 @@ export function SignatureCell({
         {showModal && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 w-80 shadow-xl">
-              <h2 className="text-[14px] font-semibold text-gray-900 mb-3">Confirmar firma</h2>
-              <p className="text-[12px] text-gray-700 leading-5 mb-4">
-                Esta acción es irreversible. Al firmar, confirmas que has revisado y aprobado este documento.
+              <h2 className="text-[14px] font-semibold text-gray-900 mb-1">✍ Firmar: {column.label}</h2>
+              <p className="text-[12px] text-gray-700 leading-5 mb-3">
+                {(column.settings as any)?.description ?? 'Al firmar confirmas que has revisado y aprobado este documento.'}
               </p>
-              <p className="text-[11px] text-gray-500 mb-4">
-                Tu firma será registrada con tu cuenta.
+              <p className="text-[11px] text-gray-400 mb-4">
+                Esta acción es irreversible. Tu firma quedará registrada con tu cuenta.
               </p>
 
               {error && (
@@ -143,10 +142,12 @@ export function SignatureCell({
           />
         </svg>
         <span>
-          Firmado por {localSig.signed_by} · {new Date(localSig.signed_at).toLocaleDateString('es-MX', {
+          Firmado por {localSig.signed_by} · {new Date(localSig.signed_at).toLocaleString('es-MX', {
             day: 'numeric',
             month: 'short',
             year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
           })}
         </span>
       </div>

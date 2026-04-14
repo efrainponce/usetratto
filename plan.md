@@ -730,9 +730,9 @@ El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita cr
 - En PDF de quote: si el item tiene columna signature firmada → incluir watermark en footer
 
 ### Tareas
-- [ ] **11.1** Bucket Storage + API upload + FileCell
-- [ ] **11.2** ButtonCell + acciones `change_stage` y `create_quote` (sin automation engine)
-- [ ] **11.3** SignatureCell + lógica de inmutabilidad
+- [x] **11.1** Bucket Storage + API upload + FileCell
+- [x] **11.2** ButtonCell + acciones `change_stage` y `create_quote` (sin automation engine)
+- [x] **11.3** SignatureCell + lógica de inmutabilidad
 
 ### Verificación
 - [ ] Subir archivo a item → aparece en celda → descargable

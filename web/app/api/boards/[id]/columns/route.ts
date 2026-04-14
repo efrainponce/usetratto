@@ -1,6 +1,8 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -182,7 +184,9 @@ export async function POST(req: Request, { params }: Context) {
 
   const position = (last?.position ?? -1) + 1
 
-  const { data: column, error } = await supabase
+  // Use service client for INSERT — the SID trigger writes to sid_registry which
+  // blocks under user JWT RLS. Ownership is already verified above.
+  const { data: column, error } = await createServiceClient()
     .from('board_columns')
     .insert({
       board_id:  id,
@@ -199,5 +203,6 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  revalidateTag('board-context', {})
   return NextResponse.json(column, { status: 201 })
 }

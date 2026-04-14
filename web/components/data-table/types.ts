@@ -12,6 +12,9 @@ export type CellKind =
   | 'phone'
   | 'email'
   | 'autonumber'
+  | 'file'
+  | 'button'
+  | 'signature'
 
 export type SelectOption = {
   value: string
@@ -24,9 +27,23 @@ export type ColumnSettings = {
   target_board_id?: string           // relation
   format?:          string           // number: 'integer' | 'decimal' | 'currency' | 'percent'
   placeholder?:     string
+  // file
+  max_files?:       number
+  // button
+  label?:           string
+  action?:          'change_stage' | 'create_quote' | 'run_automation'
+  stage_id?:        string
+  template_id?:     string
+  automation_id?:   string
+  confirm?:         boolean
+  confirm_message?: string
+  // signature
+  allowed_roles?:   string[]
+  column_id?:       string           // UUID fallback para SignatureCell
 }
 
 export type ColumnDef = {
+  id?:       string           // UUID de board_columns (para endpoints que lo requieren)
   key:       string           // stable col_key from board_columns
   label:     string
   kind:      CellKind
@@ -50,6 +67,9 @@ export const DEFAULT_WIDTHS: Record<CellKind, number> = {
   people:      140,
   relation:    150,
   text:        200,
+  file:        180,
+  button:      120,
+  signature:   160,
 }
 
 // ─── Row / cell data ──────────────────────────────────────────────────────────

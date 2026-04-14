@@ -59,6 +59,9 @@ const KIND_OPTIONS = [
   { value: 'phone',       label: 'Teléfono' },
   { value: 'email',       label: 'Email' },
   { value: 'url',         label: 'URL' },
+  { value: 'file',        label: 'Archivo(s)' },
+  { value: 'button',      label: 'Botón' },
+  { value: 'signature',   label: 'Firma' },
 ]
 
 const NUMBER_FORMATS = [
@@ -115,10 +118,17 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
   const [newPermAccess, setNewPermAccess] = useState<'view' | 'edit'>('view')
   const [savingPerm,    setSavingPerm]    = useState(false)
 
+  // ── Signature description state ───────────────────────────────────────────
+  const [sigDescription,      setSigDescription]      = useState<string>(
+    (column.settings?.description as string) ?? ''
+  )
+  const [savingSignatureDesc, setSavingSignatureDesc] = useState(false)
+
   // ── Active tab ────────────────────────────────────────────────────────────
-  const isSelect   = kind === 'select' || kind === 'multiselect'
-  const isNumber   = kind === 'number'
-  const isRelation = kind === 'relation'
+  const isSelect    = kind === 'select' || kind === 'multiselect'
+  const isNumber    = kind === 'number'
+  const isRelation  = kind === 'relation'
+  const isSignature = kind === 'signature'
 
   type TabId = 'general' | 'opciones' | 'permisos'
   const [tab, setTab] = useState<TabId>('general')
@@ -232,6 +242,18 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
       if (updated) onUpdated(updated)
     } finally {
       setSavingRelation(false)
+    }
+  }
+
+  async function handleSaveSignatureDesc() {
+    setSavingSignatureDesc(true)
+    try {
+      const updated = await patchColumn({
+        settings: { ...column.settings, description: sigDescription.trim() },
+      })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingSignatureDesc(false)
     }
   }
 
@@ -418,6 +440,30 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
                       {savingRelation ? '...' : 'Guardar'}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Signature description */}
+              {isSignature && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Texto en modal de firma</label>
+                  <div className="flex gap-2 items-start">
+                    <textarea
+                      value={sigDescription}
+                      onChange={e => setSigDescription(e.target.value)}
+                      rows={3}
+                      placeholder="Ej: Al firmar confirmas que has revisado y aceptas los términos de esta cotización."
+                      className="flex-1 border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20 resize-none"
+                    />
+                    <button
+                      onClick={handleSaveSignatureDesc}
+                      disabled={savingSignatureDesc}
+                      className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {savingSignatureDesc ? '...' : 'Guardar'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">Aparece en el modal cuando el usuario va a firmar.</p>
                 </div>
               )}
 

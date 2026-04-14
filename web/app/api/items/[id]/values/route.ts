@@ -68,13 +68,22 @@ export async function PUT(req: Request, { params }: Context) {
     value_json:   null,
   }
 
+  const kind = col?.kind ?? 'text'
+
+  // signature is immutable — use /api/items/[id]/signature instead
+  if (kind === 'signature') {
+    return NextResponse.json(
+      { error: 'Use /api/items/[id]/signature para firmar' },
+      { status: 400 }
+    )
+  }
+
   if (value !== null && value !== undefined) {
-    const kind = col?.kind ?? 'text'
     if (kind === 'number') {
       upsert.value_number = typeof value === 'number' ? value : parseFloat(String(value))
     } else if (kind === 'date') {
       upsert.value_date = String(value)
-    } else if (kind === 'boolean' || kind === 'multiselect') {
+    } else if (kind === 'boolean' || kind === 'multiselect' || kind === 'file') {
       upsert.value_json = value
     } else {
       upsert.value_text = String(value)

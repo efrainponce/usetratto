@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 18**
+- Fase 11 completa: FileCell (upload + preview por tipo: img/PDF/video/fallback), ButtonCell (`change_stage`), SignatureCell (inmutable, OTP-linked)
+- Fix: `board_columns_kind_check` no incluía `button`/`signature` → migration 008 añade ambos kinds
+- FileCell chips rediseñados: solo emoji-icono (28px), tooltip con nombre, × badge flotante, overflow-hidden garantizado
+- SignatureCell mejorada: muestra hora en badge, label de columna en modal, `settings.description` configurable desde ColumnSettingsPanel
+- Arquitectura confirmada: quotes + documentos = sub-items con columna `signature` por fila; `FileCell` para adjuntos rápidos
+
 **~sesión 17**
 - Brainstorm: buttons, files, signature, stage gates, variantes L2, cross-board automations
 - plan.md: Fases 11-16 rediseñadas — Column Upgrades / Variantes / Stage Gates / Automations / Quotes / WhatsApp
