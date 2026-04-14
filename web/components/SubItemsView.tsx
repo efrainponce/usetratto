@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { ProductPicker } from './ProductPicker'
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
+import { ColumnSettingsPanel } from './ColumnSettingsPanel'
 
 // ─── Sub-item view types ──────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ type Props = {
   onCountChange?:      (count: number) => void
   onAddView?:          () => void
   onDeleteView?:       (viewId: string) => void
-  onConfigureColumns?: () => void
+  onConfigureColumns?: (viewId: string) => void
   compact?:            boolean
   columnsVersion?:     number
   boardSettings?:      Record<string, unknown>
@@ -105,7 +106,7 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
               {/* ⚙ config button — only on active native tab */}
               {isActive && v.type === 'native' && onConfigureColumns && (
                 <button
-                  onClick={onConfigureColumns}
+                  onClick={() => onConfigureColumns(v.id)}
                   title="Configurar columnas"
                   className="text-gray-400 hover:text-indigo-600 transition-colors p-0.5 rounded"
                 >
@@ -116,8 +117,8 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
                   </svg>
                 </button>
               )}
-              {/* × delete — visible on hover, only if there's more than 1 view */}
-              {onDeleteView && views.length > 1 && (
+              {/* × delete — visible on hover, only if not the default (first) view */}
+              {onDeleteView && views.length > 1 && views.indexOf(v) > 0 && (
                 <button
                   onClick={e => { e.stopPropagation(); onDeleteView(v.id) }}
                   title="Eliminar vista"
@@ -196,6 +197,7 @@ function NativeRenderer({
   const [addingL2For,  setAddingL2For]  = useState<string | null>(null)
   const [addingCol,    setAddingCol]    = useState(false)
   const [openDetailId, setOpenDetailId] = useState<string | null>(null)
+  const [colSettings,  setColSettings]  = useState<SubItemColumn | null>(null)
 
   // Column widths — resizable
   const [colWidths, setColWidths] = useState<Record<string, number>>({
@@ -572,16 +574,30 @@ function NativeRenderer({
           </div>
         </div>
         {displayCols.map(c => (
-          <div key={c.id} className="relative flex-none text-right" style={{ width: cw(c.id) }}>
-            {c.name}
+          <div key={c.id} className="relative flex-none group/col" style={{ width: cw(c.id) }}>
+            <div className="flex items-center gap-1 overflow-hidden pr-3">
+              <span className="flex-1 truncate min-w-0">{c.name}</span>
+              <button
+                onClick={e => { e.stopPropagation(); setColSettings(c) }}
+                title="Configurar columna"
+                className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+              >⋯</button>
+            </div>
             <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
               <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
             </div>
           </div>
         ))}
         {formulaCols.map(c => (
-          <div key={c.id} className="relative flex-none text-right text-indigo-500" style={{ width: cw(c.id) }}>
-            {c.name}
+          <div key={c.id} className="relative flex-none text-indigo-500 group/col" style={{ width: cw(c.id) }}>
+            <div className="flex items-center gap-1 overflow-hidden pr-3">
+              <span className="flex-1 truncate min-w-0">{c.name}</span>
+              <button
+                onClick={e => { e.stopPropagation(); setColSettings(c) }}
+                title="Configurar columna"
+                className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+              >⋯</button>
+            </div>
             <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
               <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
             </div>
@@ -594,6 +610,7 @@ function NativeRenderer({
         {addingCol ? (
           <AddColumnInline
             boardId={boardId}
+            viewId={viewId}
             sourceBoardId={sourceBoardId ?? undefined}
             position={columns.length}
             onCreated={col => { setColumns(prev => [...prev, col]); setAddingCol(false) }}
@@ -786,6 +803,21 @@ function NativeRenderer({
           />
         )
       })()}
+
+      {colSettings && (
+        <ColumnSettingsPanel
+          column={{ ...colSettings, is_system: false }}
+          boardId={boardId}
+          allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
+          users={[]}
+          patchEndpoint={`/api/sub-item-columns/${colSettings.id}`}
+          onClose={() => setColSettings(null)}
+          onUpdated={updated => {
+            setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
+            setColSettings(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1369,9 +1401,10 @@ const COL_KIND_OPTIONS = [
 ]
 
 function AddColumnInline({
-  boardId, sourceBoardId, position, onCreated, onCancel,
+  boardId, viewId, sourceBoardId, position, onCreated, onCancel,
 }: {
   boardId:        string
+  viewId:         string
   sourceBoardId?: string
   position:       number
   onCreated:      (col: SubItemColumn) => void
@@ -1405,6 +1438,7 @@ function AddColumnInline({
           kind,
           position,
           source_col_key: sourceColKey || null,
+          view_id:        viewId,
         }),
       })
       if (!res.ok) { console.error('[AddColumnInline] failed:', res.status, await res.text()); onCancel(); return }

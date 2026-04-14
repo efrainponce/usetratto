@@ -2,6 +2,13 @@
 
 ## 2026-04-14
 
+**~sesión 24**
+- Fix RLS silencioso: `nativeHandler` usaba `createClient()` (JWT) → `sub_item_columns` retornaba 0 filas; cambiado a `createServiceClient()` tras validar workspace_id con `requireAuthApi()`
+- Aislamiento de columnas por vista: migration `20260414000008` agrega `view_id FK sub_item_views` en `sub_item_columns`; filtrado por `view_id` en nativeHandler, POST y AddColumnInline/SourceColumnMapper
+- Protección vista default: botón eliminar deshabilitado para la primera vista (Sub-items) en `SubItemsView`
+- ⋯ en headers de sub-item-columns: abre `ColumnSettingsPanel` con `patchEndpoint=/api/sub-item-columns/[colId]`; layout corregido: texto `flex-1 truncate min-w-0` izquierda, dots `shrink-0` derecha, resize handle `absolute right-0`
+- `ColumnSettingsPanel` extendido con prop `patchEndpoint` opcional; tab Permisos se oculta automáticamente
+
 **~sesión 23**
 - Fase 13 completa: formula engine, FormulaCell, ColumnSettingsPanel tab, BoardView pre-compute, resize handles en todas las columnas, width persistence localStorage, revalidateTag fix, realtime para board_columns/stages
 - Fix: formula column picker vacío — fetch interno en ColumnSettingsPanel fallaba silenciosamente por RLS; reemplazado con `allColumns` prop desde BoardView (ya en estado, cero fetch extra)

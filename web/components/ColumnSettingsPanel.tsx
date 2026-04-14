@@ -83,11 +83,13 @@ type Props = {
   users: PanelUser[]
   onClose: () => void
   onUpdated: (col: PanelColumn) => void
+  /** Override the default PATCH URL (e.g. for sub-item columns). Hides the Permisos tab. */
+  patchEndpoint?: string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClose, onUpdated }: Props) {
+export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClose, onUpdated, patchEndpoint }: Props) {
   // ── General state ──────────────────────────────────────────────────────────
   const [name, setName] = useState(column.name)
   const [kind, setKind] = useState(column.kind)
@@ -208,7 +210,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   async function patchColumn(patch: Record<string, unknown>): Promise<PanelColumn | null> {
-    const res = await fetch(`/api/boards/${boardId}/columns/${column.id}`, {
+    const res = await fetch(patchEndpoint ?? `/api/boards/${boardId}/columns/${column.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
@@ -396,7 +398,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
     ...(isSelect  ? [{ id: 'opciones' as TabId, label: 'Opciones' }] : []),
     ...(isFormula ? [{ id: 'formula'  as TabId, label: 'Fórmula'  }] : []),
     ...(isRollup  ? [{ id: 'rollup'   as TabId, label: 'Rollup'   }] : []),
-    { id: 'permisos', label: 'Permisos' },
+    ...(!patchEndpoint ? [{ id: 'permisos' as TabId, label: 'Permisos' }] : []),
   ]
 
   // ─── Render ───────────────────────────────────────────────────────────────

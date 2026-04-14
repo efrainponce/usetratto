@@ -1,5 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -39,9 +40,12 @@ export async function GET(req: Request, { params }: Context) {
   const itemId = new URL(req.url).searchParams.get('itemId')
   if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 })
 
-  const supabase = await createClient()
+  // Use user JWT only for workspace ownership check, then switch to service client
+  // to bypass RLS on data tables (auth already validated above).
+  const userClient = await createClient()
+  const service = createServiceClient()
 
-  const { data: view, error: viewError } = await supabase
+  const { data: view, error: viewError } = await userClient
     .from('sub_item_views')
     .select('id, board_id, workspace_id, type, config')
     .eq('id', viewId)
@@ -53,9 +57,9 @@ export async function GET(req: Request, { params }: Context) {
   const config = view.config as Record<string, unknown>
 
   switch (view.type) {
-    case 'native':         return nativeHandler(supabase, view.board_id, itemId, config, viewId)
-    case 'board_items':    return boardItemsHandler(supabase, config, itemId)
-    case 'board_sub_items': return boardSubItemsHandler(supabase, config, itemId)
+    case 'native':         return nativeHandler(service, view.board_id, itemId, config, viewId)
+    case 'board_items':    return boardItemsHandler(service, config, itemId)
+    case 'board_sub_items': return boardSubItemsHandler(service, config, itemId)
     default:               return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
   }
 }
@@ -81,6 +85,7 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
       .from('sub_item_columns')
       .select('id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
       .eq('board_id', boardId)
+      .eq('view_id', viewId)
       .eq('is_hidden', false)
       .order('position'),
     subItemsQuery,

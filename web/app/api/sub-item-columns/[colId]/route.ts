@@ -1,5 +1,5 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
 type Ctx = { params: Promise<{ colId: string }> }
@@ -19,9 +19,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
     source_col_key: string | null
   }>
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
-  // Verify ownership via join to boards
+  // Verify ownership via workspace check (serviceClient bypasses RLS)
   const { data: col } = await supabase
     .from('sub_item_columns')
     .select('id, board_id')
@@ -65,9 +65,9 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (isAuthError(auth)) return auth
 
   const { colId } = await params
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
-  // Verify ownership via join to boards
+  // Verify ownership via workspace check (serviceClient bypasses RLS)
   const { data: col } = await supabase
     .from('sub_item_columns')
     .select('id, board_id')

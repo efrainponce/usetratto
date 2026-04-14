@@ -1007,6 +1007,13 @@ Tab "Rollup" (visible solo si kind='rollup'):
 - [x] **14.B3** Botón eliminar vista de sub-items — `×` en tab strip de `SubItemsView` (solo si `views.length > 1` y `onDeleteView` provisto); endpoint `DELETE /api/boards/[id]/sub-item-views/[viewId]` usa `sub_item_views.workspace_id` directo (evita RLS en boards)
 - [x] **14.B4** Gate admin para operaciones destructivas — eliminar vistas de board, eliminar boards, eliminar vistas de sub-items: solo `admin | superadmin`; prop `userRole` en `BoardView` desde `page.tsx`
 - [x] **14.B5** Gestión de roles en `Settings → Miembros` — endpoint `PATCH /api/workspace-users/[userId]` (admin-only; no permite asignar `superadmin`); bootstrap: miembro puede auto-promoverse a admin si no existe ningún admin en el workspace; migration eleva primer miembro sin admin a `admin`
+- [x] **14.B6** Fix tipos de columna en `AddColumnInline` — 13 tipos completos (text, number, select, date, relation, formula, rollup, file, user, url, phone, boolean, email); `stopPropagation` en wrapper y select para evitar que el dropdown se cierre solo
+- [x] **14.B7** SourceColumnMapper: columnas no se creaban — duplicación silenciosa por unique constraint `(board_id, col_key)` cuando `source_col_key` ya existía; ahora re-usa la columna existente y la retorna en `savedColumns` para sincronizar estado BoardView
+- [x] **14.B8** Fix RLS en `GET /api/sub-item-views/[viewId]/data` — `nativeHandler` usaba `createClient()` (JWT de usuario, sujeto a RLS); la política de `sub_item_columns_select` hace un subquery a través de `boards` que falla silenciosamente retornando 0 columnas; cambiado a `createServiceClient()` después de validar workspace_id manualmente (auth ya validado por `requireAuthApi()`)
+- [x] **14.B9** Columnas de sub-items con scope por vista — `sub_item_columns` compartía columnas entre todas las vistas nativas del board; migration `20260414000008` agrega `view_id uuid FK sub_item_views`; `nativeHandler` filtra por `view_id`; `POST sub-item-columns` acepta `view_id`; `AddColumnInline` y `SourceColumnMapper` pasan `view_id`; `onConfigureColumns` en `SubItemsView` recibe el `viewId` de la vista activa
+
+### Nota RLS — patrón confirmado
+En rutas API que ya validaron autorización con `requireAuthApi()` + check de `workspace_id`, usar siempre `createServiceClient()` para las queries de datos, NO `createClient()`. El RLS de tablas con políticas que hacen subqueries a través de `boards` (ej. `sub_item_columns`, `sub_item_values`) puede retornar 0 filas silenciosamente con JWT de usuario incluso cuando el usuario es el dueño correcto del workspace.
 
 ---
 

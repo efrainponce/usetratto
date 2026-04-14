@@ -43,6 +43,7 @@ type CheckedSourceCol = {
 
 type Props = {
   boardId: string
+  viewId: string
   currentSourceBoardId: string | null
   currentColumns: SubItemColumn[]
   onClose: () => void
@@ -53,6 +54,7 @@ type Props = {
 
 export function SourceColumnMapper({
   boardId,
+  viewId,
   currentSourceBoardId,
   currentColumns,
   onClose,
@@ -199,8 +201,8 @@ export function SourceColumnMapper({
         body: JSON.stringify({ sub_items_source_board_id: selectedBoardId }),
       })
 
-      // 2. Fetch ALL existing sub-item columns (including hidden) for accurate duplicate check
-      const existingRes = await fetch(`/api/boards/${boardId}/sub-item-columns`)
+      // 2. Fetch existing sub-item columns scoped to this view for accurate duplicate check
+      const existingRes = await fetch(`/api/boards/${boardId}/sub-item-columns?viewId=${viewId}`)
       const allExisting: SubItemColumn[] = existingRes.ok ? await existingRes.json() : currentColumns
 
       // Get max position so new cols go at the end
@@ -229,6 +231,7 @@ export function SourceColumnMapper({
             name: checked.customName,
             kind: checked.column.kind,
             source_col_key: checked.column.col_key,
+            view_id: viewId,
             position,
           }),
         })
@@ -254,6 +257,7 @@ export function SourceColumnMapper({
             col_key: `custom_${Date.now()}`,
             name: manual.name,
             kind: manual.kind,
+            view_id: viewId,
             position,
           }),
         })

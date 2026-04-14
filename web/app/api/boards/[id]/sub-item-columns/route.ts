@@ -9,6 +9,7 @@ export async function GET(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
+  const viewId = new URL(req.url).searchParams.get('viewId')
   const supabase = createServiceClient()
 
   // Verify board belongs to workspace
@@ -21,11 +22,15 @@ export async function GET(req: Request, { params }: Context) {
 
   if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { data: columns, error } = await supabase
+  let query = supabase
     .from('sub_item_columns')
     .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
     .eq('board_id', id)
     .order('position')
+
+  if (viewId) query = query.eq('view_id', viewId)
+
+  const { data: columns, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(columns ?? [])
@@ -45,6 +50,7 @@ export async function POST(req: Request, { params }: Context) {
     required?: boolean
     settings?: Record<string, unknown>
     source_col_key?: string | null
+    view_id?: string | null
   }
 
   const supabase = createServiceClient()
@@ -85,6 +91,7 @@ export async function POST(req: Request, { params }: Context) {
       required: body.required ?? false,
       settings: body.settings ?? {},
       source_col_key: body.source_col_key ?? null,
+      view_id: body.view_id ?? null,
     })
     .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
     .single()

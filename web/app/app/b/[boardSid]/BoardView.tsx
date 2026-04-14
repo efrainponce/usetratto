@@ -92,6 +92,7 @@ export function BoardView({
   const [subItemColumns, setSubItemColumns] = useState<SubItemColumn[]>(initialSubItemColumns)
   const [sourceBoardId, setSourceBoardId]   = useState<string | null>(initialSourceBoardId)
   const [showMapper,    setShowMapper]       = useState(false)
+  const [mapperViewId,  setMapperViewId]     = useState<string>('')
   const [showImport,    setShowImport]       = useState(false)
   const [subItemViews,  setSubItemViews]     = useState<SubItemView[]>(initialSubItemViews)
   const [showViewWizard, setShowViewWizard]  = useState(false)
@@ -844,7 +845,7 @@ export function BoardView({
                   const res = await fetch(`/api/boards/${boardId}/sub-item-views/${viewId}`, { method: 'DELETE' })
                   if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
                 } : undefined}
-                onConfigureColumns={() => setShowMapper(true)}
+                onConfigureColumns={(vId) => { setMapperViewId(vId); setShowMapper(true) }}
                 boardSettings={boardSettings}
                 subitemView={subitemView}
               />
@@ -879,6 +880,7 @@ export function BoardView({
       {showMapper && (
         <SourceColumnMapper
           boardId={boardId}
+          viewId={mapperViewId}
           currentSourceBoardId={sourceBoardId}
           currentColumns={subItemColumns}
           onClose={() => setShowMapper(false)}
