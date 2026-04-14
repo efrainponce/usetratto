@@ -75,7 +75,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  revalidateTag('board-context')
+  revalidateTag('board-context', 'default')
   return NextResponse.json(updated)
 }
 
@@ -110,6 +110,6 @@ export async function DELETE(req: Request, { params }: Context) {
   const { error } = await supabase.from('board_columns').delete().eq('id', colId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  revalidateTag('board-context')
+  revalidateTag('board-context', 'default')
   return NextResponse.json({ success: true })
 }

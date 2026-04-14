@@ -258,6 +258,8 @@ async function boardSubItemsHandler(supabase: SupabaseClient, config: Record<str
       id: row.id, sid: row.sid, parent_id: row.parent_id,
       depth: row.depth, name: row.name, position: row.position,
       source_item_id: row.source_item_id ?? null,
+      source_item_sid: null,
+      source_board_sid: null,
       values: (row.sub_item_values ?? []).map((v: SubItemValue) => ({ ...v, col_key: colKeyMap[v.column_id] ?? '' })),
       children: [],
     }

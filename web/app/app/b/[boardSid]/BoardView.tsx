@@ -823,6 +823,7 @@ export function BoardView({
         <GenericDataTable
           columns={columns}
           rows={rows}
+          storageKey={`${boardId}-${activeViewId ?? 'default'}`}
           onCellChange={handleCellChange}
           onExpandSubItems={handleExpandSubItems}
           expandedSubItemId={expandedItemId}

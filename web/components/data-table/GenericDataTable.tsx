@@ -34,6 +34,7 @@ type Props = {
   onColumnSettings?:    (colKey: string) => void
   onAddColumn?:         (name: string, kind: string) => Promise<void>
   loading?:             boolean
+  storageKey?:          string   // if provided, column widths are persisted to localStorage
 }
 
 export function GenericDataTable({
@@ -48,13 +49,24 @@ export function GenericDataTable({
   onColumnSettings,
   onAddColumn,
   loading,
+  storageKey,
 }: Props) {
   const [sorting,       setSorting]       = useState<SortingState>([])
   const [selection,     setSelection]     = useState<RowSelectionState>({})
   const [editingCell,   setEditingCell]   = useState<EditingCell>(null)
-  const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>({})
+  const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>(() => {
+    if (!storageKey || typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem(`col-widths:${storageKey}`) ?? '{}') } catch { return {} }
+  })
   const [selectedCell,  setSelectedCell]  = useState<{ rowId: string; colKey: string } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Persist column widths to localStorage whenever they change
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return
+    if (Object.keys(columnSizing).length === 0) return
+    localStorage.setItem(`col-widths:${storageKey}`, JSON.stringify(columnSizing))
+  }, [columnSizing, storageKey])
 
   const handleCommit = useCallback((rowId: string, colKey: string, value: CellValue) => {
     onCellChange(rowId, colKey, value)
@@ -319,7 +331,7 @@ export function GenericDataTable({
                       ].join(' ')}
                       style={{
                         width:    header.getSize(),
-                        position: isSticky ? 'sticky' : undefined,
+                        position: isSticky ? 'sticky' : 'relative',
                         left:     isSticky ? stickyLefts[header.id] : undefined,
                         background: isSticky ? 'white' : undefined,
                         boxShadow: header.id === lastStickyId(columns)
