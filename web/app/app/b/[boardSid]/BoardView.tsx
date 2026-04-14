@@ -870,7 +870,11 @@ export function BoardView({
       {/* ColumnSettingsPanel drawer */}
       {colSettingsCol && (
         <ColumnSettingsPanel
-          column={colSettingsCol}
+          column={{
+            ...colSettingsCol,
+            // Merge augmented settings (e.g. stage options from board_stages, owner options from users)
+            settings: columns.find(c => c.id === colSettingsCol.id)?.settings ?? colSettingsCol.settings,
+          }}
           boardId={boardId}
           users={users}
           onClose={() => setColSettingsCol(null)}
