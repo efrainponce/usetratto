@@ -133,10 +133,9 @@ export async function POST(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
-  const supabase = await createClient()
 
-  // Verify board belongs to workspace
-  const { data: board } = await supabase
+  // Use service client for board lookup — user JWT + RLS can block this even for valid members
+  const { data: board } = await createServiceClient()
     .from('boards')
     .select('id')
     .eq('id', id)
