@@ -70,6 +70,7 @@ export function SourceColumnMapper({
   const [checkedCols, setCheckedCols] = useState<CheckedSourceCol[]>([])
   const [manualCols, setManualCols] = useState<ManualColumn[]>([])
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // ── Load all boards on mount ───────────────────────────────────────────────
 
@@ -165,6 +166,8 @@ export function SourceColumnMapper({
   // ── Handle save ────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
+    setSaveError(null)
+
     if (!selectedBoardId && checkedCols.length === 0 && manualCols.length === 0) {
       // Clearing source board
       try {
@@ -177,6 +180,7 @@ export function SourceColumnMapper({
         onSaved(null, [])
       } catch (err) {
         console.error(err)
+        setSaveError('Error al guardar')
       } finally {
         setSaving(false)
       }
@@ -195,14 +199,21 @@ export function SourceColumnMapper({
         body: JSON.stringify({ sub_items_source_board_id: selectedBoardId }),
       })
 
-      // 2. Create/update columns
+      // 2. Fetch ALL existing sub-item columns (including hidden) for accurate duplicate check
+      const existingRes = await fetch(`/api/boards/${boardId}/sub-item-columns`)
+      const allExisting: SubItemColumn[] = existingRes.ok ? await existingRes.json() : currentColumns
+
+      // Get max position so new cols go at the end
+      const maxPos = allExisting.reduce((m, c) => Math.max(m, c.position), -1)
+      let position = maxPos + 1
+
       const savedColumns: SubItemColumn[] = []
-      let position = 0
+      const errors: string[] = []
 
       // Save checked source columns
       for (const checked of checkedCols) {
-        // Skip if already exists
-        if (currentColumns.some(c => c.source_col_key === checked.column.col_key)) {
+        // Skip if already mapped (check ALL columns, not just visible)
+        if (allExisting.some(c => c.source_col_key === checked.column.col_key)) {
           continue
         }
 
@@ -210,7 +221,7 @@ export function SourceColumnMapper({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            col_key: `src_${checked.column.col_key}`,
+            col_key: `src_${checked.column.col_key}_${Date.now()}`,
             name: checked.customName,
             kind: checked.column.kind,
             source_col_key: checked.column.col_key,
@@ -222,6 +233,9 @@ export function SourceColumnMapper({
           const newCol = await response.json()
           savedColumns.push(newCol)
           position++
+        } else {
+          const err = await response.json().catch(() => ({})) as { error?: string }
+          errors.push(err.error ?? `Error al crear "${checked.customName}"`)
         }
       }
 
@@ -244,12 +258,20 @@ export function SourceColumnMapper({
           const newCol = await response.json()
           savedColumns.push(newCol)
           position++
+        } else {
+          const err = await response.json().catch(() => ({})) as { error?: string }
+          errors.push(err.error ?? `Error al crear "${manual.name}"`)
         }
+      }
+
+      if (errors.length > 0) {
+        setSaveError(errors.join(' · '))
       }
 
       onSaved(selectedBoardId, savedColumns)
     } catch (err) {
       console.error(err)
+      setSaveError('Error inesperado al guardar')
     } finally {
       setSaving(false)
     }
@@ -457,6 +479,9 @@ export function SourceColumnMapper({
 
           {/* Footer buttons */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-100">
+            {saveError && (
+              <p className="text-[11px] text-red-600 flex-1 mr-2">{saveError}</p>
+            )}
             {step === 'columns' && (
               <button
                 onClick={handleBack}
