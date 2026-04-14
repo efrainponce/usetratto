@@ -181,6 +181,7 @@ function NativeRenderer({
   const [showPicker,   setShowPicker]   = useState(false)
   const [addingL2For,  setAddingL2For]  = useState<string | null>(null)
   const [addingCol,    setAddingCol]    = useState(false)
+  const [openDetailId, setOpenDetailId] = useState<string | null>(null)
 
   const onCountChangeRef = useRef(onCountChange)
   useEffect(() => { onCountChangeRef.current = onCountChange })
@@ -411,6 +412,7 @@ function NativeRenderer({
                 onAddChild={() => { setExpandedL1(s => new Set([...s, row.id])); setAddingL2For(row.id) }}
                 computeFormula={computeFormula}
                 onExpandVariants={boardSettings?.variant_dimensions ? () => expandVariants(row.id) : undefined}
+                onOpenDetail={() => setOpenDetailId(row.id)}
               />
             )}
             {showL2 && expandedL1.has(row.id) && (
@@ -428,6 +430,7 @@ function NativeRenderer({
                     onDelete={() => remove(child.id, 1, row.id)}
                     onAddChild={() => {}}
                     computeFormula={computeFormula}
+                    onOpenDetail={() => setOpenDetailId(child.id)}
                   />
                 ))}
                 {addingL2For === row.id && (
@@ -461,6 +464,20 @@ function NativeRenderer({
           onClose={() => setShowPicker(false)}
         />
       )}
+
+      {openDetailId && (() => {
+        const detailRow = findInTree(rows, openDetailId)
+        if (!detailRow) return null
+        return (
+          <SubItemDetailDrawer
+            row={detailRow}
+            columns={columns}
+            computeFormula={computeFormula}
+            onCommit={(f, v) => editField(detailRow.id, f, v)}
+            onClose={() => setOpenDetailId(null)}
+          />
+        )
+      })()}
     </div>
   )
 }
@@ -592,7 +609,7 @@ function BoardSubItemsRenderer({ itemId, viewId, viewName, compact }: { itemId: 
 
 function NativeRow({
   row, depth, isExpanded, displayCols, formulaCols, editTarget,
-  onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild, computeFormula, onExpandVariants,
+  onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild, computeFormula, onExpandVariants, onOpenDetail,
 }: {
   row: SubItemData; depth: number; isExpanded: boolean
   displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]
@@ -605,6 +622,7 @@ function NativeRow({
   onAddChild: () => void
   computeFormula: (col: SubItemColumn, row: SubItemData) => number | null
   onExpandVariants?: () => void
+  onOpenDetail: () => void
 }) {
   const isEditing = (f: string) => editTarget?.id === row.id && editTarget.field === f
   const indent    = depth === 1 ? 'pl-5' : ''
@@ -663,6 +681,12 @@ function NativeRow({
 
       {/* Actions */}
       <div className="w-7 flex-none flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Open detail */}
+        <button onClick={onOpenDetail} title="Abrir detalle" className="text-gray-400 hover:text-indigo-600 transition-colors">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+            <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
         {depth === 0 && (
           <button onClick={onAddChild} title="Agregar L2" className="text-gray-400 hover:text-indigo-600 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
@@ -724,6 +748,157 @@ function EditableCell({
       className={`text-[13px] px-1 py-0.5 rounded cursor-text hover:bg-gray-100 transition-colors truncate ${align === 'right' ? 'text-right' : ''} ${isEmpty ? 'text-gray-400' : 'text-gray-800'}`}
     >
       {isEmpty ? '—' : display}
+    </div>
+  )
+}
+
+// ─── findInTree ───────────────────────────────────────────────────────────────
+
+function findInTree(rows: SubItemData[], id: string): SubItemData | null {
+  for (const r of rows) {
+    if (r.id === id) return r
+    if (r.children) {
+      const found = findInTree(r.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+// ─── SubItemDetailDrawer ──────────────────────────────────────────────────────
+
+function SubItemDetailDrawer({
+  row, columns, computeFormula, onCommit, onClose,
+}: {
+  row:            SubItemData
+  columns:        SubItemColumn[]
+  computeFormula: (col: SubItemColumn, row: SubItemData) => number | null
+  onCommit:       (field: string, value: unknown) => void
+  onClose:        () => void
+}) {
+  const [localName, setLocalName] = useState(row.name)
+  const [editingField, setEditingField] = useState<string | null>(null)
+
+  // sync name when row changes (after remote commit)
+  useEffect(() => { setLocalName(row.name) }, [row.name])
+
+  const displayCols = columns.filter(c => !c.is_hidden && c.kind !== 'formula')
+  const formulaCols = columns.filter(c => !c.is_hidden && c.kind === 'formula')
+
+  const getVal = (col: SubItemColumn) => {
+    const v = row.values.find(v => v.column_id === col.id)
+    return col.kind === 'number' ? (v?.value_number ?? '') : (v?.value_text ?? '')
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+      />
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 h-full w-72 bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <span className="text-[11px] font-mono text-gray-400">#{row.sid}</span>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="stroke-current">
+              <path d="M2 2l10 10M12 2L2 12" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+          {/* Name */}
+          <div>
+            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Nombre</label>
+            <input
+              value={localName}
+              onChange={e => setLocalName(e.target.value)}
+              onBlur={() => { if (localName !== row.name) onCommit('name', localName) }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
+              className="mt-1 w-full text-[13px] text-gray-800 font-medium border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400 transition-colors"
+            />
+          </div>
+
+          {/* Value columns */}
+          {displayCols.map(col => {
+            const raw = getVal(col)
+            return (
+              <div key={col.id}>
+                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{col.name}</label>
+                <DrawerEditField
+                  value={raw}
+                  kind={col.kind === 'number' ? 'number' : 'text'}
+                  editing={editingField === col.id}
+                  onStart={() => setEditingField(col.id)}
+                  onCommit={v => { onCommit(col.id, v); setEditingField(null) }}
+                  onCancel={() => setEditingField(null)}
+                />
+              </div>
+            )
+          })}
+
+          {/* Formula columns */}
+          {formulaCols.map(col => {
+            const result = computeFormula(col, row)
+            return (
+              <div key={col.id}>
+                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{col.name}</label>
+                <div className="mt-1 text-[13px] text-indigo-700 font-semibold px-2 py-1.5 bg-indigo-50 rounded">
+                  {result != null
+                    ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+                    : '—'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function DrawerEditField({
+  value, kind, editing, onStart, onCommit, onCancel,
+}: {
+  value:    string | number
+  kind:     'text' | 'number'
+  editing:  boolean
+  onStart:  () => void
+  onCommit: (v: string | number) => void
+  onCancel: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (editing) inputRef.current?.select() }, [editing])
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef} autoFocus defaultValue={String(value)}
+        type={kind === 'number' ? 'number' : 'text'}
+        className="mt-1 w-full text-[13px] border border-indigo-400 rounded px-2 py-1.5 outline-none"
+        onBlur={e => onCommit(kind === 'number' ? Number(e.target.value) : e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter')  onCommit(kind === 'number' ? Number(e.currentTarget.value) : e.currentTarget.value)
+          if (e.key === 'Escape') onCancel()
+        }}
+      />
+    )
+  }
+
+  const empty = value === '' || value == null
+  return (
+    <div
+      onClick={onStart}
+      className={`mt-1 text-[13px] px-2 py-1.5 rounded border border-transparent hover:border-gray-200 cursor-text transition-colors ${empty ? 'text-gray-300 italic' : 'text-gray-800'}`}
+    >
+      {empty ? '—' : value}
     </div>
   )
 }
