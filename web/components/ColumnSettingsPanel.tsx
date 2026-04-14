@@ -85,11 +85,13 @@ type Props = {
   onUpdated: (col: PanelColumn) => void
   /** Override the default PATCH URL (e.g. for sub-item columns). Hides the Permisos tab. */
   patchEndpoint?: string
+  /** Endpoint for loading and managing permissions. If provided, shows the Permisos tab. */
+  permissionsEndpoint?: string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClose, onUpdated, patchEndpoint }: Props) {
+export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClose, onUpdated, patchEndpoint, permissionsEndpoint }: Props) {
   // ── General state ──────────────────────────────────────────────────────────
   const [name, setName] = useState(column.name)
   const [kind, setKind] = useState(column.kind)
@@ -181,15 +183,16 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
 
   // ── Load permissions + teams ──────────────────────────────────────────────
   useEffect(() => {
+    if (!permissionsEndpoint) return
     setPermsLoading(true)
     Promise.all([
-      fetch(`/api/boards/${boardId}/columns/${column.id}/permissions`).then(r => r.ok ? r.json() : []),
+      fetch(permissionsEndpoint).then(r => r.ok ? r.json() : []),
       fetch('/api/teams').then(r => r.ok ? r.json() : []),
     ]).then(([perms, teamsData]: [ColPermission[], RemoteTeam[]]) => {
       setPermissions(perms)
       setTeams(teamsData)
     }).finally(() => setPermsLoading(false))
-  }, [boardId, column.id])
+  }, [permissionsEndpoint])
 
   // ── Load boards for relation ──────────────────────────────────────────────
   useEffect(() => {
@@ -355,12 +358,12 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   }
 
   async function handleAddPermission() {
-    if (!newPermId) return
+    if (!newPermId || !permissionsEndpoint) return
     const isTeam = newPermId.startsWith('t:')
     const entityId = newPermId.slice(2)
     setSavingPerm(true)
     try {
-      const res = await fetch(`/api/boards/${boardId}/columns/${column.id}/permissions`, {
+      const res = await fetch(permissionsEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -379,10 +382,11 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   }
 
   async function handleRemovePermission(permId: string) {
+    if (!permissionsEndpoint) return
     setSavingPerm(true)
     try {
       const res = await fetch(
-        `/api/boards/${boardId}/columns/${column.id}/permissions/${permId}`,
+        `${permissionsEndpoint}/${permId}`,
         { method: 'DELETE' }
       )
       if (res.ok) setPermissions(prev => prev.filter(p => p.id !== permId))
@@ -398,7 +402,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
     ...(isSelect  ? [{ id: 'opciones' as TabId, label: 'Opciones' }] : []),
     ...(isFormula ? [{ id: 'formula'  as TabId, label: 'Fórmula'  }] : []),
     ...(isRollup  ? [{ id: 'rollup'   as TabId, label: 'Rollup'   }] : []),
-    ...(!patchEndpoint ? [{ id: 'permisos' as TabId, label: 'Permisos' }] : []),
+    ...(permissionsEndpoint ? [{ id: 'permisos' as TabId, label: 'Permisos' }] : []),
   ]
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -820,7 +824,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
           )}
 
           {/* ── Permisos ─────────────────────────────────────────────────── */}
-          {tab === 'permisos' && (
+          {tab === 'permisos' && permissionsEndpoint && (
             <div className="space-y-3">
               {permsLoading ? (
                 <p className="text-xs text-gray-400">Cargando...</p>

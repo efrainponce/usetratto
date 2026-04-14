@@ -1,5 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
 type SubItemColumn = {
@@ -42,10 +43,11 @@ export async function GET(req: Request) {
   const itemId = new URL(req.url).searchParams.get('itemId')
   if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 })
 
-  const supabase = await createClient()
+  const userClient = await createClient()
+  const service = createServiceClient()
 
   // Get item to verify ownership and get board_id
-  const { data: item } = await supabase
+  const { data: item } = await userClient
     .from('items')
     .select('board_id')
     .eq('id', itemId)
@@ -55,14 +57,14 @@ export async function GET(req: Request) {
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Get sub_item_columns for the board
-  const { data: columns } = await supabase
+  const { data: columns } = await service
     .from('sub_item_columns')
     .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
     .eq('board_id', item.board_id)
     .order('position')
 
   // Get sub_items with their values
-  const { data: subItems } = await supabase
+  const { data: subItems } = await service
     .from('sub_items')
     .select('id, sid, parent_id, depth, name, source_item_id, position')
     .eq('item_id', itemId)
@@ -79,7 +81,7 @@ export async function GET(req: Request) {
 
   // Get sub_item_values for all sub_items
   const subItemIds = subItems.map(s => s.id)
-  const { data: values } = await supabase
+  const { data: values } = await service
     .from('sub_item_values')
     .select('sub_item_id, column_id, value_text, value_number, value_date, value_json')
     .in('sub_item_id', subItemIds)
@@ -145,10 +147,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'item_id required' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const userClient2 = await createClient()
+  const service2 = createServiceClient()
 
-  // Look up parent item to get board_id
-  const { data: item } = await supabase
+  // Look up parent item to verify ownership
+  const { data: item } = await userClient2
     .from('items')
     .select('board_id')
     .eq('id', body.item_id)
@@ -162,7 +165,7 @@ export async function POST(req: Request) {
   const parentId = body.parent_id ?? null
 
   // Get board to check sub_items_source_board_id
-  const { data: board } = await supabase
+  const { data: board } = await service2
     .from('boards')
     .select('sub_items_source_board_id')
     .eq('id', boardId)
@@ -171,7 +174,7 @@ export async function POST(req: Request) {
   // Determine final name
   let finalName = body.name
   if (!finalName && body.source_item_id) {
-    const { data: sourceItem } = await supabase
+    const { data: sourceItem } = await service2
       .from('items')
       .select('name')
       .eq('id', body.source_item_id)
@@ -183,7 +186,7 @@ export async function POST(req: Request) {
   }
 
   // Get next position in same (item_id, depth, parent_id) group
-  const { data: last } = await supabase
+  const { data: last } = await service2
     .from('sub_items')
     .select('position')
     .eq('item_id', body.item_id)
@@ -196,7 +199,7 @@ export async function POST(req: Request) {
   const position = (last?.position ?? -1) + 1
 
   // Insert sub_item
-  const { data: subItem, error: insertError } = await supabase
+  const { data: subItem, error: insertError } = await service2
     .from('sub_items')
     .insert({
       workspace_id: auth.workspaceId,
@@ -217,12 +220,14 @@ export async function POST(req: Request) {
 
   // Snapshot logic: if source_item_id and source_board exists
   if (body.source_item_id && board?.sub_items_source_board_id) {
-    // Get sub_item_columns with source_col_key
-    const { data: sourceColumns } = await supabase
+    // Get sub_item_columns with source_col_key for this view
+    const colQuery = service2
       .from('sub_item_columns')
       .select('id, source_col_key')
       .eq('board_id', boardId)
       .not('source_col_key', 'is', null)
+    if (body.view_id) colQuery.eq('view_id', body.view_id)
+    const { data: sourceColumns } = await colQuery
 
     if (sourceColumns && sourceColumns.length > 0) {
       const sourceColKeys = sourceColumns
@@ -230,7 +235,7 @@ export async function POST(req: Request) {
         .filter((k): k is string => k !== null)
 
       // Get board_columns from source board
-      const { data: boardCols } = await supabase
+      const { data: boardCols } = await service2
         .from('board_columns')
         .select('id, col_key')
         .eq('board_id', board.sub_items_source_board_id)
@@ -245,7 +250,7 @@ export async function POST(req: Request) {
 
         // Get item_values from source item
         const boardColIds = boardCols.map(bc => bc.id)
-        const { data: itemVals } = await supabase
+        const { data: itemVals } = await service2
           .from('item_values')
           .select('column_id, value_text, value_number, value_date, value_json')
           .eq('item_id', body.source_item_id)
@@ -278,7 +283,7 @@ export async function POST(req: Request) {
           }
 
           if (toInsert.length > 0) {
-            await supabase.from('sub_item_values').insert(toInsert)
+            await service2.from('sub_item_values').insert(toInsert)
           }
         }
       }
@@ -286,7 +291,7 @@ export async function POST(req: Request) {
   }
 
   // Fetch the created sub_item with its values
-  const { data: columns } = await supabase
+  const { data: columns } = await service2
     .from('sub_item_columns')
     .select('id, col_key')
     .eq('board_id', boardId)
@@ -298,7 +303,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const { data: values } = await supabase
+  const { data: values } = await service2
     .from('sub_item_values')
     .select('column_id, value_text, value_number, value_date, value_json')
     .eq('sub_item_id', subItem.id)

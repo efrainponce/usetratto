@@ -1012,6 +1012,17 @@ Tab "Rollup" (visible solo si kind='rollup'):
 - [x] **14.B8** Fix RLS en `GET /api/sub-item-views/[viewId]/data` — `nativeHandler` usaba `createClient()` (JWT de usuario, sujeto a RLS); la política de `sub_item_columns_select` hace un subquery a través de `boards` que falla silenciosamente retornando 0 columnas; cambiado a `createServiceClient()` después de validar workspace_id manualmente (auth ya validado por `requireAuthApi()`)
 - [x] **14.B9** Columnas de sub-items con scope por vista — `sub_item_columns` compartía columnas entre todas las vistas nativas del board; migration `20260414000008` agrega `view_id uuid FK sub_item_views`; `nativeHandler` filtra por `view_id`; `POST sub-item-columns` acepta `view_id`; `AddColumnInline` y `SourceColumnMapper` pasan `view_id`; `onConfigureColumns` en `SubItemsView` recibe el `viewId` de la vista activa
 
+### Fase 14.C — Column permissions parity (sub-item columns = 1st class citizens)
+
+**Goal:** Permisos por columna funcionan igual para `board_columns` y `sub_item_columns`. `ColumnSettingsPanel` es 100% genérico — sin tabs ocultos ni lógica de endpoint hardcodeada.
+
+**Decisión:** No fusionar `board_columns` + `sub_item_columns` (tienen semánticas distintas: is_system, source_col_key, view_id). Solo extender `column_permissions` para soportar ambas.
+
+#### Tareas
+- [x] **14.C1** Migration `20260414000009`: `column_permissions.column_id` nullable + `sub_item_column_id uuid FK sub_item_columns` + constraint `exactly_one` + RLS actualizado
+- [x] **14.C2** API routes `GET/POST /api/sub-item-columns/[colId]/permissions/route.ts` + `DELETE /api/sub-item-columns/[colId]/permissions/[permId]/route.ts` — idénticas a board columns permissions pero con `sub_item_column_id`
+- [x] **14.C3** `ColumnSettingsPanel`: reemplazar `!patchEndpoint → muestra Permisos` por prop `permissionsEndpoint?: string`; usar en todas las URLs del tab Permisos; pasar desde SubItemsView headers, SubItemDetailDrawer, y ItemDetailView
+
 ### Nota RLS — patrón confirmado
 En rutas API que ya validaron autorización con `requireAuthApi()` + check de `workspace_id`, usar siempre `createServiceClient()` para las queries de datos, NO `createClient()`. El RLS de tablas con políticas que hacen subqueries a través de `boards` (ej. `sub_item_columns`, `sub_item_values`) puede retornar 0 filas silenciosamente con JWT de usuario incluso cuando el usuario es el dueño correcto del workspace.
 

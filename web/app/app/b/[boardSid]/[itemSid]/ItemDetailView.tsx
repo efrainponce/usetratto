@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { ColumnCell } from '@/components/data-table/cells/ColumnCell'
+import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 import { SubItemsView } from '@/components/SubItemsView'
 import { ItemChannels } from '@/components/ItemChannels'
 import { ActivityFeed } from '@/components/ActivityFeed'
@@ -45,10 +46,11 @@ export function ItemDetailView({
   const [item,          setItem]          = useState<BoardItem>(initialItem)
   const [stages]                          = useState<BoardStage[]>(initialStages)
   const [users]                           = useState<WorkspaceUser[]>(initialUsers)
-  const [rawCols]                         = useState<BoardColumn[]>(initialColumns)
+  const [rawCols, setRawCols]             = useState<BoardColumn[]>(initialColumns)
   const [subItemViews]                    = useState<SubItemView[]>(initialSubItemViews)
-  const [editTarget, setEditTarget] = useState<string | null>(null)
-  const [activeTab,  setActiveTab]  = useState<Tab>('subitems')
+  const [editTarget,  setEditTarget]  = useState<string | null>(null)
+  const [activeTab,   setActiveTab]   = useState<Tab>('subitems')
+  const [colSettings, setColSettings] = useState<BoardColumn | null>(null)
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -211,25 +213,36 @@ export function ItemDetailView({
             Información
           </p>
           <div className="space-y-0.5">
-            {infoColumns.map(col => (
-              <div key={col.key} className="flex items-start gap-2 py-0.5">
-                <span className="w-24 flex-none text-[12px] text-gray-500 pt-1.5 truncate select-none">
-                  {col.label}
-                </span>
-                <div className="flex-1 min-w-0 rounded hover:bg-gray-50 transition-colors">
-                  <ColumnCell
-                    column={col}
-                    value={getFieldValue(col.key)}
-                    isEditing={editTarget === col.key}
-                    rowId={item.id}
-                    onStartEdit={() => setEditTarget(col.key)}
-                    onCommit={val => { handleCellChange(col.key, val); setEditTarget(null) }}
-                    onCancel={() => setEditTarget(null)}
-                    onNavigate={dir => handleNavigate(col.key, dir)}
-                  />
+            {infoColumns.map(col => {
+              const rawCol = rawCols.find(c => c.col_key === col.key)
+              return (
+                <div key={col.key} className="group/field flex items-start gap-2 py-0.5">
+                  <div className="w-24 flex-none flex items-center gap-0.5 pt-1.5">
+                    <span className="flex-1 text-[12px] text-gray-500 truncate select-none">
+                      {col.label}
+                    </span>
+                    {rawCol && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setColSettings(rawCol) }}
+                        className="opacity-0 group-hover/field:opacity-100 shrink-0 text-[13px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                      >⋯</button>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 rounded hover:bg-gray-50 transition-colors">
+                    <ColumnCell
+                      column={col}
+                      value={getFieldValue(col.key)}
+                      isEditing={editTarget === col.key}
+                      rowId={item.id}
+                      onStartEdit={() => setEditTarget(col.key)}
+                      onCommit={val => { handleCellChange(col.key, val); setEditTarget(null) }}
+                      onCancel={() => setEditTarget(null)}
+                      onNavigate={dir => handleNavigate(col.key, dir)}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -273,6 +286,22 @@ export function ItemDetailView({
         </div>
 
       </div>
+
+      {/* ── Column settings panel ────────────────────────────────────────── */}
+      {colSettings && (
+        <ColumnSettingsPanel
+          column={{ ...colSettings, is_system: colSettings.is_system ?? false }}
+          boardId={boardId}
+          allColumns={rawCols.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
+          users={users}
+          permissionsEndpoint={colSettings ? `/api/boards/${boardId}/columns/${colSettings.id}/permissions` : undefined}
+          onClose={() => setColSettings(null)}
+          onUpdated={updated => {
+            setRawCols(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
+            setColSettings(null)
+          }}
+        />
+      )}
     </div>
   )
 }
