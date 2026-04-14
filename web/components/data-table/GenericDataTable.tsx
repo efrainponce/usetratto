@@ -54,16 +54,22 @@ export function GenericDataTable({
   const [sorting,       setSorting]       = useState<SortingState>([])
   const [selection,     setSelection]     = useState<RowSelectionState>({})
   const [editingCell,   setEditingCell]   = useState<EditingCell>(null)
-  const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>(() => {
-    if (!storageKey || typeof window === 'undefined') return {}
-    try { return JSON.parse(localStorage.getItem(`col-widths:${storageKey}`) ?? '{}') } catch { return {} }
-  })
+  const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>({})
   const [selectedCell,  setSelectedCell]  = useState<{ rowId: string; colKey: string } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Persist column widths to localStorage whenever they change
+  // Load persisted column widths after hydration (never during SSR to avoid mismatch)
   useEffect(() => {
-    if (!storageKey || typeof window === 'undefined') return
+    if (!storageKey) return
+    try {
+      const stored = localStorage.getItem(`col-widths:${storageKey}`)
+      if (stored) setColumnSizing(JSON.parse(stored))
+    } catch { /* ignore */ }
+  }, [storageKey])
+
+  // Persist column widths whenever they change
+  useEffect(() => {
+    if (!storageKey) return
     if (Object.keys(columnSizing).length === 0) return
     localStorage.setItem(`col-widths:${storageKey}`, JSON.stringify(columnSizing))
   }, [columnSizing, storageKey])
