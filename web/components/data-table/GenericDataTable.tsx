@@ -379,6 +379,7 @@ const ADD_COL_KINDS = [
   { value: 'file',        label: 'Archivo(s)' },
   { value: 'button',      label: 'Botón' },
   { value: 'signature',   label: 'Firma' },
+  { value: 'formula',     label: 'Fórmula' },
 ]
 
 function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Promise<void> }) {
