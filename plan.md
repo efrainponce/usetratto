@@ -988,6 +988,7 @@ Tab "Rollup" (visible solo si kind='rollup'):
 ```
 
 ### Tareas
+- [x] **14.0** Battery bar en `SubItemsView` — rollup visual de status: L2→L1 collapsed, barra segmentada por color/stage, `done/total · X% completado`. kind='rollup' implícito sobre columna status.
 - [ ] **14.1** `lib/rollup-engine.ts` — motor puro con todos los aggregates
 - [ ] **14.2** Soporte kind='rollup' en `sub_item_columns` — evaluar en NativeRow al renderizar L1
 - [ ] **14.3** Soporte kind='rollup' en `board_columns` — pre-calcular aggregates en endpoint de items + renderizar en GenericDataTable

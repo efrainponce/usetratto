@@ -428,8 +428,73 @@ function NativeRenderer({
     return opts.find(o => o.value === v.value_text)?.is_closed === true
   }
 
+  // ── Battery: stage breakdown + % done ─────────────────────────────────────
+  // L2s roll up to L1 (all L2 done → L1 done). L1s roll up to item level.
+  const battery = (() => {
+    if (!statusCol || rows.length === 0) return null
+    type Opt = { value: string; label: string; color?: string; is_closed?: boolean }
+    const opts = (statusCol.settings.options as Opt[] | undefined) ?? []
+    const firstClosedVal = opts.find(o => o.is_closed)?.value ?? null
+
+    type Bucket = { value: string | null; label: string; color: string; count: number }
+    const map = new Map<string | null, Bucket>()
+    for (const o of opts) map.set(o.value, { value: o.value, label: o.label, color: o.color ?? '#94a3b8', count: 0 })
+    map.set(null, { value: null, label: 'Sin estado', color: '#e5e7eb', count: 0 })
+
+    let done = 0
+    for (const l1 of rows) {
+      let effVal: string | null
+      let effDone: boolean
+      if (l1.children && l1.children.length > 0) {
+        const allDone = l1.children.every(l2 => isLocked(l2))
+        if (allDone) {
+          effVal = firstClosedVal; effDone = true
+        } else {
+          // use most common L2 status value
+          const counts: Record<string, number> = {}
+          for (const l2 of l1.children) {
+            const v = l2.values.find(v => v.column_id === statusCol.id)
+            const k = v?.value_text ?? '__null'
+            counts[k] = (counts[k] ?? 0) + 1
+          }
+          const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '__null'
+          effVal = top === '__null' ? null : top
+          effDone = false
+        }
+      } else {
+        const v = l1.values.find(v => v.column_id === statusCol.id)
+        effVal = v?.value_text ?? null
+        effDone = isLocked(l1)
+      }
+      if (effDone) done++
+      ;(map.get(effVal) ?? map.get(null)!).count++
+    }
+
+    const total = rows.length
+    const pct = Math.round((done / total) * 100)
+    const segments = [...map.values()].filter(b => b.count > 0)
+    return { segments, total, done, pct }
+  })()
+
   return (
     <div className="flex flex-col h-full">
+      {/* ── Battery ───────────────────────────────────────────────────── */}
+      {battery && (
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 flex-none">
+          <div className="flex flex-1 h-2 rounded-full overflow-hidden bg-gray-100">
+            {battery.segments.map(seg => (
+              <div
+                key={seg.value ?? '__null'}
+                style={{ width: `${(seg.count / battery.total) * 100}%`, backgroundColor: seg.color }}
+                title={`${seg.label}: ${seg.count}`}
+              />
+            ))}
+          </div>
+          <span className="flex-none text-[12px] text-gray-500 whitespace-nowrap">
+            {battery.done}/{battery.total} · {battery.pct}% completado
+          </span>
+        </div>
+      )}
       {/* ── Column header ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide select-none flex-none">
         <div className="flex-none" style={{ width: cw('__expand') }} />
