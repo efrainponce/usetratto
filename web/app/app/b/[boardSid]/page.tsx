@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
-import { resolveBoardBySid, getBoardContext, getWorkspaceUsers, getBoardItems, getSubItemColumns, getBoardViews, type SubItemColumn, type BoardView as BoardViewType } from '@/lib/boards'
+import { resolveBoardBySid, getBoardContext, getWorkspaceUsers, getBoardItems, getSubItemColumns, getBoardViews, getSubItemViews, type SubItemColumn, type BoardView as BoardViewType } from '@/lib/boards'
 import { BoardView } from './BoardView'
 
 type Props = {
@@ -16,12 +16,13 @@ export default async function BoardPage({ params }: Props) {
   const board = await resolveBoardBySid(sid, user.workspaceId)
   if (!board) notFound()
 
-  const [{ stages, columns }, users, items, subItemColumns, views] = await Promise.all([
+  const [{ stages, columns }, users, items, subItemColumns, views, subItemViews] = await Promise.all([
     getBoardContext(board.id),
     getWorkspaceUsers(user.workspaceId),
     getBoardItems(board.id, user.workspaceId),
     getSubItemColumns(board.id),
     getBoardViews(board.id, board.workspace_id),
+    getSubItemViews(board.id, user.workspaceId),
   ])
 
   return (
@@ -36,6 +37,7 @@ export default async function BoardPage({ params }: Props) {
       initialSubItemColumns={subItemColumns}
       initialSourceBoardId={board.sub_items_source_board_id ?? null}
       initialViews={views}
+      initialSubItemViews={subItemViews}
     />
   )
 }

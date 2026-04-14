@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
-import { resolveBoardBySid, resolveItemBySid, getBoardContext, getWorkspaceUsers, getItemData, getSubItemColumns, type SubItemColumn } from '@/lib/boards'
+import { resolveBoardBySid, resolveItemBySid, getBoardContext, getWorkspaceUsers, getItemData, getSubItemViews } from '@/lib/boards'
 import { ItemDetailView } from './ItemDetailView'
 
 type Props = {
@@ -21,11 +21,11 @@ export default async function ItemPage({ params }: Props) {
   const item = await resolveItemBySid(itemSidNum, board.id, user.workspaceId)
   if (!item) notFound()
 
-  const [{ stages, columns }, users, itemData, subItemColumns] = await Promise.all([
+  const [{ stages, columns }, users, itemData, subItemViews] = await Promise.all([
     getBoardContext(board.id),
     getWorkspaceUsers(user.workspaceId),
     getItemData(item.id, user.workspaceId),
-    getSubItemColumns(board.id),
+    getSubItemViews(board.id, user.workspaceId),
   ])
 
   if (!itemData) notFound()
@@ -39,8 +39,7 @@ export default async function ItemPage({ params }: Props) {
       initialColumns={columns}
       initialUsers={users}
       initialItem={itemData}
-      initialSubItemColumns={subItemColumns}
-      initialSourceBoardId={board.sub_items_source_board_id ?? null}
+      initialSubItemViews={subItemViews}
     />
   )
 }

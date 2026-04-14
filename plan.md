@@ -603,7 +603,7 @@ PATCH  /api/boards/[id]/views/[viewId]/columns/[colId] → toggle is_visible, se
 ### Pendiente para Fase 9
 - **8.7-defer** Column permissions UI (settings → board → column → toggle quién ve/edita)
 - **8.7-defer** `board_view_members` (quién puede ver esta vista — permisos por vista)
-- **8.8** Sub-item views: múltiples configuraciones de source por board
+- [x] **8.8** Sub-item views: múltiples configuraciones de source por board
 - **8.9** Billing page (mock con créditos AI + storage — integración real en Fase 10)
 
 ---
@@ -630,7 +630,7 @@ PATCH  /api/boards/[id]/views/[viewId]/columns/[colId] → toggle is_visible, se
   )
   -- Sin registros → visible para todos los miembros del board
   ```
-- [ ] **9.7** Sub-item views: múltiples source configs por board — diferido a post-Fase 10
+- [x] **9.7** Sub-item views: múltiples source configs por board — implementado en sesión 19
 - [x] **9.8** Billing page mock — implementado en Fase 8
 
 ---

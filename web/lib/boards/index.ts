@@ -255,6 +255,41 @@ export async function getItemData(itemId: string, workspaceId: string) {
   return (data ?? null) as unknown as BoardItem | null
 }
 
+// ─── Sub-item views (view definitions — not the data) ────────────────────────
+
+export type SubItemView = {
+  id:       string
+  sid:      number
+  name:     string
+  position: number
+  type:     'native' | 'board_items' | 'board_sub_items'
+  config:   Record<string, unknown>
+}
+
+export const getSubItemViews = unstable_cache(
+  async (boardId: string, workspaceId: string): Promise<SubItemView[]> => {
+    const supabase = createServiceClient()
+    const { data } = await supabase
+      .from('sub_item_views')
+      .select('id, sid, name, position, type, config')
+      .eq('board_id', boardId)
+      .order('position')
+
+    if (data && data.length > 0) return data as SubItemView[]
+
+    // Auto-create default native view (fallback — migration normally handles this)
+    const { data: created } = await supabase
+      .from('sub_item_views')
+      .insert({ board_id: boardId, workspace_id: workspaceId, name: 'Sub-items', position: 0, type: 'native', config: {} })
+      .select('id, sid, name, position, type, config')
+      .single()
+
+    return created ? [created as SubItemView] : []
+  },
+  ['sub-item-views'],
+  { revalidate: 60 }
+)
+
 // ─── Board views ──────────────────────────────────────────────────────────────
 
 export type BoardViewColumn = {

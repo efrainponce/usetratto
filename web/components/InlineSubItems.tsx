@@ -183,7 +183,9 @@ export function InlineSubItems({
           }),
         })
 
+        if (!res.ok) { console.error('[InlineSubItems] create failed:', res.status); return }
         const created = (await res.json()) as SubItemData
+        if (!created?.id) return
 
         setRows((prev) => [...prev, { ...created, children: [] }])
       } catch (e) {
@@ -272,22 +274,15 @@ export function InlineSubItems({
       {/* Top bar */}
       <div className="flex items-center justify-between px-8 pb-1.5">
         <span className="text-[12px] font-semibold text-gray-600">Sub-items</span>
-        {!showAddForm && sourceBoardId && (
+        {!showAddForm && (
           <button
-            onClick={() => setShowPicker(true)}
+            onClick={() => sourceBoardId ? setShowPicker(true) : setShowAddForm(true)}
             className="flex items-center gap-1 text-[12px] text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
           >
             <span className="text-[15px] leading-none">+</span> Agregar
           </button>
         )}
       </div>
-
-      {/* No source warning */}
-      {!sourceBoardId && (
-        <p className="px-8 text-[11px] text-amber-600 italic mb-1">
-          Elige un catálogo en la barra superior antes de agregar sub-items.
-        </p>
-      )}
 
       {/* Table */}
       {rows.length > 0 && (
@@ -376,7 +371,7 @@ export function InlineSubItems({
       )}
 
       {/* Add form */}
-      {showAddForm && !sourceBoardId && (
+      {showAddForm && (
         <div className="px-8">
           <div className="flex items-center gap-2 py-1">
             <input

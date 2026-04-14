@@ -78,7 +78,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const [workspaceTeams, setWorkspaceTeams] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [activeTab, setActiveTab] = useState<'etapas' | 'columnas' | 'acceso'>('etapas')
+  const [activeTab, setActiveTab] = useState<'etapas' | 'columnas' | 'acceso' | 'sub-items'>('etapas')
   const [editingStageId, setEditingStageId] = useState<string | null>(null)
   const [editingStageName, setEditingStageName] = useState('')
   const [newStageName, setNewStageName] = useState('')
@@ -91,34 +91,86 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
   const [colSettingsId, setColSettingsId] = useState<string | null>(null)
 
+  // ── Sub-item views state ─────────────────────────────────────────────
+  type SubItemViewType = 'native' | 'board_items' | 'board_sub_items'
+  type SubItemView = { id: string; sid: number; name: string; position: number; type: SubItemViewType; config: Record<string, unknown> }
+
+  const [subItemViews,          setSubItemViews]          = useState<SubItemView[]>([])
+  const [viewFormOpen,          setViewFormOpen]          = useState(false)
+  const [viewFormName,          setViewFormName]          = useState('')
+  const [viewFormType,          setViewFormType]          = useState<SubItemViewType>('native')
+  const [viewFormSourceBoardId, setViewFormSourceBoardId] = useState('')
+  const [viewFormRelColId,      setViewFormRelColId]      = useState('')
+  const [allBoards,             setAllBoards]             = useState<Board[]>([])
+  const [sourceBoardCols,       setSourceBoardCols]       = useState<Column[]>([])
+
+  // Fetch columns of selected source board
+  useEffect(() => {
+    if (!viewFormSourceBoardId || viewFormType === 'native') { setSourceBoardCols([]); return }
+    fetch(`/api/boards/${viewFormSourceBoardId}/columns`)
+      .then(r => r.json())
+      .then(data => setSourceBoardCols(Array.isArray(data) ? data : []))
+      .catch(() => setSourceBoardCols([]))
+  }, [viewFormSourceBoardId, viewFormType])
+
+  async function handleCreateSubItemView(e: React.FormEvent) {
+    e.preventDefault()
+    if (!viewFormName.trim()) return
+    const config: Record<string, unknown> = {}
+    if (viewFormType !== 'native') {
+      if (!viewFormSourceBoardId || !viewFormRelColId) return
+      config.source_board_id = viewFormSourceBoardId
+      config.relation_col_id = viewFormRelColId
+    }
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/boards/${boardId}/sub-item-views`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: viewFormName.trim(), type: viewFormType, config }),
+      })
+      if (res.ok) {
+        const view = await res.json()
+        setSubItemViews(prev => [...prev, view])
+        setViewFormOpen(false); setViewFormName(''); setViewFormType('native')
+        setViewFormSourceBoardId(''); setViewFormRelColId('')
+      }
+    } finally { setIsSaving(false) }
+  }
+
+  async function handleDeleteSubItemView(viewId: string) {
+    if (!confirm('¿Eliminar esta vista de sub-items?')) return
+    const res = await fetch(`/api/boards/${boardId}/sub-item-views/${viewId}`, { method: 'DELETE' })
+    if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
+    else if (res.status === 400) alert('No puedes eliminar la última vista')
+  }
+
   // Fetch data on mount
   useEffect(() => {
     async function fetchData() {
       try {
-        const [boardRes, colRes, membersRes, usersRes, teamsRes] = await Promise.all([
+        const [boardRes, colRes, membersRes, usersRes, teamsRes, viewsRes, allBoardsRes] = await Promise.all([
           fetch(`/api/boards/${boardId}`),
           fetch(`/api/boards/${boardId}/columns`),
           fetch(`/api/boards/${boardId}/members`),
           fetch('/api/workspace-users'),
           fetch('/api/teams'),
+          fetch(`/api/boards/${boardId}/sub-item-views`),
+          fetch('/api/boards'),
         ])
 
-        const [boardData, colData, membersData, usersData, teamsData] = await Promise.all([
-          boardRes.json(),
-          colRes.json(),
-          membersRes.json(),
-          usersRes.json(),
-          teamsRes.json(),
+        const [boardData, colData, membersData, usersData, teamsData, viewsData, allBoardsData] = await Promise.all([
+          boardRes.json(), colRes.json(), membersRes.json(),
+          usersRes.json(), teamsRes.json(), viewsRes.json(), allBoardsRes.json(),
         ])
 
         if (boardRes.ok) setBoard(boardData)
         if (colRes.ok) setColumns(colData)
-        if (membersRes.ok) {
-          setMembers(membersData)
-          setIsPublic(membersData.length === 0)
-        }
+        if (membersRes.ok) { setMembers(membersData); setIsPublic(membersData.length === 0) }
         if (usersRes.ok) setWorkspaceUsers(usersData)
         if (teamsRes.ok) setWorkspaceTeams(teamsData)
+        if (viewsRes.ok) setSubItemViews(Array.isArray(viewsData) ? viewsData : [])
+        if (allBoardsRes.ok) setAllBoards(Array.isArray(allBoardsData) ? allBoardsData : [])
       } catch (error) {
         console.error('Error fetching data:', error)
       } finally {
@@ -421,6 +473,18 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
         >
           Acceso
         </button>
+
+        <button
+          onClick={() => setActiveTab('sub-items')}
+          className={[
+            'pb-3 text-sm font-medium transition-colors',
+            activeTab === 'sub-items'
+              ? 'border-b-2 border-gray-900 text-gray-900'
+              : 'text-gray-500 hover:text-gray-700',
+          ].join(' ')}
+        >
+          Sub-items
+        </button>
       </div>
 
       {/* ─── Tab: Etapas ─────────────────────────────────────────────── */}
@@ -637,6 +701,132 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
       })()}
 
       {/* ─── Tab: Acceso ────────────────────────────────────────────── */}
+      {/* ─── Tab: Sub-items ────────────────────────────────────────────── */}
+      {activeTab === 'sub-items' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Configura las vistas del panel de sub-items. Cada vista puede ser <strong>nativa</strong> (snapshot —
+            sub-items propios), <strong>items de otro board</strong> (referencia viva), o <strong>sub-items de
+            otro board</strong> (referencia viva).
+          </p>
+
+          {/* View list */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            {subItemViews.length === 0 ? (
+              <p className="text-sm text-gray-500 p-4">Sin vistas configuradas</p>
+            ) : (
+              subItemViews.map(view => {
+                const typeLabel = view.type === 'native' ? 'Nativo · snapshot' : view.type === 'board_items' ? 'Items de board · ref' : 'Sub-items de board · ref'
+                const typeCls   = view.type === 'native' ? 'bg-gray-100 text-gray-600' : view.type === 'board_items' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-purple-50 text-purple-600 border border-purple-100'
+                return (
+                  <div key={view.id} className="flex items-center justify-between gap-4 py-3 px-4 border-b border-gray-100 last:border-b-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{view.name}</p>
+                      {view.type !== 'native' && (view.config.source_board_id as string) && (
+                        <p className="text-xs text-gray-400 font-mono mt-0.5 truncate">
+                          board: {view.config.source_board_id as string}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${typeCls}`}>{typeLabel}</span>
+                      {subItemViews.length > 1 && (
+                        <button
+                          onClick={() => handleDeleteSubItemView(view.id)}
+                          disabled={isSaving}
+                          className="text-gray-400 hover:text-red-600 text-lg leading-none disabled:opacity-50"
+                        >×</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Add form */}
+          {viewFormOpen ? (
+            <form onSubmit={handleCreateSubItemView} className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-4">
+              <p className="text-sm font-medium text-gray-700">Nueva vista de sub-items</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+                  <input
+                    type="text" value={viewFormName} onChange={e => setViewFormName(e.target.value)}
+                    placeholder="Ej. Cotizaciones" autoFocus
+                    className="w-full border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
+                  <select
+                    value={viewFormType}
+                    onChange={e => { setViewFormType(e.target.value as SubItemViewType); setViewFormSourceBoardId(''); setViewFormRelColId('') }}
+                    className="w-full border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                  >
+                    <option value="native">Nativo — snapshot</option>
+                    <option value="board_items">Items de otro board — referencia</option>
+                    <option value="board_sub_items">Sub-items de otro board — referencia</option>
+                  </select>
+                </div>
+              </div>
+
+              {viewFormType !== 'native' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Board fuente</label>
+                    <select
+                      value={viewFormSourceBoardId}
+                      onChange={e => { setViewFormSourceBoardId(e.target.value); setViewFormRelColId('') }}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    >
+                      <option value="">Seleccionar board...</option>
+                      {allBoards.filter(b => b.id !== boardId).map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Columna de relación (en el board fuente)</label>
+                    <select
+                      value={viewFormRelColId} onChange={e => setViewFormRelColId(e.target.value)}
+                      disabled={!viewFormSourceBoardId || sourceBoardCols.length === 0}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20 disabled:opacity-50"
+                    >
+                      <option value="">Seleccionar columna...</option>
+                      {sourceBoardCols.filter(c => c.kind === 'relation').map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    {viewFormSourceBoardId && sourceBoardCols.filter(c => c.kind === 'relation').length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">Ese board no tiene columnas de tipo relación</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={isSaving || !viewFormName.trim() || (viewFormType !== 'native' && (!viewFormSourceBoardId || !viewFormRelColId))}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  {isSaving ? 'Creando...' : 'Crear vista'}
+                </button>
+                <button type="button" onClick={() => setViewFormOpen(false)} className="px-4 py-2 border border-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-100 transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button onClick={() => setViewFormOpen(true)} className="px-4 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              + Nueva vista
+            </button>
+          )}
+        </div>
+      )}
+
       {activeTab === 'acceso' && (
         <div className="space-y-6">
           {/* Privacy Toggle */}

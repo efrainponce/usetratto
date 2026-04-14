@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+**~sesión 19**
+- Sub-item views system completo: migration 009 (`sub_item_views` con type/config/workspace_id/generate_sid), 3 API routes (GET+POST boards/[id]/sub-item-views, PATCH+DELETE /[viewId], data endpoint con 3 handlers paralelos)
+- `SubItemViewWizard`: modal 2 pasos, 4 presets (Catálogo/Archivos/Cotizaciones/Manual), Snapshot vs Referencia; se abre desde botón "Sub-items" en BoardView toolbar
+- `SubItemsView` reescrito: tab strip (>1 view), NativeRenderer + BoardItemsRenderer + BoardSubItemsRenderer, prop `onCountChange`+`compact`
+- InlineSubItems reemplazado por SubItemsView en BoardView inline expansion (con `views={subItemViews}`) → view switching disponible inline
+- Fixes: migration usaba `tratto_sid_seq` (borrada en 003) → cambiado a `generate_sid()`; board not found → service client bypasea RLS; crash key prop → guard `res.ok` en submitAdd
+
 **~sesión 18**
 - Fase 11 completa: FileCell (upload + preview por tipo: img/PDF/video/fallback), ButtonCell (`change_stage`), SignatureCell (inmutable, OTP-linked)
 - Fix: `board_columns_kind_check` no incluía `button`/`signature` → migration 008 añade ambos kinds

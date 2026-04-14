@@ -4,12 +4,13 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
-import { InlineSubItems } from '@/components/InlineSubItems'
+import { SubItemsView } from '@/components/SubItemsView'
 import { SourceColumnMapper } from '@/components/SourceColumnMapper'
 import { ImportWizard } from '@/components/import/ImportWizard'
 import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
-import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView } from '@/lib/boards'
+import { SubItemViewWizard } from '@/components/SubItemViewWizard'
+import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView, SubItemView } from '@/lib/boards'
 
 // ─── Column permission type ───────────────────────────────────────────────────
 type ColPermission = {
@@ -65,6 +66,7 @@ type Props = {
   initialSubItemColumns: SubItemColumn[]
   initialSourceBoardId:  string | null
   initialViews:          BoardView[]
+  initialSubItemViews:   SubItemView[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -72,7 +74,7 @@ type Props = {
 export function BoardView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
-  initialSubItemColumns, initialSourceBoardId, initialViews,
+  initialSubItemColumns, initialSourceBoardId, initialViews, initialSubItemViews,
 }: Props) {
   const router = useRouter()
 
@@ -85,6 +87,8 @@ export function BoardView({
   const [sourceBoardId, setSourceBoardId]   = useState<string | null>(initialSourceBoardId)
   const [showMapper,    setShowMapper]       = useState(false)
   const [showImport,    setShowImport]       = useState(false)
+  const [subItemViews,  setSubItemViews]     = useState<SubItemView[]>(initialSubItemViews)
+  const [showViewWizard, setShowViewWizard]  = useState(false)
 
   // View management
   const [views,        setViews]        = useState<BoardView[]>(initialViews)
@@ -456,27 +460,18 @@ export function BoardView({
         <h1 className="text-[14px] font-semibold text-gray-800">{boardName}</h1>
         <div className="flex-1" />
         <button
-          onClick={() => setShowMapper(true)}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] border rounded-md transition-colors ${
-            sourceBoardId
-              ? 'text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
-              : 'text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100'
-          }`}
+          onClick={() => setShowViewWizard(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
         >
-          {sourceBoardId ? (
-            <>
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
-                <path d="M2 6l3 3 5-5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Catálogo de sub-items listo · Cambiar
-            </>
-          ) : (
-            <>
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
-                <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              Elige un catálogo para los sub-items
-            </>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+            <rect x="1" y="1" width="10" height="10" rx="1.5" strokeWidth="1.3"/>
+            <path d="M1 4.5h10M4.5 4.5v6.5" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          Sub-items
+          {subItemViews.length > 0 && (
+            <span className="ml-0.5 px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 text-[10px] font-medium">
+              {subItemViews.length}
+            </span>
           )}
         </button>
         <button
@@ -789,13 +784,15 @@ export function BoardView({
           onExpandSubItems={handleExpandSubItems}
           expandedSubItemId={expandedItemId}
           renderRowExpansion={(rowId) => (
-            <InlineSubItems
-              itemId={rowId}
-              boardId={boardId}
-              subItemColumns={subItemColumns}
-              sourceBoardId={sourceBoardId}
-              onCountChange={(count) => handleSubItemCountChange(rowId, count)}
-            />
+            <div className="max-h-56 overflow-y-auto">
+              <SubItemsView
+                itemId={rowId}
+                boardId={boardId}
+                views={subItemViews}
+                compact
+                onCountChange={(count) => handleSubItemCountChange(rowId, count)}
+              />
+            </div>
           )}
           onOpenItem={handleOpenItem}
           onBulkDelete={handleBulkDelete}
@@ -807,6 +804,19 @@ export function BoardView({
           loading={false}
         />
       </div>
+
+      {/* SubItemViewWizard modal */}
+      {showViewWizard && (
+        <SubItemViewWizard
+          boardId={boardId}
+          onClose={() => setShowViewWizard(false)}
+          onCreated={(newView, snapshotBoardId) => {
+            setSubItemViews(prev => [...prev, newView])
+            if (snapshotBoardId) setSourceBoardId(snapshotBoardId)
+            setShowViewWizard(false)
+          }}
+        />
+      )}
 
       {/* SourceColumnMapper modal */}
       {showMapper && (
