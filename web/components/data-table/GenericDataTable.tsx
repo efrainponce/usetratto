@@ -106,10 +106,6 @@ export function GenericDataTable({
         e.preventDefault(); moveTo(rowIdx, colIdx - 1); break
       case 'ArrowRight':
         e.preventDefault(); moveTo(rowIdx, colIdx + 1); break
-      case 'Tab':
-        e.preventDefault()
-        moveTo(rowIdx, e.shiftKey ? colIdx - 1 : colIdx + 1)
-        break
       case 'Enter':
       case 'F2': {
         e.preventDefault()

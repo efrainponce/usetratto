@@ -1,9 +1,15 @@
-import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
+import { requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
 
 type Context = { params: Promise<{ id: string; colId: string }> }
+
+const VALID_KINDS = [
+  'text','number','date','select','multiselect','people','boolean',
+  'relation','phone','email','autonumber','url','file','button','signature','formula',
+]
 
 export async function PATCH(req: Request, { params }: Context) {
   const auth = await requireAdminApi()
@@ -19,74 +25,49 @@ export async function PATCH(req: Request, { params }: Context) {
     settings?: Record<string, unknown>
   }
 
-  const supabase = await createClient()
+  const svc = createServiceClient()
 
-  // Verify board belongs to workspace
-  const { data: board } = await supabase
+  // Service client bypasses RLS for the ownership check
+  const { data: board } = await svc
     .from('boards')
     .select('id')
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
-    .single()
+    .maybeSingle()
 
   if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
 
-  // Verify column belongs to board and is not system
-  const { data: column } = await supabase
+  const { data: column } = await svc
     .from('board_columns')
     .select('id, is_system')
     .eq('id', colId)
     .eq('board_id', id)
-    .single()
+    .maybeSingle()
 
   if (!column) return NextResponse.json({ error: 'Column not found' }, { status: 404 })
 
   if (column.is_system) {
-    return NextResponse.json(
-      { error: 'Cannot modify system columns' },
-      { status: 403 }
-    )
+    return NextResponse.json({ error: 'Cannot modify system columns' }, { status: 403 })
   }
 
-  // Build patch object
   const patch: Record<string, unknown> = {}
 
   if ('name' in body && body.name !== undefined) {
-    if (!body.name?.trim()) {
-      return NextResponse.json({ error: 'Column name cannot be empty' }, { status: 400 })
-    }
+    if (!body.name?.trim()) return NextResponse.json({ error: 'Column name cannot be empty' }, { status: 400 })
     patch.name = body.name.trim()
   }
-
-  if ('is_hidden' in body && body.is_hidden !== undefined) {
-    patch.is_hidden = body.is_hidden
-  }
-
-  if ('required' in body && body.required !== undefined) {
-    patch.required = body.required
-  }
-
-  if ('position' in body && body.position !== undefined) {
-    patch.position = body.position
-  }
-
+  if ('is_hidden' in body && body.is_hidden !== undefined) patch.is_hidden = body.is_hidden
+  if ('required'  in body && body.required  !== undefined) patch.required  = body.required
+  if ('position'  in body && body.position  !== undefined) patch.position  = body.position
   if ('kind' in body && body.kind !== undefined) {
-    const validKinds = ['text','number','date','select','multiselect','people','boolean','relation','phone','email','autonumber','url','file','button','signature']
-    if (!validKinds.includes(body.kind)) {
-      return NextResponse.json({ error: 'Invalid column kind' }, { status: 400 })
-    }
+    if (!VALID_KINDS.includes(body.kind)) return NextResponse.json({ error: 'Invalid column kind' }, { status: 400 })
     patch.kind = body.kind
   }
+  if ('settings' in body && body.settings !== undefined) patch.settings = body.settings
 
-  if ('settings' in body && body.settings !== undefined) {
-    patch.settings = body.settings
-  }
+  if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
-  if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
-  }
-
-  const { data: updated, error } = await supabase
+  const { data: updated, error } = await svc
     .from('board_columns')
     .update(patch)
     .eq('id', colId)
@@ -103,40 +84,30 @@ export async function DELETE(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id, colId } = await params
-  const supabase = await createClient()
+  const svc = createServiceClient()
 
-  // Verify board belongs to workspace
-  const { data: board } = await supabase
+  const { data: board } = await svc
     .from('boards')
     .select('id')
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
-    .single()
+    .maybeSingle()
 
   if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
 
-  // Verify column belongs to board and is not system
-  const { data: column } = await supabase
+  const { data: column } = await svc
     .from('board_columns')
     .select('id, is_system')
     .eq('id', colId)
     .eq('board_id', id)
-    .single()
+    .maybeSingle()
 
   if (!column) return NextResponse.json({ error: 'Column not found' }, { status: 404 })
 
-  if (column.is_system) {
-    return NextResponse.json(
-      { error: 'Cannot delete system columns' },
-      { status: 403 }
-    )
-  }
+  if (column.is_system) return NextResponse.json({ error: 'Cannot delete system columns' }, { status: 403 })
 
-  // Delete column (cascade delete item_values)
-  const { error } = await supabase
-    .from('board_columns')
-    .delete()
-    .eq('id', colId)
+  const supabase = await createClient()
+  const { error } = await supabase.from('board_columns').delete().eq('id', colId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   revalidateTag('board-context', {})

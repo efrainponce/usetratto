@@ -567,7 +567,7 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
                       className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
                     >
                       <option value="">— elegir columna —</option>
-                      {boardCols.filter(c => c.kind === 'number').map(c => (
+                      {boardCols.filter(c => c.kind === 'number' || c.kind === 'formula').map(c => (
                         <option key={c.col_key} value={c.col_key}>{c.name}</option>
                       ))}
                     </select>
@@ -596,7 +596,7 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
                       className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
                     >
                       <option value="">— elegir columna —</option>
-                      {boardCols.filter(c => c.kind === 'number').map(c => (
+                      {boardCols.filter(c => c.kind === 'number' || c.kind === 'formula').map(c => (
                         <option key={c.col_key} value={c.col_key}>{c.name}</option>
                       ))}
                     </select>
