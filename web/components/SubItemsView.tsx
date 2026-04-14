@@ -317,6 +317,36 @@ function NativeRenderer({
     }
   }, [boardSettings])
 
+  // ── Import children from source ───────────────────────────────────────────
+
+  const importChildren = useCallback(async (subItemId: string) => {
+    try {
+      const res = await fetch(`/api/sub-items/${subItemId}/import-children`, { method: 'POST' })
+      const body = await res.json() as { created?: SubItemData[]; skipped?: number; error?: string; message?: string }
+      if (!res.ok) { alert(body.error ?? 'Error al importar'); return }
+      if (!body.created?.length) { alert(body.message ?? 'No hay sub-items nuevos del catálogo'); return }
+      setRows(prev => prev.map(r =>
+        r.id === subItemId ? { ...r, children: [...(r.children ?? []), ...body.created!] } : r
+      ))
+      setExpandedL1(s => new Set([...s, subItemId]))
+    } catch (e) {
+      console.error('[NativeRenderer] importChildren error:', e)
+    }
+  }, [])
+
+  // ── Refresh row values from source ────────────────────────────────────────
+
+  const refreshRow = useCallback(async (subItemId: string) => {
+    try {
+      const res  = await fetch(`/api/sub-items/${subItemId}/refresh`, { method: 'POST' })
+      const body = await res.json() as { updated?: number; error?: string; locked?: boolean }
+      if (!res.ok) { alert(body.locked ? 'Terminado — no se puede refrescar' : (body.error ?? 'Error al refrescar')); return }
+      load()
+    } catch (e) {
+      console.error('[NativeRenderer] refreshRow error:', e)
+    }
+  }, [load])
+
   // ── Compute formula ────────────────────────────────────────────────────────
 
   const computeFormula = useCallback((col: SubItemColumn, row: SubItemData): number | null => {
@@ -358,6 +388,16 @@ function NativeRenderer({
   // subitem_view filter
   const showL2 = subitemView !== 'L1_only'
   const hideL1 = subitemView === 'L2_only'
+
+  // locked check helpers
+  const statusColKey  = boardSettings?.status_sub_col_key as string | undefined
+  const closedVals    = boardSettings?.closed_sub_values  as string[] | undefined
+  const statusCol     = statusColKey ? columns.find(c => c.col_key === statusColKey) : undefined
+  const isLocked = (row: SubItemData) => {
+    if (!statusCol || !closedVals?.length) return false
+    const v = row.values.find(v => v.column_id === statusCol.id)
+    return closedVals.includes(v?.value_text ?? '')
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -413,6 +453,9 @@ function NativeRenderer({
                 computeFormula={computeFormula}
                 onExpandVariants={boardSettings?.variant_dimensions ? () => expandVariants(row.id) : undefined}
                 onOpenDetail={() => setOpenDetailId(row.id)}
+                isLocked={isLocked(row)}
+                onImportChildren={() => importChildren(row.id)}
+                onRefresh={() => refreshRow(row.id)}
               />
             )}
             {showL2 && expandedL1.has(row.id) && (
@@ -609,7 +652,8 @@ function BoardSubItemsRenderer({ itemId, viewId, viewName, compact }: { itemId: 
 
 function NativeRow({
   row, depth, isExpanded, displayCols, formulaCols, editTarget,
-  onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild, computeFormula, onExpandVariants, onOpenDetail,
+  onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild,
+  computeFormula, onExpandVariants, onOpenDetail, isLocked, onImportChildren, onRefresh,
 }: {
   row: SubItemData; depth: number; isExpanded: boolean
   displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]
@@ -623,6 +667,9 @@ function NativeRow({
   computeFormula: (col: SubItemColumn, row: SubItemData) => number | null
   onExpandVariants?: () => void
   onOpenDetail: () => void
+  isLocked?: boolean
+  onImportChildren?: () => void
+  onRefresh?: () => void
 }) {
   const isEditing = (f: string) => editTarget?.id === row.id && editTarget.field === f
   const indent    = depth === 1 ? 'pl-5' : ''
@@ -657,6 +704,34 @@ function NativeRow({
       {/* Value columns */}
       {displayCols.map(col => {
         const val = row.values.find(v => v.column_id === col.id)
+        if (col.kind === 'select') {
+          const opts = (col.settings.options as { value: string; color: string }[] | undefined) ?? []
+          const cur  = val?.value_text ?? ''
+          const opt  = opts.find(o => o.value === cur)
+          return (
+            <div key={col.id} className="w-24 flex-none flex justify-end items-center">
+              {isEditing(col.id) ? (
+                <select
+                  autoFocus
+                  defaultValue={cur}
+                  className="w-full text-[12px] border border-indigo-400 rounded px-1 py-0.5 outline-none bg-white"
+                  onChange={e  => onCommit(col.id, e.target.value)}
+                  onBlur={e    => { onCommit(col.id, e.target.value) }}
+                  onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
+                >
+                  <option value="">—</option>
+                  {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+                </select>
+              ) : (
+                <div onClick={() => onStartEdit(col.id)} className="cursor-pointer">
+                  {opt
+                    ? <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: opt.color }}>{opt.value}</span>
+                    : <span className="text-[12px] text-gray-300">—</span>}
+                </div>
+              )}
+            </div>
+          )
+        }
         return (
           <div key={col.id} className="w-24 flex-none text-right">
             <EditableCell
@@ -687,6 +762,25 @@ function NativeRow({
             <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
+        {depth === 0 && row.source_item_id && onImportChildren && (
+          <button onClick={onImportChildren} title="Jalar sub-items del catálogo" className="text-gray-400 hover:text-blue-500 transition-colors">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M6 2v7M3 6l3 3 3-3M2 10h8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
+        {depth === 0 && row.source_item_id && onRefresh && (
+          <button
+            onClick={isLocked ? undefined : onRefresh}
+            title={isLocked ? 'Terminado — no se puede refrescar' : 'Refrescar valores del catálogo'}
+            disabled={isLocked}
+            className={`transition-colors ${isLocked ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-green-600'}`}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M10 6A4 4 0 1 1 7 2.1M10 2v3H7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
         {depth === 0 && (
           <button onClick={onAddChild} title="Agregar L2" className="text-gray-400 hover:text-indigo-600 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
@@ -695,13 +789,7 @@ function NativeRow({
           </button>
         )}
         {depth === 0 && onExpandVariants && (
-          <button
-            onClick={onExpandVariants}
-            title="Explotar variantes"
-            className="text-gray-400 hover:text-yellow-500 transition-colors text-[10px]"
-          >
-            ⚡
-          </button>
+          <button onClick={onExpandVariants} title="Explotar variantes" className="text-gray-400 hover:text-yellow-500 transition-colors text-[10px]">⚡</button>
         )}
         <button onClick={onDelete} title="Eliminar" className="text-gray-400 hover:text-red-500 transition-colors">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
@@ -828,13 +916,19 @@ function SubItemDetailDrawer({
 
           {/* Value columns */}
           {displayCols.map(col => {
-            const raw = getVal(col)
+            const raw  = getVal(col)
+            const opts = col.kind === 'select'
+              ? (col.settings.options as { value: string; color: string }[] | undefined) ?? []
+              : undefined
+            const fieldKind: 'text' | 'number' | 'select' =
+              col.kind === 'number' ? 'number' : col.kind === 'select' ? 'select' : 'text'
             return (
               <div key={col.id}>
                 <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{col.name}</label>
                 <DrawerEditField
                   value={raw}
-                  kind={col.kind === 'number' ? 'number' : 'text'}
+                  kind={fieldKind}
+                  options={opts}
                   editing={editingField === col.id}
                   onStart={() => setEditingField(col.id)}
                   onCommit={v => { onCommit(col.id, v); setEditingField(null) }}
@@ -865,19 +959,34 @@ function SubItemDetailDrawer({
 }
 
 function DrawerEditField({
-  value, kind, editing, onStart, onCommit, onCancel,
+  value, kind, editing, onStart, onCommit, onCancel, options,
 }: {
   value:    string | number
-  kind:     'text' | 'number'
+  kind:     'text' | 'number' | 'select'
   editing:  boolean
   onStart:  () => void
   onCommit: (v: string | number) => void
   onCancel: () => void
+  options?: { value: string; color: string }[]
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => { if (editing) inputRef.current?.select() }, [editing])
+  useEffect(() => { if (editing && kind !== 'select') inputRef.current?.select() }, [editing, kind])
 
   if (editing) {
+    if (kind === 'select') {
+      return (
+        <select
+          autoFocus defaultValue={String(value)}
+          className="mt-1 w-full text-[13px] border border-indigo-400 rounded px-2 py-1.5 outline-none bg-white"
+          onChange={e  => onCommit(e.target.value)}
+          onBlur={e    => onCommit(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
+        >
+          <option value="">—</option>
+          {(options ?? []).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+        </select>
+      )
+    }
     return (
       <input
         ref={inputRef} autoFocus defaultValue={String(value)}
@@ -889,6 +998,18 @@ function DrawerEditField({
           if (e.key === 'Escape') onCancel()
         }}
       />
+    )
+  }
+
+  // Display: select shows colored badge
+  if (kind === 'select') {
+    const opt = (options ?? []).find(o => o.value === value)
+    return (
+      <div onClick={onStart} className="mt-1 cursor-pointer">
+        {opt
+          ? <span className="text-[12px] font-medium px-2 py-1 rounded-full text-white" style={{ backgroundColor: opt.color }}>{opt.value}</span>
+          : <span className="text-[13px] text-gray-300 px-2 py-1.5 block hover:bg-gray-50 rounded border border-transparent hover:border-gray-200">—</span>}
+      </div>
     )
   }
 
