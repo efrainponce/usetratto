@@ -906,6 +906,7 @@ export function BoardView({
             settings: columns.find(c => c.id === colSettingsCol.id)?.settings ?? colSettingsCol.settings,
           }}
           boardId={boardId}
+          allColumns={rawCols.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
           users={users}
           onClose={() => setColSettingsCol(null)}
           onUpdated={updated => {

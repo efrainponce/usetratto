@@ -690,6 +690,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
           <ColumnSettingsPanel
             column={col}
             boardId={boardId}
+            allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
             users={workspaceUsers}
             onClose={() => setColSettingsId(null)}
             onUpdated={updated => {

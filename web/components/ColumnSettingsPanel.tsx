@@ -78,6 +78,7 @@ const NUMBER_FORMATS = [
 type Props = {
   column: PanelColumn
   boardId: string
+  allColumns: { col_key: string; name: string; kind: string }[]
   users: PanelUser[]
   onClose: () => void
   onUpdated: (col: PanelColumn) => void
@@ -85,7 +86,7 @@ type Props = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated }: Props) {
+export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClose, onUpdated }: Props) {
   // ── General state ──────────────────────────────────────────────────────────
   const [name, setName] = useState(column.name)
   const [kind, setKind] = useState(column.kind)
@@ -143,8 +144,8 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
     ((column.settings?.formula_config as {col_b?:string}|undefined)?.col_b) ?? ''
   )
   const [savingFormula, setSavingFormula] = useState(false)
-  // For column picker: load board columns
-  const [boardCols,     setBoardCols]     = useState<{ col_key: string; name: string; kind: string }[]>([])
+  // Derive picker columns from prop (exclude self)
+  const boardCols = allColumns.filter(c => c.col_key !== column.col_key)
 
   // ── Active tab ────────────────────────────────────────────────────────────
   const isSelect    = kind === 'select' || kind === 'multiselect'
@@ -175,16 +176,6 @@ export function ColumnSettingsPanel({ column, boardId, users, onClose, onUpdated
       .then(r => (r.ok ? r.json() : []))
       .then((data: RemoteBoard[]) => setBoards(data))
   }, [isRelation])
-
-  // ── Load board columns for formula editor ────────────────────────────────
-  useEffect(() => {
-    fetch(`/api/boards/${boardId}/columns`)
-      .then(r => r.ok ? r.json() : [])
-      .then((data: { col_key: string; name: string; kind: string }[]) => {
-        // Only number columns make sense for arithmetic references
-        setBoardCols(data.filter(c => c.col_key !== column.col_key))
-      })
-  }, [boardId, column.col_key])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
