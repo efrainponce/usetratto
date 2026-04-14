@@ -309,29 +309,25 @@ export type BoardView = {
   columns:    BoardViewColumn[]
 }
 
-export const getBoardViews = unstable_cache(
-  async (boardId: string, workspaceId: string): Promise<BoardView[]> => {
-    const supabase = createServiceClient()
-    const { data: existing } = await supabase
-      .from('board_views')
-      .select('id, sid, name, is_default, position, board_view_columns(id, column_id, is_visible, position, width)')
-      .eq('board_id', boardId)
-      .order('position')
+export async function getBoardViews(boardId: string, workspaceId: string): Promise<BoardView[]> {
+  const supabase = createServiceClient()
+  const { data: existing } = await supabase
+    .from('board_views')
+    .select('id, sid, name, is_default, position, board_view_columns(id, column_id, is_visible, position, width)')
+    .eq('board_id', boardId)
+    .order('position')
 
-    if (existing && existing.length > 0) {
-      return existing.map(v => ({ ...v, columns: v.board_view_columns ?? [] }))
-    }
+  if (existing && existing.length > 0) {
+    return existing.map(v => ({ ...v, columns: v.board_view_columns ?? [] }))
+  }
 
-    // Auto-create Default view (only runs once per board, then cached)
-    const { data: created } = await supabase
-      .from('board_views')
-      .insert({ board_id: boardId, workspace_id: workspaceId, name: 'Default', is_default: true, position: 0 })
-      .select('id, sid, name, is_default, position')
-      .single()
+  // Auto-create Default view if none exist
+  const { data: created } = await supabase
+    .from('board_views')
+    .insert({ board_id: boardId, workspace_id: workspaceId, name: 'Default', is_default: true, position: 0 })
+    .select('id, sid, name, is_default, position')
+    .single()
 
-    if (!created) return []
-    return [{ ...created, columns: [] }]
-  },
-  ['board-views'],
-  { revalidate: 60 }
-)
+  if (!created) return []
+  return [{ ...created, columns: [] }]
+}

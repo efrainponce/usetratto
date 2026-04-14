@@ -2,6 +2,11 @@
 
 ## 2026-04-14
 
+**~sesión 22**
+- Fix: L2 sub-items no renderizaban — query en `sub-item-views/[viewId]/data` ordenaba solo por `position`; L2 con position < L1 padre llegaba primero al tree-builder y se descartaba; fix: `.order('depth').order('position')`
+- Fix: columnas ocultas en vistas volvían al refresh — `getBoardViews` usaba `unstable_cache(60s)`; al persistir en DB el estado tardaba hasta 1 min en reflejarse; fix: convertido a función directa sin cache
+- Plan: Fases 13 (Formula Columns) y 14 (Rollup Columns) insertadas antes de Stage Gates; fases anteriores renumeradas 15–18
+
 **~sesión 21**
 - plan.md actualizado: Fase 12 completa con 15 tareas marcadas [x], decisiones clave, verificaciones y archivos
 

@@ -862,7 +862,147 @@ web/app/app/b/[boardSid]/[itemSid]/ItemDetailView.tsx      (boardSettings + subi
 
 ---
 
-## Fase 13 — Stage Gates + Field Locks
+## Fase 13 — Formula Columns
+
+**Goal:** Fórmulas configurables en `board_columns` y `sub_item_columns` — operaciones entre columnas del mismo nivel, computadas en frontend, sin almacenamiento en DB.
+
+### Alcance
+
+Las fórmulas actuales en `sub_item_columns` solo soportan `multiply/add/subtract/percent` con dos columnas numéricas hardcodeadas. Esta fase las generaliza y las extiende a `board_columns`.
+
+### Tipos de fórmula
+
+```typescript
+// settings.formula_config en board_columns / sub_item_columns con kind='formula'
+type FormulaConfig =
+  | { type: 'arithmetic'; op: 'add' | 'subtract' | 'multiply' | 'divide' | 'percent'; col_a: string; col_b: string }
+  | { type: 'if';         condition: FormulaCondition; col_true: string | number; col_false: string | number }
+  | { type: 'concat';     cols: string[]; separator: string }
+  | { type: 'date_diff';  col_a: string; col_b: string; unit: 'days' | 'hours' }
+  | { type: 'count_if';   col: string; operator: '>' | '<' | '=' | '!='; value: unknown }
+
+type FormulaCondition = { col: string; operator: '>' | '<' | '=' | '!=' | 'empty' | 'not_empty'; value?: unknown }
+```
+
+### Motor de cómputo
+
+```typescript
+// lib/formula-engine.ts
+export function computeFormula(config: FormulaConfig, row: Record<string, unknown>): unknown
+// Recibe settings.formula_config + row de valores planos (col_key → value).
+// Retorna el valor computado (number | string | null).
+// Puro — sin side effects, sin fetch, testeable con jest.
+```
+
+Llamado desde:
+- `NativeRow` (sub-items L1/L2) en SubItemsView
+- `ColumnCell` kind='formula' en GenericDataTable (items del board principal)
+
+### UI en ColumnSettingsPanel
+
+Tab "Fórmula" (visible solo si kind='formula'):
+```
+┌─────────────────────────────────────────────────┐
+│  Tipo de fórmula:  [Aritmética ▾]               │
+│                                                 │
+│  Columna A:  [Cantidad     ▾]                   │
+│  Operación:  [×  Multiplicar ▾]                 │
+│  Columna B:  [Precio unitario ▾]                │
+│                                                 │
+│  Vista previa:  240 × 150 = 36,000              │
+└─────────────────────────────────────────────────┘
+```
+
+### Tareas
+- [ ] **13.1** `lib/formula-engine.ts` — motor puro con todos los tipos
+- [ ] **13.2** Extender `kind='formula'` en `board_columns` (actualmente solo en sub_item_columns) — migration si necesario, ColumnCell dispatcher
+- [ ] **13.3** ColumnSettingsPanel: tab "Fórmula" con selector de tipo + columnas de referencia
+- [ ] **13.4** GenericDataTable: evaluar fórmulas en columnas de board_columns kind='formula'
+
+### Verificación
+- [ ] `Precio unitario` × `Cantidad` → columna Total computable en sub-items
+- [ ] Misma fórmula funciona en columnas del board principal (items)
+- [ ] `date_diff(deadline, hoy)` → "días restantes" en columna de oportunidades
+- [ ] Cambiar una columna fuente → fórmula re-evalúa sin refresh
+
+---
+
+## Fase 14 — Rollup Columns
+
+**Goal:** Agregar valores de niveles inferiores hacia arriba: L2 → L1, L1 → Item, Item → columna del board. El caso clave de CMP: `sum(L2.cantidad)` visible en L1, y `sum(L1.total)` visible en la oportunidad.
+
+### Concepto
+
+Una columna `kind='rollup'` no almacena datos propios — agrega valores de sus descendientes. Read-only. Computada en frontend al cargar, recalculada si cambia un hijo.
+
+```typescript
+// settings.rollup_config en board_columns / sub_item_columns con kind='rollup'
+type RollupConfig = {
+  source_level: 'children' | 'descendants'  // L2 directos o todos los niveles
+  source_col_key: string                     // col_key de la columna a agregar
+  aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max' | 'count_not_empty'
+}
+```
+
+### Niveles de rollup
+
+| Columna rollup en | Agrega desde | Caso de uso |
+|---|---|---|
+| `sub_item_columns` (L1) | L2 hijos directos | `sum(L2.cantidad)` en cada L1 |
+| `board_columns` | L1 sub-items del item | `sum(L1.total)` en la oportunidad |
+
+### Motor de cómputo
+
+```typescript
+// lib/rollup-engine.ts
+export function computeRollup(config: RollupConfig, row: SubItemData | ItemData): unknown
+// row debe incluir children (pre-cargados) para source_level='children'
+// Retorna number | string | null
+```
+
+El motor es llamado:
+- En `NativeRow` para columnas rollup en sub_item_columns
+- En `ColumnCell` kind='rollup' en GenericDataTable, con `row._subItemsRollup` precalculado
+
+### Pre-cálculo en endpoint
+
+Para columnas rollup en `board_columns`, el endpoint `GET /api/sub-item-views/[viewId]/data` ya devuelve la estructura `children`. El endpoint de items (`GET /api/items?boardId=`) necesita incluir sub-item aggregates cuando el board tenga columnas rollup:
+
+```typescript
+// Solo cuando board tiene columnas kind='rollup' en board_columns
+// Añade a cada item: _rollup: { [col_key]: number | null }
+```
+
+### UI en ColumnSettingsPanel
+
+Tab "Rollup" (visible solo si kind='rollup'):
+```
+┌─────────────────────────────────────────────────┐
+│  Agregar desde:    [Sub-items L1 ▾]             │
+│  Columna fuente:   [Total        ▾]             │
+│  Función:          [Σ Suma       ▾]             │
+│                                                 │
+│  Resultado:  suma de "Total" de todos los       │
+│              sub-items L1 de este item          │
+└─────────────────────────────────────────────────┘
+```
+
+### Tareas
+- [ ] **14.1** `lib/rollup-engine.ts` — motor puro con todos los aggregates
+- [ ] **14.2** Soporte kind='rollup' en `sub_item_columns` — evaluar en NativeRow al renderizar L1
+- [ ] **14.3** Soporte kind='rollup' en `board_columns` — pre-calcular aggregates en endpoint de items + renderizar en GenericDataTable
+- [ ] **14.4** ColumnSettingsPanel: tab "Rollup" con selector de nivel + columna fuente + función
+- [ ] **14.5** Recalculo reactivo: editar un L2 → L1 rollup actualiza; editar un L1 → Item rollup actualiza
+
+### Verificación
+- [ ] `sum(L2.cantidad)` visible en cada L1 de sub-items
+- [ ] `sum(L1.total_formula)` visible como columna en la tabla de Oportunidades
+- [ ] Editar cantidad en L2 → total en L1 cambia inmediatamente (sin refresh)
+- [ ] `count_not_empty(L1.firma)` → "Firmas completadas: 3/5" en el item
+
+---
+
+## Fase 15 — Stage Gates + Field Locks
 
 **Goal:** Reemplazar Make checks con validaciones nativas. Bloquear campos según estado.
 
@@ -950,7 +1090,7 @@ Enforcement:
 
 ---
 
-## Fase 14 — Cross-board Automations
+## Fase 16 — Cross-board Automations
 
 **Goal:** Trigger → Acción. Reemplazar los scenarios de Make que conectan boards.
 
@@ -1040,12 +1180,12 @@ Settings → Boards → tab "Automations":
 No canvas. Lista simple. Cada fila = 1 trigger + N acciones.
 
 ### Tareas
-- [ ] **14.1** Migration: `automations` + `automation_runs`
-- [ ] **14.2** `lib/automation-engine.ts` — evaluador de triggers + ejecutor de acciones
-- [ ] **14.3** Integrar `runAutomations()` en `PATCH /api/items/[id]` + `POST /api/items`
-- [ ] **14.4** Implementar acción `cross_board_copy` (con copy_subitems + expand_variants)
-- [ ] **14.5** UI: Settings → Boards → tab "Automations" (lista de recetas + editor)
-- [ ] **14.6** ButtonCell con `action: 'run_automation'` (completar Fase 11.2)
+- [ ] **16.1** Migration: `automations` + `automation_runs`
+- [ ] **16.2** `lib/automation-engine.ts` — evaluador de triggers + ejecutor de acciones
+- [ ] **16.3** Integrar `runAutomations()` en `PATCH /api/items/[id]` + `POST /api/items`
+- [ ] **16.4** Implementar acción `cross_board_copy` (con copy_subitems + expand_variants)
+- [ ] **16.5** UI: Settings → Boards → tab "Automations" (lista de recetas + editor)
+- [ ] **16.6** ButtonCell con `action: 'run_automation'` (completar Fase 11.2)
 
 ### Verificación
 - [ ] Oportunidad gana → se crea item en Proyectos con sub-items y tallas auto-expandidas
@@ -1054,7 +1194,7 @@ No canvas. Lista simple. Cada fila = 1 trigger + N acciones.
 
 ---
 
-## Fase 15 — Quote Engine
+## Fase 17 — Quote Engine
 
 **Goal:** Generación de cotizaciones PDF desde items del pipeline. Templates configurables por board, líneas = sub-items. Firma digital integrada.
 
@@ -1075,16 +1215,16 @@ quotes          (id, workspace_id, item_id, template_id, generated_by,
 - Si item tiene columna `kind='signature'` firmada → watermark en footer del PDF
 
 ### Tareas
-- [ ] **15.1** Migration: `quote_templates` + `quotes` (verificar si ya existe en schema 001)
-- [ ] **15.2** Settings → Boards → tab "Cotizaciones": CRUD de templates
+- [ ] **17.1** Migration: `quote_templates` + `quotes` (verificar si ya existe en schema 001)
+- [ ] **17.2** Settings → Boards → tab "Cotizaciones": CRUD de templates
   - Editor: elegir header_fields, line_columns, footer_fields
   - Preview en tiempo real
-- [ ] **15.3** Edge Function `generate-quote`:
+- [ ] **17.3** Edge Function `generate-quote`:
   - Fetch item + sub-items + values + firma si existe
   - Render HTML con Handlebars
   - PDF con Puppeteer → upload Storage → retorna URL
-- [ ] **15.4** API: `POST /api/quotes` → llama Edge Function → guarda en `quotes`
-- [ ] **15.5** Tab "Cotización" en ItemDetailView:
+- [ ] **17.4** API: `POST /api/quotes` → llama Edge Function → guarda en `quotes`
+- [ ] **17.5** Tab "Cotización" en ItemDetailView:
   - Lista de cotizaciones previas
   - Botón "Generar cotización" → elige template → genera → muestra PDF
   - Descarga + link compartible
@@ -1096,7 +1236,7 @@ quotes          (id, workspace_id, item_id, template_id, generated_by,
 
 ---
 
-## Fase 16 — WhatsApp Integration
+## Fase 18 — WhatsApp Integration
 
 **Goal:** Usuarios en campo operan Tratto desde WhatsApp. Claude AI parsea intención y ejecuta acciones.
 
@@ -1120,24 +1260,24 @@ quotes          (id, workspace_id, item_id, template_id, generated_by,
 ```
 
 ### Tareas
-- [ ] **16.1** Edge Function `twilio-webhook`:
+- [ ] **18.1** Edge Function `twilio-webhook`:
   - Recibe mensaje WA entrante
   - Llama Claude API con contexto del usuario (boards, items recientes)
   - Claude decide acción: create_item | query_items | reply_mention | unknown
   - Ejecuta acción vía API interna
   - Responde al usuario por WA
-- [ ] **16.2** Edge Function `mentions-trigger`:
+- [ ] **18.2** Edge Function `mentions-trigger`:
   - Cron cada 2 min
   - Busca `mentions WHERE notified=false`
   - Envía WA con preview del mensaje + link al canal
   - Marca `notified=true`
-- [ ] **16.3** Edge Function `daily-digest`:
+- [ ] **18.3** Edge Function `daily-digest`:
   - Cron 8:30 AM America/Mexico_City
   - Por usuario activo: items overdue + items due today + menciones sin responder
   - Mensaje WA formateado
-- [ ] **16.4** Edge Function `whatsapp-outbound`:
+- [ ] **18.4** Edge Function `whatsapp-outbound`:
   - Sender genérico: `sendWhatsApp(phone, message)`
-- [ ] **16.5** UI: Settings → Workspace → tab "WhatsApp"
+- [ ] **18.5** UI: Settings → Workspace → tab "WhatsApp"
   - Conectar número Twilio
   - Test de envío
   - Log de mensajes recientes

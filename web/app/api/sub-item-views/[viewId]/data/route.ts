@@ -76,6 +76,7 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
       .from('sub_items')
       .select('id, sid, parent_id, depth, name, position, source_item_id, sub_item_values(column_id, value_text, value_number, value_date, value_json)')
       .eq('item_id', itemId)
+      .order('depth')
       .order('position'),
   ])
 
@@ -243,6 +244,7 @@ async function boardSubItemsHandler(supabase: SupabaseClient, config: Record<str
     .from('sub_items')
     .select('id, sid, parent_id, depth, name, position, source_item_id, item_id, sub_item_values(column_id, value_text, value_number, value_date, value_json)')
     .in('item_id', relatedItemIds)
+    .order('depth')
     .order('position')
 
   if (subErr) return NextResponse.json({ error: subErr.message }, { status: 500 })
