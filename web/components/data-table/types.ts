@@ -58,6 +58,8 @@ export type ColumnSettings = {
   rollup_config?:   { source_level: string; source_col_key: string; aggregate: string }
   // validation
   validation?:      ColumnValidation
+  // stage gates — keyed by stage_id, value is array of col_keys that must pass
+  stage_gates?:     Record<string, string[]>
   // default value
   default_value?:   unknown
 }

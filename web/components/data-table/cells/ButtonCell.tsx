@@ -15,11 +15,20 @@ export function ButtonCell({ column, rowId, row, allColumns }: CellProps) {
   const confirm       = column.settings.confirm
   const confirmMsg    = column.settings.confirm_message
 
-  /** Evaluate all column validations for the current row. Returns failed messages. */
+  /** Evaluate gate validations for the target stage. Returns failed messages. */
   function runValidations(): string[] {
-    if (!allColumns || !row) return []
+    if (!allColumns || !row || !targetStageId) return []
+
+    // Find stage column and read its stage_gates for the target stage
+    const stageCol = allColumns.find(c => c.key === 'stage_id')
+    const gateKeys: string[] | undefined = stageCol?.settings?.stage_gates?.[targetStageId]
+
+    // No gates configured → no blocking
+    if (!gateKeys || gateKeys.length === 0) return []
+
     const failed: string[] = []
     for (const col of allColumns) {
+      if (!gateKeys.includes(col.key)) continue
       const validation = col.settings?.validation
       if (!validation?.condition) continue
       try {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { evaluateCondition, type FormulaCondition } from '@/lib/formula-engine'
+import { type FormulaCondition } from '@/lib/formula-engine'
 
 // ─── Local types (compatible with BoardColumn + WorkspaceUser) ────────────────
 
@@ -80,7 +80,7 @@ const NUMBER_FORMATS = [
 type Props = {
   column: PanelColumn
   boardId: string
-  allColumns: { col_key: string; name: string; kind: string }[]
+  allColumns: { col_key: string; name: string; kind: string; settings?: Record<string, unknown> }[]
   users: PanelUser[]
   onClose: () => void
   onUpdated: (col: PanelColumn) => void
@@ -124,11 +124,29 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   const [savingRelation, setSavingRelation] = useState(false)
 
   // ── Button config state ───────────────────────────────────────────────────
-  const isButton = kind === 'button'
+  const isButton    = kind === 'button'
+  const isStageCol  = column.col_key === 'stage_id'
   const [stages,          setStages]          = useState<RemoteStage[]>([])
+  const [btnLabel,        setBtnLabel]        = useState<string>(
+    (column.settings?.label as string) ?? ''
+  )
+  const [btnAction,       setBtnAction]       = useState<string>(
+    (column.settings?.action as string) ?? 'change_stage'
+  )
   const [targetStageId,   setTargetStageId]   = useState<string>(
     (column.settings?.target_stage_id as string) ?? ''
   )
+  const [btnConfirm,      setBtnConfirm]      = useState<boolean>(
+    !!(column.settings?.confirm as boolean)
+  )
+  const [btnConfirmMsg,   setBtnConfirmMsg]   = useState<string>(
+    (column.settings?.confirm_message as string) ?? ''
+  )
+  // Stage gates: per-stage checklist of col_keys (lives on stage column settings)
+  const [stageGates,      setStageGates]      = useState<Record<string, string[]>>(
+    (column.settings?.stage_gates as Record<string, string[]> | undefined) ?? {}
+  )
+  const [gatePickerStageId, setGatePickerStageId] = useState<string>('')
   const [savingButton,    setSavingButton]    = useState(false)
 
   // ── Permissions state ─────────────────────────────────────────────────────
@@ -371,7 +389,26 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
     setSavingButton(true)
     try {
       const updated = await patchColumn({
-        settings: { ...column.settings, target_stage_id: targetStageId || null },
+        settings: {
+          ...column.settings,
+          label:          btnLabel.trim() || null,
+          action:         btnAction || null,
+          target_stage_id: btnAction === 'change_stage' ? (targetStageId || null) : null,
+          confirm:        btnConfirm,
+          confirm_message: btnConfirm ? (btnConfirmMsg.trim() || null) : null,
+        },
+      })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingButton(false)
+    }
+  }
+
+  async function handleSaveStageGates() {
+    setSavingButton(true)
+    try {
+      const updated = await patchColumn({
+        settings: { ...column.settings, stage_gates: stageGates },
       })
       if (updated) onUpdated(updated)
     } finally {
@@ -692,30 +729,92 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
                 </div>
               )}
 
-              {/* Button config — target stage */}
+              {/* Button config */}
               {isButton && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Stage destino</label>
-                  <p className="text-[11px] text-gray-400 mb-2">Al hacer clic el item avanza a este stage (si pasan todas las validaciones).</p>
-                  <div className="flex gap-2">
-                    <select
-                      value={targetStageId}
-                      onChange={e => setTargetStageId(e.target.value)}
-                      className="flex-1 border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
-                    >
-                      <option value="">Sin cambio de stage</option>
-                      {stages.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleSaveButtonConfig}
-                      disabled={savingButton}
-                      className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
-                    >
-                      {savingButton ? '...' : 'Guardar'}
-                    </button>
+                <div className="space-y-3">
+                  {/* Label */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Texto del botón</label>
+                    <input
+                      type="text"
+                      value={btnLabel}
+                      onChange={e => setBtnLabel(e.target.value)}
+                      placeholder="Ej: Avanzar a Costeo"
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    />
                   </div>
+
+                  {/* Action */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Acción</label>
+                    <div className="space-y-1">
+                      {[
+                        { value: 'change_stage', label: 'Cambiar etapa' },
+                        { value: 'create_quote', label: 'Crear cotización (próx.)' },
+                        { value: 'run_automation', label: 'Ejecutar automatización (próx.)' },
+                      ].map(opt => (
+                        <label key={opt.value} className={`flex items-center gap-2 text-sm cursor-pointer ${opt.value !== 'change_stage' ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                          <input
+                            type="radio"
+                            name="btn_action"
+                            value={opt.value}
+                            checked={btnAction === opt.value}
+                            disabled={opt.value !== 'change_stage'}
+                            onChange={() => setBtnAction(opt.value)}
+                            className="text-indigo-600"
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Stage picker — only for change_stage */}
+                  {btnAction === 'change_stage' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Stage destino</label>
+                      <select
+                        value={targetStageId}
+                        onChange={e => setTargetStageId(e.target.value)}
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {stages.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Confirm */}
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={btnConfirm}
+                        onChange={e => setBtnConfirm(e.target.checked)}
+                        className="rounded border-gray-300 text-indigo-600"
+                      />
+                      Pedir confirmación antes de ejecutar
+                    </label>
+                    {btnConfirm && (
+                      <input
+                        type="text"
+                        value={btnConfirmMsg}
+                        onChange={e => setBtnConfirmMsg(e.target.value)}
+                        placeholder="¿Confirmar acción?"
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                      />
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleSaveButtonConfig}
+                    disabled={savingButton}
+                    className="w-full px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+                  >
+                    {savingButton ? 'Guardando...' : 'Guardar configuración'}
+                  </button>
                 </div>
               )}
 
@@ -1047,66 +1146,159 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
           {/* ── Validación ──────────────────────────────────────────────── */}
           {tab === 'validacion' && (
             <div className="space-y-4">
-              <p className="text-xs text-gray-500">
-                Define cuándo esta columna es válida. Las celdas inválidas se marcan en rojo con ❌.
-                Para sub-item aggregates, apunta a una columna rollup del mismo nivel.
-              </p>
-
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={validationEnabled} onChange={e => setValidationEnabled(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900/20" />
-                <span className="text-xs font-medium text-gray-700">Activar validación</span>
-              </label>
-
-              {validationEnabled && (
+              {isButton ? (
+                /* Button: gates live on the Etapa column, not here */
+                <p className="text-xs text-gray-500 py-2">
+                  Los gates de este botón se configuran en la columna <strong>Etapa</strong> → pestaña Validación.
+                  Selecciona qué condiciones deben cumplirse antes de avanzar a cada etapa.
+                </p>
+              ) : isStageCol ? (
+                /* Stage column: per-stage gate picker */
                 <>
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-gray-600">La columna es válida si:</p>
-                    <select value={validationCol} onChange={e => setValidationCol(e.target.value)}
-                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
-                      <option value="">— esta misma columna —</option>
-                      {boardCols.map(c => <option key={c.col_key} value={c.col_key}>{c.name}</option>)}
-                    </select>
-                    <select value={validationOp} onChange={e => setValidationOp(e.target.value as CondOp)}
-                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
-                      <option value="not_empty">no está vacío</option>
-                      <option value="empty">está vacío</option>
-                      <option value="=">=  igual a</option>
-                      <option value="!=">≠  no es igual a</option>
-                      <option value=">">&gt;  mayor que</option>
-                      <option value="<">&lt;  menor que</option>
-                      <option value="contains">contiene</option>
-                      <option value="not_contains">no contiene</option>
-                    </select>
-                    {validationOp !== 'empty' && validationOp !== 'not_empty' && (
-                      <input type="text" value={validationValue} onChange={e => setValidationValue(e.target.value)}
-                        placeholder="Valor de referencia"
-                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
-                    )}
-                  </div>
+                  <p className="text-xs text-gray-500">
+                    Define qué validaciones de columna deben pasar antes de mover un item a cada etapa.
+                  </p>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Mensaje cuando falla</label>
-                    <input type="text" value={validationMessage} onChange={e => setValidationMessage(e.target.value)}
-                      placeholder="Ej: Cantidad debe ser mayor a 0"
-                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
-                  </div>
-
-                  {/* Preview */}
-                  {(validationCol || validationOp) && (
-                    <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
-                      ❌ cuando &quot;{boardCols.find(c => c.col_key === validationCol)?.name ?? (validationCol || 'esta columna')}&quot;{' '}
-                      {validationOp === '=' ? 'no es igual a' : validationOp === '!=' ? 'es igual a' : validationOp === '>' ? 'es ≤' : validationOp === '<' ? 'es ≥' : validationOp === 'empty' ? 'no está vacío' : validationOp === 'not_empty' ? 'está vacío' : validationOp === 'contains' ? 'no contiene' : 'contiene'}{' '}
-                      {validationOp !== 'empty' && validationOp !== 'not_empty' && `"${validationValue}"`}
+                  {stages.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2 text-center">Cargando etapas…</p>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Etapa destino</label>
+                      <select
+                        value={gatePickerStageId}
+                        onChange={e => setGatePickerStageId(e.target.value)}
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                      >
+                        <option value="">Seleccionar etapa…</option>
+                        {stages.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
                     </div>
                   )}
+
+                  {gatePickerStageId && (() => {
+                    const validatedCols = allColumns.filter(
+                      c => c.col_key !== 'stage_id' && c.settings?.validation
+                    )
+                    const currentKeys: string[] = stageGates[gatePickerStageId] ?? []
+                    if (validatedCols.length === 0) {
+                      return (
+                        <p className="text-xs text-gray-400 py-2 text-center">
+                          No hay columnas con validación configurada.<br />
+                          Define validaciones en otras columnas primero.
+                        </p>
+                      )
+                    }
+                    return (
+                      <div className="space-y-2 pt-1">
+                        <p className="text-xs font-medium text-gray-600">Condiciones requeridas:</p>
+                        {validatedCols.map(c => {
+                          const val = c.settings?.validation as { message?: string } | undefined
+                          const checked = currentKeys.includes(c.col_key)
+                          return (
+                            <label key={c.col_key} className="flex items-start gap-2.5 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => setStageGates(prev => {
+                                  const keys: string[] = prev[gatePickerStageId] ?? []
+                                  return {
+                                    ...prev,
+                                    [gatePickerStageId]: checked
+                                      ? keys.filter((k: string) => k !== c.col_key)
+                                      : [...keys, c.col_key],
+                                  }
+                                })}
+                                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <div>
+                                <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{c.name}</p>
+                                {val?.message && (
+                                  <p className="text-[11px] text-gray-400">{val.message}</p>
+                                )}
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
+
+                  {gatePickerStageId && (
+                    <button
+                      onClick={handleSaveStageGates}
+                      disabled={savingButton}
+                      className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {savingButton ? 'Guardando…' : 'Guardar gates'}
+                    </button>
+                  )}
+                </>
+              ) : (
+                /* Standard columns: condition builder */
+                <>
+                  <p className="text-xs text-gray-500">
+                    Define cuándo esta columna es válida. Las celdas inválidas se marcan en rojo con ❌.
+                    Para sub-item aggregates, apunta a una columna rollup del mismo nivel.
+                  </p>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={validationEnabled} onChange={e => setValidationEnabled(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900/20" />
+                    <span className="text-xs font-medium text-gray-700">Activar validación</span>
+                  </label>
+
+                  {validationEnabled && (
+                    <>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-gray-600">La columna es válida si:</p>
+                        <select value={validationCol} onChange={e => setValidationCol(e.target.value)}
+                          className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                          <option value="">— esta misma columna —</option>
+                          {boardCols.map(c => <option key={c.col_key} value={c.col_key}>{c.name}</option>)}
+                        </select>
+                        <select value={validationOp} onChange={e => setValidationOp(e.target.value as CondOp)}
+                          className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                          <option value="not_empty">no está vacío</option>
+                          <option value="empty">está vacío</option>
+                          <option value="=">=  igual a</option>
+                          <option value="!=">≠  no es igual a</option>
+                          <option value=">">&gt;  mayor que</option>
+                          <option value="<">&lt;  menor que</option>
+                          <option value="contains">contiene</option>
+                          <option value="not_contains">no contiene</option>
+                        </select>
+                        {validationOp !== 'empty' && validationOp !== 'not_empty' && (
+                          <input type="text" value={validationValue} onChange={e => setValidationValue(e.target.value)}
+                            placeholder="Valor de referencia"
+                            className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Mensaje cuando falla</label>
+                        <input type="text" value={validationMessage} onChange={e => setValidationMessage(e.target.value)}
+                          placeholder="Ej: Cantidad debe ser mayor a 0"
+                          className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                      </div>
+
+                      {(validationCol || validationOp) && (
+                        <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                          ❌ cuando &quot;{boardCols.find(c => c.col_key === validationCol)?.name ?? (validationCol || 'esta columna')}&quot;{' '}
+                          {validationOp === '=' ? 'no es igual a' : validationOp === '!=' ? 'es igual a' : validationOp === '>' ? 'es ≤' : validationOp === '<' ? 'es ≥' : validationOp === 'empty' ? 'no está vacío' : validationOp === 'not_empty' ? 'está vacío' : validationOp === 'contains' ? 'no contiene' : 'contiene'}{' '}
+                          {validationOp !== 'empty' && validationOp !== 'not_empty' && `"${validationValue}"`}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <button onClick={handleSaveValidation} disabled={savingValidation || (validationEnabled && !validationCol && validationOp === '=')}
+                    className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50">
+                    {savingValidation ? 'Guardando…' : validationEnabled ? 'Guardar validación' : 'Quitar validación'}
+                  </button>
                 </>
               )}
-
-              <button onClick={handleSaveValidation} disabled={savingValidation || (validationEnabled && !validationCol && validationOp === '=')}
-                className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50">
-                {savingValidation ? 'Guardando…' : validationEnabled ? 'Guardar validación' : 'Quitar validación'}
-              </button>
             </div>
           )}
 
