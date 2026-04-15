@@ -125,7 +125,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
 
   // ── Button config state ───────────────────────────────────────────────────
   const isButton    = kind === 'button'
-  const isStageCol  = kind === 'stage' || column.col_key === 'stage_id'
+  const isStageCol  = column.col_key === 'stage'
   const [stages,          setStages]          = useState<RemoteStage[]>([])
   const [btnLabel,        setBtnLabel]        = useState<string>(
     (column.settings?.label as string) ?? ''
@@ -1162,8 +1162,8 @@ const [savingButton,    setSavingButton]    = useState(false)
                     <p className="text-xs text-gray-400 py-2 text-center">Cargando etapas…</p>
                   ) : (() => {
                     const validatedCols = allColumns.filter(
-                      c => !isStageCol || (c.kind !== 'stage' && c.col_key !== 'stage_id')
-                    ).filter(c => c.settings?.validation)
+                      c => c.col_key !== 'stage' && c.settings?.validation
+                    )
 
                     return (
                       <div className="space-y-4">
