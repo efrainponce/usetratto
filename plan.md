@@ -1095,12 +1095,30 @@ En rutas API que ya validaron autorización con `requireAuthApi()` + check de `w
 - [x] **15.6** `ButtonCell` (`action: 'change_stage'`): antes de ejecutar, evalúa validaciones de todas las columnas del board → lista de mensajes bloqueantes inline; botón rojo cuando hay fallas
 - [x] **15.7** `GenericDataTable` propaga `allColumns` + `row` a cada `ColumnCell`; `ColumnSettings` tipado con `validation`, `default_value`, `target_stage_id`, `rollup_config`
 
+### Bugs corregidos (sesión 27)
+- [x] `conditionMatches`: null/undefined ya no pasa `>` / `<` — `String(null)>"0"` era `true` lexicográfico
+- [x] NativeRow en SubItemsView: `formulaCols` y `rollupCols` muestran overlay rojo ❌ igual que `displayCols`
+- [x] `AddColumnButton` popover se abre a la izquierda cuando está al borde derecho de la ventana
+- [x] `AddColumnButton` panel no se cierra al interactuar con el selector — reemplazado `<select>` nativo por lista de botones (portal)
+- [x] `AddColumnInline` en sub-items: mismo fix selector + `z-20` en wrapper para no conflictar con resize handles
+
+### Fase 15.B — Stage Gates rediseño (sesión 27)
+- [x] **15.B.1** `ColumnSettingsPanel` columna Botón: tab General completo con label, acción (radio), stage destino, confirmación — todo en un `handleSaveButtonConfig`
+- [x] **15.B.2** Gates movidos de columna Botón a columna **Etapa**: `settings.stage_gates = { [stage_id]: [col_keys] }` — un solo lugar de config
+- [x] **15.B.3** Tab Validación columna Etapa: todas las etapas expandidas, cada una con checklist de columnas con validación configurada
+- [x] **15.B.4** Tab Validación columna Botón: mensaje redirect a columna Etapa (sin builder propio)
+- [x] **15.B.5** `ButtonCell.runValidations()`: lee `stage_gates[target_stage_id]` de la stage column en `allColumns`; evalúa solo esas columnas
+- [x] **15.B.6** `ColumnSettings` tipado con `stage_gates`; `allColumns` en BoardView y SubItemsView pasa `settings`
+- [x] **15.B.7** `isStageCol` matchea `col_key === 'stage'`; stages se cargan para botón y stage col
+- [x] **15.B.8** `GET /api/boards/[id]/stages`: usa `createServiceClient()` para evitar bloqueo silencioso por RLS
+
 ### Verificación
 - [ ] Columna "Cantidad" con validation `> 0` → cell roja mientras el valor es 0 o vacío
 - [ ] Rollup `total_l1_qty` con validation `> 0` → cell roja si no hay sub-items con cantidad
 - [ ] IF formula `IF(precio > 1000, "Premium", "Estándar")` → muestra texto correcto según valor
 - [ ] IF con `contains` en multiselect → `IF(colores contains "rojo", 1, 0)` funciona
-- [ ] Botón "Avanzar a Costeo" con `target_stage_id` → bloquea si hay validaciones fallidas; avanza si todas ok
+- [ ] Columna Etapa → Validación → tilda condiciones por stage → guarda `stage_gates`
+- [ ] Botón con `target_stage_id` → bloquea si gates del stage destino no se cumplen; avanza si ok
 - [ ] Default value en columna select → nuevo item ya trae la opción preseleccionada
 
 ---
