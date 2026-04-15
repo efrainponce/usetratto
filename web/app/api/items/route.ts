@@ -119,7 +119,9 @@ export async function GET(req: Request) {
 
   // Transform to col_values map if requested
   if (format === 'col_keys' && items.length > 0) {
-    const { data: boardCols } = await supabase
+    // Use service client — board_columns RLS with subqueries through boards fails silently with user JWT
+    const svcCols = createServiceClient()
+    const { data: boardCols } = await svcCols
       .from('board_columns')
       .select('id, col_key')
       .eq('board_id', boardId)

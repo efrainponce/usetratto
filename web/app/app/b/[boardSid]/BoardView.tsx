@@ -1142,14 +1142,15 @@ function toRow(
     if (col.key === '__sid') {
       cells[col.key] = item.sid
     } else {
-      // Relation column: resolve id → name from label map (fallback to id if not resolved yet)
+      // Relation column: resolve id → name from label map (fallback to null to avoid UUID flash)
       if (col.kind === 'relation') {
         const colId = colIdMap[col.key]
         const v = item.item_values?.find(iv => iv.column_id === colId)
         const targetId = (v?.value_text ?? null) as string | null
         const targetBoardId = (col as any).settings?.target_board_id as string | undefined
         if (targetId && targetBoardId) {
-          cells[col.key] = (relationLabelMap[targetBoardId]?.[targetId] ?? targetId) as any
+          const resolved = relationLabelMap[targetBoardId]?.[targetId]
+          cells[col.key] = (resolved ?? null) as any
         } else {
           cells[col.key] = null
         }
@@ -1161,10 +1162,11 @@ function toRow(
       if (refMeta) {
         const relVal = item.item_values?.find(iv => iv.column_id === refMeta.relation_col_id)?.value_text
         const rawValue = (relVal && refMap[relVal]?.[refMeta.ref_field_col_key]) ?? null
-        // If the mirrored field is itself a relation, resolve item_id → name
+        // If the mirrored field is itself a relation, resolve item_id → name (fallback null, no UUID leak)
         const nestedBoardId = refNestedBoardId[col.key]
         if (nestedBoardId && rawValue && typeof rawValue === 'string') {
-          cells[col.key] = (relationLabelMap[nestedBoardId]?.[rawValue] ?? rawValue) as CellValue
+          const resolved = relationLabelMap[nestedBoardId]?.[rawValue]
+          cells[col.key] = (resolved ?? null) as CellValue
         } else {
           cells[col.key] = rawValue as CellValue
         }
