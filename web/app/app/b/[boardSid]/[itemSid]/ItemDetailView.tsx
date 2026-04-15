@@ -9,13 +9,16 @@ import { ItemChannels } from '@/components/ItemChannels'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import type { ColumnDef, CellValue, CellKind, ColumnSettings, NavDirection } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemView } from '@/lib/boards'
+import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
 
-// System col_keys that map directly to items table fields
-const ITEMS_FIELD: Record<string, keyof BoardItem> = {
-  name:     'name',
-  stage:    'stage_id',
-  owner:    'owner_id',
-  deadline: 'deadline',
+// Get dynamic ITEMS_FIELD map based on stage/owner col_keys
+function getItemsFieldMap(stageColKey: string, ownerColKey: string): Record<string, keyof BoardItem> {
+  return {
+    name:     'name',
+    [stageColKey]: 'stage_id',
+    [ownerColKey]: 'owner_id',
+    deadline: 'deadline',
+  }
 }
 
 type Tab = 'subitems' | 'channels' | 'activity'
@@ -53,6 +56,13 @@ export function ItemDetailView({
   const [activeTab,   setActiveTab]   = useState<Tab>('subitems')
   const [colSettings, setColSettings] = useState<BoardColumn | null>(null)
 
+  // Compute stage/owner col_keys from column metadata
+  const stageColKey = useMemo(() => getPrimaryStageColKey(rawCols) ?? 'stage', [rawCols])
+  const ownerColKey = useMemo(() => getOwnerColKey(rawCols) ?? 'owner', [rawCols])
+
+  // Dynamic ITEMS_FIELD map
+  const ITEMS_FIELD = useMemo(() => getItemsFieldMap(stageColKey, ownerColKey), [stageColKey, ownerColKey])
+
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const colIdMap = useMemo(() => {
@@ -70,9 +80,9 @@ export function ItemDetailView({
         label:    c.name,
         kind:     c.kind as CellKind,
         editable: c.kind !== 'autonumber' && c.kind !== 'button',
-        settings: augmentSettings(c, stages, users),
+        settings: augmentSettings(c, stageColKey, ownerColKey, stages, users),
       })),
-    [rawCols, stages, users]
+    [rawCols, stages, users, stageColKey, ownerColKey]
   )
 
   // Info panel: all columns except name (shown in header)
@@ -313,9 +323,9 @@ export function ItemDetailView({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function augmentSettings(col: BoardColumn, stages: BoardStage[], users: WorkspaceUser[]): ColumnSettings {
+function augmentSettings(col: BoardColumn, stageColKey: string, ownerColKey: string, stages: BoardStage[], users: WorkspaceUser[]): ColumnSettings {
   const base = (col.settings ?? {}) as ColumnSettings
-  if (col.col_key === 'stage') {
+  if (col.col_key === stageColKey) {
     return {
       ...base,
       options: stages
@@ -323,7 +333,7 @@ function augmentSettings(col: BoardColumn, stages: BoardStage[], users: Workspac
         .map(s => ({ value: s.id, label: s.name, color: s.color ?? '#94a3b8' })),
     }
   }
-  if (col.col_key === 'owner') {
+  if (col.col_key === ownerColKey) {
     return {
       ...base,
       options: users.map(u => ({ value: u.id, label: u.name ?? u.phone ?? 'Usuario' })),

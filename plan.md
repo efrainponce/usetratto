@@ -332,9 +332,29 @@ _Detalle completo en `plan_20260415.md`._
 
 ---
 
-## Fase 16.5 — System Columns + Meta-tags + Activity Audit
+## Fase 16.5 — System Columns + Meta-tags + Activity Audit ✅ (parcial; 16.5.16/18 diferidos)
 
 **Goal:** Consolidar columnas universales (created_by + timestamps), meta-tags semánticos en columnas (owner, primary_stage), defaults en oportunidades (contacto → institución) y auditar que Activity captura eventos de sub-items. Pre-requisito de Fase 17 para que el onboarding invite usuarios a un sistema ya coherente.
+
+**Entregado (sesión 2026-04-15 ~sesión 2):**
+- Migration 20260415000011: `items.created_by`, `sub_items.created_by`/`updated_at`, `sub_item_columns.is_system`
+- Triggers: `set_created_by` (items+sub_items), `set_updated_at` (sub_items), `log_sub_item_activity` + `log_sub_item_value_activity` → `item_activity`
+- `seed_system_boards` rewrite: metatags `role=primary_stage` en stage, `role=owner` en owner; opportunities con contacto/institucion/monto; contacts con institucion; auto-inject 3 system cols por board
+- Trigger `inject_system_board_columns` para boards nuevos + backfill existentes
+- `lib/boards/helpers.ts` (client-safe): `getPrimaryStageColKey`, `getOwnerColKey` con fallback legacy
+- Refactor `BoardView.tsx` + `ItemDetailView.tsx`: ITEMS_FIELD dinámico, augmentSettings recibe stage/owner col_keys
+- `ColumnSettingsPanel`: dropdown "Rol del sistema" (General tab, people/select only), isStageCol lee `settings.role`, 409 handling
+- PATCH `/api/boards/[id]/columns/[colId]` valida unicidad de role por board (409)
+- `DateCell`: modo relativo (`display:'relative'`) — "hace 2h"; read_only cuando `read_only=true`
+- `PeopleCell`: read-only cuando `display:'read_only'`
+- `ColumnCell` dispatcher: `isSystemReadOnly` bloquea onStartEdit para system cols
+- `ActivityFeed`: 3 nuevas acciones `sub_item_created`/`deleted`/`value_changed` + realtime subscription a `item_activity`
+- Seeder incluye `auto_fill_targets` en `contacto` (inerte hasta que RelationCell tenga picker)
+
+**Deferido:**
+- **16.5.16** (RelationCell auto_fill runtime): bloqueado — RelationCell sigue display-only (TODO Fase 4 Picker). Se re-toma cuando se implemente el picker modal.
+- **16.5.18** (verificación manual required bloquea gate): también bloqueado por 16.5.16.
+- **16.5.4** (sub_item_columns sistema): diferido — schema listo (`is_system`), pero inyección automática no está cableada en la creación de vistas nativas.
 
 ### 16.5.A — Columnas de sistema universales
 
@@ -390,37 +410,37 @@ User reporta que Activity del item no muestra eventos de sub-items. Requiere aud
 ### Tareas
 
 #### 16.5.A — System columns
-- [ ] **16.5.1** Audit: verificar si `items.created_by` existe físicamente (grep migrations). Si no → migration que agrega columna
-- [ ] **16.5.2** Migration equivalente para `sub_items.created_by` + verificar timestamps
-- [ ] **16.5.3** Seeder extendido: al crear board nuevo, insertar 3 board_columns sistema (created_by/created_at/updated_at)
-- [ ] **16.5.4** Mismo seeder: 3 sub_item_columns sistema al crear primera vista native
-- [ ] **16.5.5** Triggers DB: INSERT/UPDATE set created_by/created_at/updated_at en items + sub_items
-- [ ] **16.5.6** `ColumnSettingsPanel`: `is_system` deshabilita rename/delete/type-change (verificar estado actual primero)
-- [ ] **16.5.7** Cell render: created_at/updated_at muestran formato relativo ("hace 2h"); created_by usa PeopleCell read-only
+- [x] **16.5.1** Migration agrega `items.created_by` (no existía en 001)
+- [x] **16.5.2** Migration agrega `sub_items.created_by` + `updated_at` (faltaban)
+- [x] **16.5.3** Seeder auto-inyecta 3 columnas sistema por board + trigger `inject_system_board_columns` para boards nuevos + backfill existentes
+- [ ] **16.5.4** DIFERIDO: `sub_item_columns.is_system` schema listo, inyección automática en creación de vistas nativas pendiente
+- [x] **16.5.5** Triggers `set_created_by` (items+sub_items) y `set_updated_at` (sub_items; items ya tenía)
+- [x] **16.5.6** `ColumnSettingsPanel`: `is_system` ya deshabilita rename/delete/type-change (audit confirmó, no requirió cambio)
+- [x] **16.5.7** `DateCell` modo relativo + `PeopleCell` read-only + `ColumnCell` dispatcher bloquea onStartEdit si `display` es `relative`/`read_only`
 
 #### 16.5.B — Meta-tags (owner + primary_stage)
-- [ ] **16.5.8** Type extension: `board_columns.settings.role?: 'owner' | 'primary_stage'` documentado en types compartidos
-- [ ] **16.5.9** `ColumnSettingsPanel` tab General: dropdown "Rol del sistema" (None / Owner / Stage primaria), solo visible cuando kind coincide (owner→people, primary_stage→select)
-- [ ] **16.5.10** Backend validation en PATCH column: enforzar max 1 `role='owner'` y max 1 `role='primary_stage'` por board → 409 si ya existe otra
-- [ ] **16.5.11** `lib/boards.ts` helpers: `getOwnerColId(boardId)`, `getPrimaryStageColId(boardId)` que leen `settings.role` con fallback a `col_key='owner'`/`col_key='stage'` (backward-compat)
-- [ ] **16.5.12** Refactor stage gates + `is_closed` + rollup % para usar `getPrimaryStageColId` en vez de hardcoded `col_key='stage'`
-- [ ] **16.5.13** Seeder system boards: marca "Etapa" con `role='primary_stage'` y "Owner" con `role='owner'` automáticamente
+- [x] **16.5.8** `board_columns.settings.role` uso establecido (jsonb existente, sin migration)
+- [x] **16.5.9** `ColumnSettingsPanel` tab General: dropdown "Rol del sistema" para people/select non-system + 409 handling
+- [x] **16.5.10** PATCH column valida unicidad de `role='owner'` y `role='primary_stage'` por board → 409
+- [x] **16.5.11** `lib/boards/helpers.ts` client-safe: `getPrimaryStageColKey`/`getOwnerColKey` con fallback a `col_key='stage'`/`'owner'`
+- [x] **16.5.12** `BoardView.tsx` + `ItemDetailView.tsx`: ITEMS_FIELD dinámico, `augmentSettings(col, stageColKey, ownerColKey, ...)`, `ColumnSettingsPanel.isStageCol` lee `settings.role`
+- [x] **16.5.13** Seeder marca `role='primary_stage'` en Etapa y `role='owner'` en todos los Owner automáticamente; backfill SQL en migration
 
 #### 16.5.C — Opportunities + relation defaults
-- [ ] **16.5.14** Seeder: board `opportunities` incluye columnas `contacto` (relation → contacts) y `institucion` (relation → accounts) con `settings.required=true`
-- [ ] **16.5.15** Seeder: board `contacts` incluye columna `institucion` (relation → accounts) opcional
-- [ ] **16.5.16** `RelationCell` settings: soportar `auto_fill_from: col_key` — al seleccionar un item relacionado, otro campo se pre-rellena desde el `item_values` del item fuente
-- [ ] **16.5.17** Config en seeder: `contacto.settings.auto_fill_targets = [{ source_col_key: 'institucion', target_col_key: 'institucion' }]` para que oportunidad herede institución del contacto
-- [ ] **16.5.18** Verificar en tests manuales: required de contacto/institución bloquea stage gate al mover oportunidad a etapa siguiente si están vacíos
+- [x] **16.5.14** Seeder opportunities: `contacto` (relation→contacts, required), `institucion` (relation→accounts, required), `monto`
+- [x] **16.5.15** Seeder contacts: `institucion` (relation→accounts) opcional
+- [ ] **16.5.16** DIFERIDO: RelationCell sigue display-only (TODO Fase 4 Picker). Runtime auto-fill bloqueado hasta implementar picker modal
+- [x] **16.5.17** Seeder incluye `auto_fill_targets` en `contacto` (config inerte, activa al implementar 16.5.16)
+- [ ] **16.5.18** DIFERIDO: depende de 16.5.16 + enforcement de `settings.required` en stage gates (hoy Fase 15 solo valida vía `settings.validation`)
 
 #### 16.5.D — Activity audit + fix
-- [ ] **16.5.19** Audit: `supabase db pull` o inspección de migrations 002+008 para listar triggers que escriben en `item_activity`
-- [ ] **16.5.20** Audit: test manual — crear sub-item, editar value, borrar → contar rows en `item_activity` antes/después
-- [ ] **16.5.21** Reporte del audit en 5 bullets: qué dispara, qué falta, qué falla
-- [ ] **16.5.22** Migration (si aplica): triggers nuevos en `sub_items` + `sub_item_values` → insert `item_activity` con `sub_item_created` / `sub_item_updated` / `sub_item_deleted` / `sub_item_value_changed`
-- [ ] **16.5.23** `ActivityFeed` component: copy para cada action de sub-item con link al drawer (`"Efraín agregó sub-item 'Chaleco M' · hace 2 min"`)
-- [ ] **16.5.24** `ActivityFeed`: realtime subscription a `item_activity` filtrado por `item_id` (verificar si ya existe)
-- [ ] **16.5.25** Verificación manual: abrir item detail → agregar sub-item → Activity feed muestra el evento en <1s sin refresh
+- [x] **16.5.19** Audit: solo `trg_item_activity` en tabla `items` (20260412000002:269). ZERO triggers en sub_items/sub_item_values
+- [x] **16.5.20** Confirmado por audit: sub-item events nunca llegaban a `item_activity`
+- [x] **16.5.21** Reporte: (a) item triggers ok, (b) sub_items sin triggers, (c) ActivityFeed solo renderiza 5 actions items, (d) sin realtime, (e) ruta `/api/items/[id]/activity` retorna todo sin filtro
+- [x] **16.5.22** Migration con `log_sub_item_activity()` + `log_sub_item_value_activity()` SECURITY DEFINER: `sub_item_created`/`sub_item_deleted`/`sub_item_value_changed` incluye old_value/new_value/metadata
+- [x] **16.5.23** `ActivityFeed` describe las 3 nuevas acciones con metadata.sub_item_name/depth
+- [x] **16.5.24** `ActivityFeed` realtime subscription a `item_activity` filtrado por `item_id` (fallback "Alguien" si falta join de actor)
+- [ ] **16.5.25** DIFERIDO: verificación manual en dev (requiere `supabase db push` + test end-to-end)
 
 ### Verificación
 
@@ -431,11 +451,11 @@ User reporta que Activity del item no muestra eventos de sub-items. Requiere aud
 - [ ] Seleccionar contacto con institución asignada → campo institución de la oportunidad se auto-rellena
 - [ ] Agregar sub-item → Activity feed del item muestra el evento al instante
 
-### Dudas pendientes (resolver antes de empezar)
+### Dudas resueltas (sesión 2)
 
-1. `items.created_by` físico: ¿existe en migration 001? Grep rápido dice sí/no.
-2. Cascade auto-fill: ¿scope completo ahora o marcamos 16.5.16–17 como stretch goals?
-3. `role='primary_stage'` en código existente: ¿backward-compat con fallback, o migración hard que rompe boards legacy?
+1. `items.created_by` físico: NO existía → migration 20260415000011 lo agrega
+2. Cascade auto-fill: config seed-level sí, runtime cell-level DEFERIDO (RelationCell display-only)
+3. `role='primary_stage'` backward-compat: fallback soft (`getPrimaryStageColKey` cae a `col_key='stage'` si no hay tag) — zero riesgo boards legacy
 
 ---
 

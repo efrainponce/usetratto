@@ -72,6 +72,27 @@ export async function PATCH(req: Request, { params }: Context) {
 
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
+  // Validate uniqueness of role settings
+  if (patch.settings && typeof patch.settings === 'object') {
+    const settings = patch.settings as Record<string, unknown>
+    const role = settings.role
+    if (role === 'owner' || role === 'primary_stage') {
+      const { data: existing } = await svc
+        .from('board_columns')
+        .select('id, settings')
+        .eq('board_id', id)
+        .neq('id', colId)
+
+      const conflicting = (existing ?? []).find((col: { id: string; settings?: any }) => {
+        return col.settings?.role === role
+      })
+
+      if (conflicting) {
+        return NextResponse.json({ error: 'Ya existe otra columna con este rol' }, { status: 409 })
+      }
+    }
+  }
+
   const { data: updated, error } = await svc
     .from('board_columns')
     .update(patch)

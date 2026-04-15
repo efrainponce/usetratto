@@ -38,18 +38,22 @@ export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
     }
   })()
 
-  // Disable edit if canEdit is false
-  const safeOnStartEdit = canEdit ? cellProps.onStartEdit : () => {}
+  // Check if column is read-only (system columns with read_only or relative display)
+  const settingsAny = cellProps.column.settings as any
+  const isSystemReadOnly = settingsAny?.read_only === true || settingsAny?.display === 'read_only' || settingsAny?.display === 'relative'
+
+  // Disable edit if canEdit is false or if column is system read-only
+  const safeOnStartEdit = (canEdit && !isSystemReadOnly) ? cellProps.onStartEdit : () => {}
 
   const cell = (() => {
     const cellPropsAdjusted = { ...cellProps, onStartEdit: safeOnStartEdit }
     switch (cellProps.column.kind) {
       case 'text':        return <TextCell        {...cellPropsAdjusted} />
       case 'number':      return <NumberCell      {...cellPropsAdjusted} />
-      case 'date':        return <DateCell        {...cellPropsAdjusted} />
+      case 'date':        return <DateCell        {...cellPropsAdjusted} settings={cellProps.column.settings as any} />
       case 'select':      return <SelectCell      {...cellPropsAdjusted} />
       case 'multiselect': return <MultiSelectCell {...cellPropsAdjusted} />
-      case 'people':      return <PeopleCell      {...cellPropsAdjusted} />
+      case 'people':      return <PeopleCell      {...cellPropsAdjusted} settings={cellProps.column.settings as any} />
       case 'boolean':     return <BooleanCell     {...cellPropsAdjusted} />
       case 'relation':    return <RelationCell    {...cellPropsAdjusted} />
       case 'phone':       return <PhoneCell       {...cellPropsAdjusted} />

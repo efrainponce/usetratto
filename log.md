@@ -2,6 +2,19 @@
 
 ## 2026-04-15
 
+**~sesión 2**
+- Fase 16.5 lanzada completa: 22/25 tareas done, 3 diferidas (16.5.4/16/18/25)
+- Migration `20260415000011` (263 líneas): `items.created_by`, `sub_items.created_by`+`updated_at`, `sub_item_columns.is_system`, triggers `set_created_by`/`set_updated_at`/`log_sub_item_activity`/`log_sub_item_value_activity`, rewrite `seed_system_boards` con metatags + opportunities contacto/institucion/monto + contacts.institucion + auto-inject 3 system cols por board, trigger `inject_system_board_columns` en boards nuevos, backfill existentes + metatag stage/owner
+- `lib/boards/helpers.ts` client-safe: `getPrimaryStageColKey`/`getOwnerColKey` con fallback soft a `col_key='stage'`/`'owner'` (zero break legacy); re-export desde `lib/boards/index.ts`
+- Refactor `BoardView.tsx` + `ItemDetailView.tsx`: `ITEMS_FIELD` → dinámico `getItemsFieldMap(stageKey, ownerKey)`, `augmentSettings(col, stageColKey, ownerColKey, ...)`, useMemo en los col keys
+- `ColumnSettingsPanel`: dropdown "Rol del sistema" (visible solo para people/select non-system), `isStageCol` lee `settings.role`, 409 handling al guardar
+- PATCH `/api/boards/[id]/columns/[colId]` valida unicidad de role='owner' y 'primary_stage' por board → 409
+- `DateCell` modo relativo ("hace X min/h/d") + read_only; `PeopleCell` read-only mode; `ColumnCell` `isSystemReadOnly` bloquea onStartEdit
+- `ActivityFeed`: 3 acciones nuevas `sub_item_created`/`sub_item_deleted`/`sub_item_value_changed` + realtime subscription a `item_activity` (fallback "Alguien" si realtime sin join)
+- RelationCell auto-fill (16.5.16) DIFERIDO: component sigue display-only (Phase 4 picker TODO) — seed config `auto_fill_targets` ya puesta en `contacto` (inerte hasta que exista picker)
+- Fixes durante build: (a) `server-only` en `lib/boards/index.ts` bloqueaba import desde client comps → helpers movidos a `lib/boards/helpers.ts`; (b) `toRow()` top-level ref a `ITEMS_FIELD` → convertido a parámetro; (c) `ColumnCell` typing → `settings as any`
+- Build 72+ rutas verde
+
 **~sesión 1**
 - Fase 16 completa (13 tareas): herencia permisos columna, `lib/permissions.ts` con userCanViewColumn/userCanEditColumn/userCanAccessItem/requireBoardAdmin, 5 rutas sub-items hardened con workspace_id + access checks
 - Nuevo modelo `default_access` (edit/view/restricted) + admin bypass + ColumnSettingsPanel dropdown + backend anota user_access por columna + cells renderizan empty/readonly/edit

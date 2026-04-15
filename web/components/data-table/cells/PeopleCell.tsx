@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CellProps, SelectOption } from '../types'
 
-export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, onCancel }: CellProps) {
+export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, onCancel, settings }: CellProps & { settings?: { display?: 'read_only' } }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -28,9 +28,11 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
 
   const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
 
+  const isReadOnly = settings?.display === 'read_only'
+
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      <div className="flex items-center gap-1.5 w-full h-full px-2 py-1 cursor-default" onClick={onStartEdit}>
+      <div className="flex items-center gap-1.5 w-full h-full px-2 py-1 cursor-default" onClick={isReadOnly ? undefined : onStartEdit}>
         {selected ? (
           <>
             <Avatar name={selected.label} />

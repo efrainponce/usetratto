@@ -127,7 +127,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
 
   // ── Button config state ───────────────────────────────────────────────────
   const isButton    = kind === 'button'
-  const isStageCol  = column.col_key === 'stage'
+  const isStageCol  = column.settings?.role === 'primary_stage' || (column.col_key === 'stage' && !column.settings?.role)
   const [stages,          setStages]          = useState<RemoteStage[]>([])
   const [btnLabel,        setBtnLabel]        = useState<string>(
     (column.settings?.label as string) ?? ''
@@ -244,6 +244,13 @@ const [savingButton,    setSavingButton]    = useState(false)
       : ''
   )
   const [savingDefault,  setSavingDefault]  = useState(false)
+
+  // ── System role state (Fase 16.5.B) ────────────────────────────────────────
+  const [roleError,      setRoleError]      = useState<string>('')
+  const [role,           setRole]           = useState<string>(
+    (column.settings?.role as string) ?? ''
+  )
+  const [savingRole,     setSavingRole]     = useState(false)
 
   // ── Active tab ────────────────────────────────────────────────────────────
   const isSelect    = kind === 'select' || kind === 'multiselect'
@@ -517,6 +524,34 @@ const [savingButton,    setSavingButton]    = useState(false)
     }
   }
 
+  async function handleSaveRole() {
+    setSavingRole(true)
+    setRoleError('')
+    try {
+      const newRole = role || undefined
+      const res = await fetch(patchEndpoint ?? `/api/boards/${boardId}/columns/${column.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: { ...column.settings, role: newRole },
+        }),
+      })
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}))
+        setRoleError(body.error ?? 'Ya existe otra columna con este rol')
+        return
+      }
+      if (!res.ok) {
+        setRoleError('Error al guardar el rol')
+        return
+      }
+      const updated = await res.json() as PanelColumn
+      onUpdated(updated)
+    } finally {
+      setSavingRole(false)
+    }
+  }
+
   async function handleSaveRollup() {
     if (!rollupSourceColKey) return
     setSavingRollup(true)
@@ -733,6 +768,42 @@ const [savingButton,    setSavingButton]    = useState(false)
                   </>
                 )}
               </div>
+
+              {/* System role dropdown (Fase 16.5.B) */}
+              {(column.kind === 'people' || column.kind === 'select') && !column.is_system && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Rol del sistema</label>
+                  <select
+                    value={role}
+                    onChange={(e) => {
+                      setRole(e.target.value)
+                      setRoleError('')
+                    }}
+                    className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                  >
+                    <option value="">Ninguno</option>
+                    {column.kind === 'people' && <option value="owner">Owner (dueño del item)</option>}
+                    {column.kind === 'select' && <option value="primary_stage">Etapa primaria</option>}
+                  </select>
+                  {roleError && (
+                    <p className="text-xs text-red-500 mt-1">{roleError}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {column.kind === 'people'
+                      ? 'El owner se usa para restrict_to_own, stage gates y permisos.'
+                      : 'La etapa primaria se usa para gates, rollups y cierre.'}
+                  </p>
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={handleSaveRole}
+                      disabled={savingRole}
+                      className="px-3 py-1 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {savingRole ? '...' : 'Guardar'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Number format — inline in General */}
               {isNumber && (

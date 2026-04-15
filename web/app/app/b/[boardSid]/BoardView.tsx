@@ -11,6 +11,7 @@ import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
 import { SubItemViewWizard } from '@/components/SubItemViewWizard'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView, SubItemView } from '@/lib/boards'
+import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
 import { computeFormula, type FormulaConfig } from '@/lib/formula-engine'
 
 // ─── Column permission type ───────────────────────────────────────────────────
@@ -32,14 +33,14 @@ type ViewMember = {
   teams?: { id: string; sid: number; name: string }
 }
 
-
-
-// System col_keys that map directly to items table fields
-const ITEMS_FIELD: Record<string, keyof BoardItem> = {
-  name:     'name',
-  stage:    'stage_id',
-  owner:    'owner_id',
-  deadline: 'deadline',
+// Get dynamic ITEMS_FIELD map based on stage/owner col_keys
+function getItemsFieldMap(stageColKey: string, ownerColKey: string): Record<string, keyof BoardItem> {
+  return {
+    name:     'name',
+    [stageColKey]: 'stage_id',
+    [ownerColKey]: 'owner_id',
+    deadline: 'deadline',
+  }
 }
 
 // Virtual sid column (prepended, not in board_columns)
@@ -85,6 +86,13 @@ export function BoardView({
 
   // All data pre-fetched by server — no loading state, no useEffect
   const [rawCols,  setRawCols]  = useState<BoardColumn[]>(initialColumns)
+
+  // Compute stage/owner col_keys from column metadata
+  const stageColKey = useMemo(() => getPrimaryStageColKey(rawCols) ?? 'stage', [rawCols])
+  const ownerColKey = useMemo(() => getOwnerColKey(rawCols) ?? 'owner', [rawCols])
+
+  // Dynamic ITEMS_FIELD map
+  const ITEMS_FIELD = useMemo(() => getItemsFieldMap(stageColKey, ownerColKey), [stageColKey, ownerColKey])
   const [stages,   setStages]   = useState<BoardStage[]>(initialStages)
   const [users,    setUsers]    = useState<WorkspaceUser[]>(initialUsers)
   const [rawItems, setRawItems] = useState<BoardItem[]>(initialItems)
@@ -146,15 +154,15 @@ export function BoardView({
         sticky:   c.col_key === 'name',
         editable: c.kind !== 'autonumber' && c.kind !== 'button' && c.kind !== 'formula' && c.kind !== 'rollup',
         sortable: true,
-        settings: augmentSettings(c, stages, users),
+        settings: augmentSettings(c, stageColKey, ownerColKey, stages, users),
       }))
     return [SID_COL, ...dataCols]
-  }, [rawCols, stages, users, activeView])
+  }, [rawCols, stages, users, activeView, stageColKey, ownerColKey])
 
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
-    return rawItems.map(item => toRow(item, colIdMap, columns))
-  }, [rawItems, colIdMap, columns])
+    return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD))
+  }, [rawItems, colIdMap, columns, ITEMS_FIELD])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -867,9 +875,9 @@ export function BoardView({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function augmentSettings(col: BoardColumn, stages: BoardStage[], users: WorkspaceUser[]): ColumnSettings {
+function augmentSettings(col: BoardColumn, stageColKey: string, ownerColKey: string, stages: BoardStage[], users: WorkspaceUser[]): ColumnSettings {
   const base = (col.settings ?? {}) as ColumnSettings
-  if (col.col_key === 'stage') {
+  if (col.col_key === stageColKey) {
     return {
       ...base,
       options: stages
@@ -877,7 +885,7 @@ function augmentSettings(col: BoardColumn, stages: BoardStage[], users: Workspac
         .map(s => ({ value: s.id, label: s.name, color: s.color ?? '#94a3b8' })),
     }
   }
-  if (col.col_key === 'owner') {
+  if (col.col_key === ownerColKey) {
     return {
       ...base,
       options: users.map(u => ({ value: u.id, label: u.name ?? u.phone ?? 'Usuario' })),
@@ -886,13 +894,13 @@ function augmentSettings(col: BoardColumn, stages: BoardStage[], users: Workspac
   return base
 }
 
-function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDef[]): Row {
+function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDef[], itemsField: Record<string, keyof BoardItem>): Row {
   const cells: Record<string, CellValue> = {}
   for (const col of cols) {
     if (col.key === '__sid') {
       cells[col.key] = item.sid
-    } else if (col.key in ITEMS_FIELD) {
-      cells[col.key] = (item[ITEMS_FIELD[col.key]] ?? null) as CellValue
+    } else if (col.key in itemsField) {
+      cells[col.key] = (item[itemsField[col.key]] ?? null) as CellValue
     } else {
       const colId = colIdMap[col.key]
       const v = item.item_values?.find(iv => iv.column_id === colId)

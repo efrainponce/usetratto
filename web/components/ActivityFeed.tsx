@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,19 @@ function describeAction(entry: ActivityEntry): string {
       return `${actor} cambió el responsable`
     case 'deleted':
       return `${actor} eliminó este elemento`
+    case 'sub_item_created': {
+      const name = entry.metadata?.sub_item_name ?? 'sub-item'
+      const depth = entry.metadata?.depth ?? 0
+      return `${actor} agregó ${depth === 0 ? 'sub-item' : 'variante'} "${name}"`
+    }
+    case 'sub_item_deleted': {
+      const name = entry.metadata?.sub_item_name ?? 'sub-item'
+      return `${actor} eliminó sub-item "${name}"`
+    }
+    case 'sub_item_value_changed': {
+      const name = entry.metadata?.sub_item_name ?? 'sub-item'
+      return `${actor} actualizó "${name}"`
+    }
     default:
       return `${actor} realizó un cambio`
   }
@@ -81,6 +95,35 @@ export function ActivityFeed({ itemId }: Props) {
     }
 
     load()
+  }, [itemId])
+
+  // Subscribe to realtime activity changes
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`item-activity-${itemId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'item_activity',
+          filter: `item_id=eq.${itemId}`,
+        },
+        (payload) => {
+          const newEntry = payload.new as ActivityEntry
+          // Add fallback actor name if not present
+          if (!newEntry.users) {
+            newEntry.users = { id: '', name: 'Alguien', phone: '' }
+          }
+          setActivities((prev) => [newEntry, ...prev])
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [itemId])
 
   if (loading) {

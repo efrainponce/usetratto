@@ -16,7 +16,25 @@ function formatDisplay(val: string | number | boolean | null | string[]): string
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export function DateCell({ value, isEditing, onStartEdit, onCommit, onCancel, onNavigate }: CellProps) {
+function formatRelative(val: string | number | boolean | null | string[]): string {
+  if (!val || typeof val !== 'string') return '—'
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return '—'
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffSecs = Math.floor(diffMs / 1000)
+  const diffMins = Math.floor(diffSecs / 60)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffSecs < 60) return 'hace unos segundos'
+  if (diffMins < 60) return `hace ${diffMins} min`
+  if (diffHours < 24) return `hace ${diffHours}h`
+  if (diffDays < 7) return `hace ${diffDays}d`
+  return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
+}
+
+export function DateCell({ value, isEditing, onStartEdit, onCommit, onCancel, onNavigate, settings }: CellProps & { settings?: { display?: 'relative' | 'absolute'; read_only?: boolean } }) {
   const [draft, setDraft] = useState(toInputValue(value))
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -29,12 +47,14 @@ export function DateCell({ value, isEditing, onStartEdit, onCommit, onCancel, on
   }, [isEditing, value])
 
   if (!isEditing) {
+    const displayValue = settings?.display === 'relative' ? formatRelative(value) : (value ? formatDisplay(value) : '—')
+    const isReadOnly = settings?.read_only === true
     return (
       <span
         className="block w-full px-2 py-1 truncate cursor-default text-[13px] text-gray-800 select-none"
-        onDoubleClick={onStartEdit}
+        onDoubleClick={isReadOnly ? undefined : onStartEdit}
       >
-        {value ? formatDisplay(value) : <span className="text-gray-300">—</span>}
+        {displayValue === '—' ? <span className="text-gray-300">—</span> : displayValue}
       </span>
     )
   }
