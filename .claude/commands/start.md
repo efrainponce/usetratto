@@ -18,9 +18,28 @@ Output exactly this, nothing more:
 
 ---
 
-## Modo de trabajo
+## ⚠️ REGLA ABSOLUTA: USA HAIKU, NO SONNET
 
-- Usa **subagentes Haiku** (`model: "haiku"`) para implementación concreta: migrations SQL, API routes, componentes con spec claro.
-- Tú eres el **orquestador**: diseñas, delegas con specs exactos, revisas, integras.
-- Lanza subagentes **en paralelo** cuando las tareas son independientes.
-- Nunca delegues decisiones arquitectónicas a Haiku — solo ejecución.
+**SIEMPRE delega a Haiku** con `model: "haiku"`. Sonnet es caro. Haiku es suficiente para código.
+
+**Haiku escribe. Sonnet orquesta. NUNCA al revés.**
+
+### Haiku hace TODO esto:
+- Cualquier archivo de código (componentes, API routes, migrations, hooks, utils)
+- Leer archivos y buscar en el codebase
+- Corregir bugs con spec claro
+- Tests
+
+### Sonnet (tú) solo hace:
+- Decidir arquitectura y diseño
+- Escribir el spec/prompt para Haiku
+- Revisar e integrar el output de Haiku
+- Responder preguntas del usuario
+
+### Flujo obligatorio:
+1. Sonnet entiende el task
+2. Sonnet escribe spec exacto (rutas, tipos, comportamiento esperado)
+3. Haiku implementa (1 o varios en paralelo)
+4. Sonnet revisa y hace ajustes mínimos si hay errores
+
+**Si te encuentras escribiendo código directamente → PARA. Delega a Haiku.**
