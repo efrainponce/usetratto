@@ -603,15 +603,20 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
             placeholder="Nombre de columna"
             className="w-full text-[13px] border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400 mb-2"
           />
-          <select
-            value={kind}
-            onChange={e => setKind(e.target.value)}
-            className="w-full text-[13px] border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400 mb-3 bg-white"
-          >
+          <div className="border border-gray-200 rounded overflow-y-auto mb-3" style={{ maxHeight: 180 }}>
             {ADD_COL_KINDS.map(k => (
-              <option key={k.value} value={k.value}>{k.label}</option>
+              <button
+                key={k.value}
+                type="button"
+                onClick={() => setKind(k.value)}
+                className={`w-full text-left text-[13px] px-2 py-1.5 transition-colors ${
+                  kind === k.value
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >{k.label}</button>
             ))}
-          </select>
+          </div>
           {error && (
             <p className="text-[11px] text-red-600 mb-2">{error}</p>
           )}
