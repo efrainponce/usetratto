@@ -529,7 +529,11 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
   const handleOpen = () => {
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: r.left })
+      const PANEL_W = 224 // w-56
+      const left = (r.left + PANEL_W > window.innerWidth - 8)
+        ? Math.max(8, r.right - PANEL_W)
+        : r.left
+      setPos({ top: r.bottom + 4, left })
     }
     setOpen(true)
     setName('')
