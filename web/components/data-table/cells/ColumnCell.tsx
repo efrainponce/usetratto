@@ -19,16 +19,18 @@ import { FormulaCell }     from './FormulaCell'
 import { RollupCell }      from './RollupCell'
 import { evaluateCondition, type FormulaCondition } from '@/lib/formula-engine'
 
-export function ColumnCell(props: CellProps) {
-  const validation = props.column.settings?.validation
+// Fase 16: canEdit prop support for permission model
+export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
+  const { canEdit = true, ...cellProps } = props
+  const validation = cellProps.column.settings?.validation
   const isInvalid = (() => {
     if (!validation?.condition) return false
     // When condition.col is empty, default to this column's own key
     const condition: FormulaCondition = {
       ...validation.condition as FormulaCondition,
-      col: (validation.condition.col as string) || props.column.key,
+      col: (validation.condition.col as string) || cellProps.column.key,
     }
-    const evalRow = props.row ?? { [props.column.key]: props.value }
+    const evalRow = cellProps.row ?? { [cellProps.column.key]: cellProps.value }
     try {
       return !evaluateCondition(condition, evalRow as Record<string, unknown>)
     } catch {
@@ -36,27 +38,31 @@ export function ColumnCell(props: CellProps) {
     }
   })()
 
+  // Disable edit if canEdit is false
+  const safeOnStartEdit = canEdit ? cellProps.onStartEdit : () => {}
+
   const cell = (() => {
-    switch (props.column.kind) {
-      case 'text':        return <TextCell        {...props} />
-      case 'number':      return <NumberCell      {...props} />
-      case 'date':        return <DateCell        {...props} />
-      case 'select':      return <SelectCell      {...props} />
-      case 'multiselect': return <MultiSelectCell {...props} />
-      case 'people':      return <PeopleCell      {...props} />
-      case 'boolean':     return <BooleanCell     {...props} />
-      case 'relation':    return <RelationCell    {...props} />
-      case 'phone':       return <PhoneCell       {...props} />
-      case 'email':       return <EmailCell       {...props} />
-      case 'autonumber':  return <AutonumberCell  {...props} />
-      case 'file':        return <FileCell        {...props} />
-      case 'button':      return <ButtonCell      {...props} />
-      case 'signature':   return <SignatureCell   {...props} />
-      case 'formula':     return <FormulaCell     {...props} />
-      case 'rollup':      return <RollupCell      {...props} />
+    const cellPropsAdjusted = { ...cellProps, onStartEdit: safeOnStartEdit }
+    switch (cellProps.column.kind) {
+      case 'text':        return <TextCell        {...cellPropsAdjusted} />
+      case 'number':      return <NumberCell      {...cellPropsAdjusted} />
+      case 'date':        return <DateCell        {...cellPropsAdjusted} />
+      case 'select':      return <SelectCell      {...cellPropsAdjusted} />
+      case 'multiselect': return <MultiSelectCell {...cellPropsAdjusted} />
+      case 'people':      return <PeopleCell      {...cellPropsAdjusted} />
+      case 'boolean':     return <BooleanCell     {...cellPropsAdjusted} />
+      case 'relation':    return <RelationCell    {...cellPropsAdjusted} />
+      case 'phone':       return <PhoneCell       {...cellPropsAdjusted} />
+      case 'email':       return <EmailCell       {...cellPropsAdjusted} />
+      case 'autonumber':  return <AutonumberCell  {...cellPropsAdjusted} />
+      case 'file':        return <FileCell        {...cellPropsAdjusted} />
+      case 'button':      return <ButtonCell      {...cellPropsAdjusted} />
+      case 'signature':   return <SignatureCell   {...cellPropsAdjusted} />
+      case 'formula':     return <FormulaCell     {...cellPropsAdjusted} />
+      case 'rollup':      return <RollupCell      {...cellPropsAdjusted} />
       default:            return (
         <span className="block w-full px-2 py-1 text-[13px] text-gray-400 truncate">
-          {props.value != null ? String(props.value) : '—'}
+          {cellProps.value != null ? String(cellProps.value) : '—'}
         </span>
       )
     }

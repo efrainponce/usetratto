@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { userCanAccessItem, getColumnUserAccess, userCanViewColumn } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
 type SubItemColumn = {
@@ -14,6 +15,8 @@ type SubItemColumn = {
   required: boolean
   settings: Record<string, unknown>
   source_col_key: string | null
+  permission_mode?: string
+  user_access?: 'edit' | 'view' | null
 }
 
 type SubItemValue = {
@@ -56,10 +59,14 @@ export async function GET(req: Request) {
 
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  // 16.9: Verify item access before fetching
+  const canAccess = await userCanAccessItem(itemId, auth.userId, auth.workspaceId, auth.role)
+  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   // Get sub_item_columns for the board
   const { data: columns } = await service
     .from('sub_item_columns')
-    .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+    .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key, permission_mode')
     .eq('board_id', item.board_id)
     .order('position')
 
@@ -124,8 +131,27 @@ export async function GET(req: Request) {
     values: valuesBySubItemId[si.id] ?? [],
   }))
 
+  // 16.5: Annotate user_access for each column using getColumnUserAccess
+  const columnsWithAccess = await Promise.all(
+    (columns ?? []).map(async (col) => {
+      const userAccess = await getColumnUserAccess(
+        { type: 'sub_item', id: col.id },
+        auth.userId,
+        auth.workspaceId,
+        auth.role
+      )
+      return {
+        ...col,
+        user_access: userAccess,
+      }
+    })
+  )
+
+  // Filter out columns with no access (restricted without override)
+  const visibleColumns = columnsWithAccess.filter(col => col.user_access !== null)
+
   return NextResponse.json({
-    columns: columns ?? [],
+    columns: visibleColumns,
     items,
   })
 }
@@ -263,6 +289,9 @@ export async function POST(req: Request) {
             valsByColId[v.column_id] = v
           }
 
+          // 16.4: Cache permission checks per source board column
+          const permissionCache: Record<string, boolean> = {}
+
           // Insert sub_item_values
           const toInsert = []
           for (const srcCol of sourceColumns) {
@@ -271,6 +300,18 @@ export async function POST(req: Request) {
             if (!boardColId) continue
             const val = valsByColId[boardColId]
             if (!val) continue
+
+            // 16.4: Check if user can view this source board column
+            if (!(boardColId in permissionCache)) {
+              permissionCache[boardColId] = await userCanViewColumn(
+                { type: 'board', id: boardColId },
+                auth.userId,
+                auth.workspaceId
+              )
+            }
+            if (!permissionCache[boardColId]) {
+              continue
+            }
 
             toInsert.push({
               sub_item_id: subItem.id,

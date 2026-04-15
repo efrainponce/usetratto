@@ -1,7 +1,7 @@
 'use client'
 
 import React, { use, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 
 type Stage = {
@@ -28,7 +28,7 @@ type Column = {
 
 type Member = {
   id: string
-  access: 'view' | 'edit'
+  access: 'view' | 'edit' | 'admin'
   restrict_to_own: boolean
   user_id: string | null
   team_id: string | null
@@ -78,14 +78,16 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const [workspaceTeams, setWorkspaceTeams] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [activeTab, setActiveTab] = useState<'etapas' | 'columnas' | 'acceso' | 'sub-items'>('etapas')
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams.get('tab') as 'etapas' | 'columnas' | 'acceso' | 'sub-items' | null) ?? 'etapas'
+  const [activeTab, setActiveTab] = useState<'etapas' | 'columnas' | 'acceso' | 'sub-items'>(initialTab)
   const [editingStageId, setEditingStageId] = useState<string | null>(null)
   const [editingStageName, setEditingStageName] = useState('')
   const [newStageName, setNewStageName] = useState('')
   const [newStageColor, setNewStageColor] = useState('#3b82f6')
   const [showNewStageForm, setShowNewStageForm] = useState(false)
   const [isPublic, setIsPublic] = useState(true)
-  const [selectedMemberAccess, setSelectedMemberAccess] = useState<'view' | 'edit'>('edit')
+  const [selectedMemberAccess, setSelectedMemberAccess] = useState<'view' | 'edit' | 'admin'>('edit')
   const [selectedMemberId, setSelectedMemberId] = useState('')   // 'u:<uuid>' | 't:<uuid>'
   const [isSaving, setIsSaving] = useState(false)
 
@@ -181,7 +183,20 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
     fetchData()
     fetch('/api/users/me').then(r => r.ok ? r.json() : {}).then((d: { role?: string }) => {
-      setIsAdmin(d.role === 'admin' || d.role === 'superadmin')
+      // If workspace admin, allow access
+      if (d.role === 'admin' || d.role === 'superadmin') {
+        setIsAdmin(true)
+        return
+      }
+      // Otherwise check if board admin via members API
+      fetch(`/api/boards/${boardId}/members`)
+        .then(r => r.ok ? r.json() : [])
+        .then((members: Member[]) => {
+          // Check if user has admin access on this board
+          const hasAdminAccess = members.some(m => m.access === 'admin')
+          setIsAdmin(hasAdminAccess)
+        })
+        .catch(() => setIsAdmin(false))
     })
   }, [boardId])
 
@@ -379,7 +394,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
   async function handleUpdateMember(
     memberId: string,
-    patch: { access?: 'view' | 'edit'; restrict_to_own?: boolean }
+    patch: { access?: 'view' | 'edit' | 'admin'; restrict_to_own?: boolean }
   ) {
     setIsSaving(true)
     try {
@@ -400,7 +415,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   }
 
   // Keep old name for backwards compat with existing call sites
-  async function handleUpdateMemberAccess(memberId: string, newAccess: 'view' | 'edit') {
+  async function handleUpdateMemberAccess(memberId: string, newAccess: 'view' | 'edit' | 'admin') {
     return handleUpdateMember(memberId, { access: newAccess })
   }
 
@@ -696,6 +711,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
             boardId={boardId}
             allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
             users={workspaceUsers}
+            permissionsEndpoint={`/api/boards/${boardId}/columns/${col.id}/permissions`}
             onClose={() => setColSettingsId(null)}
             onPatched={updated => { setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c)) }}
             onUpdated={updated => {
@@ -836,6 +852,14 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
       {activeTab === 'acceso' && (
         <div className="space-y-6">
+          {/* Tab description */}
+          <div>
+            <h2 className="text-sm font-medium text-gray-900 mb-1">Permisos de acceso</h2>
+            <p className="text-xs text-gray-500">
+              Admin: gestiona columnas, permisos y miembros de este board, sin tocar otros.
+            </p>
+          </div>
+
           {/* Privacy Toggle */}
           <div className="p-4 border border-gray-200 rounded-lg">
             <div className="flex items-start justify-between">
@@ -898,15 +922,29 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                             onChange={(e) =>
                               handleUpdateMemberAccess(
                                 member.id,
-                                e.target.value as 'view' | 'edit'
+                                e.target.value as 'view' | 'edit' | 'admin'
                               )
                             }
                             disabled={isSaving}
                             className="border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
                           >
-                            <option value="edit">Puede editar</option>
-                            <option value="view">Solo lectura</option>
+                            <option value="view">Ver</option>
+                            <option value="edit">Editar</option>
+                            <option value="admin">Admin</option>
                           </select>
+
+                          <span
+                            className={[
+                              'text-[10px] px-2 py-1 rounded-full font-medium shrink-0 border',
+                              member.access === 'admin'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : member.access === 'edit'
+                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  : 'bg-gray-100 text-gray-600 border-gray-200',
+                            ].join(' ')}
+                          >
+                            {member.access === 'admin' ? 'Admin' : member.access === 'edit' ? 'Editar' : 'Ver'}
+                          </span>
 
                           {/* restrict_to_own toggle — only for user members (not teams) */}
                           {member.user_id && (
@@ -980,12 +1018,13 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
                     <select
                       value={selectedMemberAccess}
-                      onChange={(e) => setSelectedMemberAccess(e.target.value as 'view' | 'edit')}
+                      onChange={(e) => setSelectedMemberAccess(e.target.value as 'view' | 'edit' | 'admin')}
                       disabled={isSaving}
                       className="border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
                     >
-                      <option value="edit">Puede editar</option>
-                      <option value="view">Solo lectura</option>
+                      <option value="edit">Editar</option>
+                      <option value="view">Ver</option>
+                      <option value="admin">Admin</option>
                     </select>
 
                     <button

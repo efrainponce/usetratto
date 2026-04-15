@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
+import { requireBoardAdmin } from '@/lib/permissions'
 import { resolveBoardBySid, getBoardContext, getWorkspaceUsers, getBoardItems, getSubItemColumns, getBoardViews, getSubItemViews, type SubItemColumn, type BoardView as BoardViewType } from '@/lib/boards'
 import { BoardView } from './BoardView'
 
@@ -16,13 +17,14 @@ export default async function BoardPage({ params }: Props) {
   const board = await resolveBoardBySid(sid, user.workspaceId)
   if (!board) notFound()
 
-  const [{ stages, columns }, users, items, subItemColumns, views, subItemViews] = await Promise.all([
+  const [{ stages, columns }, users, items, subItemColumns, views, subItemViews, isBoardAdmin] = await Promise.all([
     getBoardContext(board.id),
     getWorkspaceUsers(user.workspaceId),
     getBoardItems(board.id, user.workspaceId),
     getSubItemColumns(board.id),
     getBoardViews(board.id, board.workspace_id),
     getSubItemViews(board.id, user.workspaceId),
+    requireBoardAdmin(board.id, user.userId, user.workspaceId, user.role),
   ])
 
   const boardSettings = (board.settings ?? {}) as Record<string, unknown>
@@ -44,6 +46,7 @@ export default async function BoardPage({ params }: Props) {
       boardSettings={boardSettings}
       subitemView={subitemView}
       userRole={user.role}
+      isBoardAdmin={isBoardAdmin}
     />
   )
 }

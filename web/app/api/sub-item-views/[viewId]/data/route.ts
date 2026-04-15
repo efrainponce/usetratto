@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { userCanAccessItem, getColumnUserAccess } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -54,12 +55,16 @@ export async function GET(req: Request, { params }: Context) {
   if (viewError || !view) return NextResponse.json({ error: 'View not found' }, { status: 404 })
   if (view.workspace_id !== auth.workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
 
+  // 16.11 + 16.10: Verify item access before processing
+  const canAccess = await userCanAccessItem(itemId, auth.userId, auth.workspaceId, auth.role)
+  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const config = view.config as Record<string, unknown>
 
   switch (view.type) {
-    case 'native':         return nativeHandler(service, view.board_id, itemId, config, viewId)
-    case 'board_items':    return boardItemsHandler(service, config, itemId)
-    case 'board_sub_items': return boardSubItemsHandler(service, config, itemId)
+    case 'native':         return nativeHandler(service, view.board_id, itemId, config, viewId, auth.userId, auth.workspaceId, auth.role)
+    case 'board_items':    return boardItemsHandler(service, config, itemId, auth.userId, auth.workspaceId, auth.role)
+    case 'board_sub_items': return boardSubItemsHandler(service, config, itemId, auth.userId, auth.workspaceId, auth.role)
     default:               return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
   }
 }
@@ -68,7 +73,16 @@ export async function GET(req: Request, { params }: Context) {
 // Returns own sub_items for the item — the "snapshot" side of the feature.
 // config.source_board_id drives ProductPicker (snapshot mode) in the frontend.
 
-async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: string, config: Record<string, unknown>, viewId: string) {
+async function nativeHandler(
+  supabase: SupabaseClient,
+  boardId: string,
+  itemId: string,
+  config: Record<string, unknown>,
+  viewId: string,
+  userId: string,
+  workspaceId: string,
+  role?: string
+) {
   const sourceBoardId = config.source_board_id as string | undefined
 
   // Fetch all sub_items for this item — filter by view in TypeScript to avoid
@@ -83,7 +97,7 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
   const [colRes, itemRes] = await Promise.all([
     supabase
       .from('sub_item_columns')
-      .select('id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+      .select('id, col_key, name, kind, position, is_hidden, required, settings, source_col_key, permission_mode')
       .eq('board_id', boardId)
       .eq('view_id', viewId)
       .eq('is_hidden', false)
@@ -96,6 +110,25 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
 
   const columns = colRes.data ?? []
   const colKeyMap = Object.fromEntries(columns.map(c => [c.id, c.col_key]))
+
+  // 16.5: Annotate user_access for each column using getColumnUserAccess
+  const columnsWithAccess = await Promise.all(
+    columns.map(async (col) => {
+      const userAccess = await getColumnUserAccess(
+        { type: 'sub_item', id: col.id },
+        userId,
+        workspaceId,
+        role
+      )
+      return {
+        ...col,
+        user_access: userAccess,
+      }
+    })
+  )
+
+  // Filter out columns with no access (restricted without override)
+  const visibleColumns = columnsWithAccess.filter(col => col.user_access !== null)
 
   // Isolate by view:
   //  - new items: view_id === viewId
@@ -159,7 +192,7 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
     }
   }
 
-  return NextResponse.json({ kind: 'native', columns, items: l1 })
+  return NextResponse.json({ kind: 'native', columns: visibleColumns, items: l1 })
 }
 
 // ─── board_items ──────────────────────────────────────────────────────────────
@@ -167,7 +200,14 @@ async function nativeHandler(supabase: SupabaseClient, boardId: string, itemId: 
 // Nothing is copied — data is always live from the source board.
 // config: { source_board_id, relation_col_id }
 
-async function boardItemsHandler(supabase: SupabaseClient, config: Record<string, unknown>, itemId: string) {
+async function boardItemsHandler(
+  supabase: SupabaseClient,
+  config: Record<string, unknown>,
+  itemId: string,
+  userId: string,
+  workspaceId: string,
+  role?: string
+) {
   const sourceBoardId = config.source_board_id as string | undefined
   const relationColId = config.relation_col_id as string | undefined
   if (!sourceBoardId || !relationColId) {
@@ -197,7 +237,23 @@ async function boardItemsHandler(supabase: SupabaseClient, config: Record<string
 
   if (relatedItemIds.length === 0) {
     const { data: board } = await supabase.from('boards').select('name').eq('id', sourceBoardId).single()
-    return NextResponse.json({ kind: 'board_items', source_board_id: sourceBoardId, source_board_name: board?.name ?? '', columns, items: [] })
+    // 16.5: Add user_access to columns using getColumnUserAccess
+    const columnsWithAccess = await Promise.all(
+      columns.map(async (col) => {
+        const userAccess = await getColumnUserAccess(
+          { type: 'board', id: col.id },
+          userId,
+          workspaceId,
+          role
+        )
+        return {
+          ...col,
+          user_access: userAccess,
+        }
+      })
+    )
+    const visibleColumns = columnsWithAccess.filter(col => col.user_access !== null)
+    return NextResponse.json({ kind: 'board_items', source_board_id: sourceBoardId, source_board_name: board?.name ?? '', columns: visibleColumns, items: [] })
   }
 
   // Step 2 — parallel: source items + board name
@@ -213,12 +269,30 @@ async function boardItemsHandler(supabase: SupabaseClient, config: Record<string
 
   if (itemRes.error) return NextResponse.json({ error: itemRes.error.message }, { status: 500 })
 
+  // 16.5: Add user_access to columns using getColumnUserAccess
+  const columnsWithAccess = await Promise.all(
+    columns.map(async (col) => {
+      const userAccess = await getColumnUserAccess(
+        { type: 'board', id: col.id },
+        userId,
+        workspaceId,
+        role
+      )
+      return {
+        ...col,
+        user_access: userAccess,
+      }
+    })
+  )
+
+  const visibleColumns = columnsWithAccess.filter(col => col.user_access !== null)
+
   return NextResponse.json({
     kind: 'board_items',
     source_board_id: sourceBoardId,
     source_board_sid: boardRes.data?.sid ?? null,
     source_board_name: boardRes.data?.name ?? '',
-    columns,
+    columns: visibleColumns,
     items: itemRes.data ?? [],
   })
 }
@@ -227,7 +301,14 @@ async function boardItemsHandler(supabase: SupabaseClient, config: Record<string
 // REFERENCE mode: shows sub_items of items from another board related to current item.
 // config: { source_board_id, relation_col_id }
 
-async function boardSubItemsHandler(supabase: SupabaseClient, config: Record<string, unknown>, itemId: string) {
+async function boardSubItemsHandler(
+  supabase: SupabaseClient,
+  config: Record<string, unknown>,
+  itemId: string,
+  userId: string,
+  workspaceId: string,
+  role?: string
+) {
   const sourceBoardId = config.source_board_id as string | undefined
   const relationColId = config.relation_col_id as string | undefined
   if (!sourceBoardId || !relationColId) {
@@ -238,7 +319,7 @@ async function boardSubItemsHandler(supabase: SupabaseClient, config: Record<str
   const [colRes, relRes] = await Promise.all([
     supabase
       .from('sub_item_columns')
-      .select('id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+      .select('id, col_key, name, kind, position, is_hidden, required, settings, source_col_key, permission_mode')
       .eq('board_id', sourceBoardId)
       .eq('is_hidden', false)
       .order('position'),
@@ -257,7 +338,23 @@ async function boardSubItemsHandler(supabase: SupabaseClient, config: Record<str
   const relatedItemIds = (relRes.data ?? []).map(v => v.item_id)
 
   if (relatedItemIds.length === 0) {
-    return NextResponse.json({ kind: 'board_sub_items', source_board_id: sourceBoardId, columns, items: [] })
+    // 16.5: Add user_access to columns using getColumnUserAccess
+    const columnsWithAccess = await Promise.all(
+      columns.map(async (col) => {
+        const userAccess = await getColumnUserAccess(
+          { type: 'sub_item', id: col.id },
+          userId,
+          workspaceId,
+          role
+        )
+        return {
+          ...col,
+          user_access: userAccess,
+        }
+      })
+    )
+    const visibleColumns = columnsWithAccess.filter(col => col.user_access !== null)
+    return NextResponse.json({ kind: 'board_sub_items', source_board_id: sourceBoardId, columns: visibleColumns, items: [] })
   }
 
   // Step 2 — fetch sub_items of related items
@@ -290,5 +387,23 @@ async function boardSubItemsHandler(supabase: SupabaseClient, config: Record<str
     }
   }
 
-  return NextResponse.json({ kind: 'board_sub_items', source_board_id: sourceBoardId, columns, items: l1 })
+  // 16.5: Add user_access to columns using getColumnUserAccess
+  const columnsWithAccess = await Promise.all(
+    columns.map(async (col) => {
+      const userAccess = await getColumnUserAccess(
+        { type: 'sub_item', id: col.id },
+        userId,
+        workspaceId,
+        role
+      )
+      return {
+        ...col,
+        user_access: userAccess,
+      }
+    })
+  )
+
+  const visibleColumns = columnsWithAccess.filter(col => col.user_access !== null)
+
+  return NextResponse.json({ kind: 'board_sub_items', source_board_id: sourceBoardId, columns: visibleColumns, items: l1 })
 }

@@ -125,18 +125,27 @@ board_columns (id, sid, board_id, col_key, name, kind, position, is_system, is_h
 -- Un board tiene miembros. Un miembro puede ser una persona O un equipo.
 -- Nivel de acceso: 'view' (solo lectura) o 'edit' (lectura + escritura).
 -- Si un board NO tiene registros en board_members → es público para todo el workspace.
-board_members (id, board_id, user_id NULL, team_id NULL, access, created_at)
+board_members (id, board_id, user_id NULL, team_id NULL, access, restrict_to_own, created_at)
   -- user_id XOR team_id: uno de los dos, nunca ambos, nunca ninguno
-  -- access: 'view' | 'edit'
+  -- access: 'view' | 'edit' | 'admin'
+  --   view  = solo lectura
+  --   edit  = lectura + editar valores de celda
+  --   admin = lo anterior + gestionar schema del board (columnas, stages, permisos, miembros)
+  -- restrict_to_own: si true, el miembro solo ve items donde es owner
   -- CHECK: (user_id IS NOT NULL AND team_id IS NULL) OR (user_id IS NULL AND team_id IS NOT NULL)
 
 -- ─── COLUMN PERMISSIONS (visibilidad/edición por columna — opcional) ───
--- Si una columna NO tiene registros aquí → todos los miembros del board la ven y editan.
--- Si tiene registros → solo esos users/teams la ven o editan.
-column_permissions (id, column_id, user_id NULL, team_id NULL, access, created_at)
+-- Cada columna tiene settings.default_access: 'edit' | 'view' | 'restricted' (default 'edit').
+--   edit       = todos los miembros del board ven y editan
+--   view       = todos ven, solo listados con access='edit' pueden editar
+--   restricted = nadie ve salvo listados (columna oculta del resto)
+-- column_permissions = overrides explícitos que establecen access efectivo del user ignorando default.
+column_permissions (id, column_id NULL, sub_item_column_id NULL, user_id NULL, team_id NULL, access, created_at)
+  -- column_id XOR sub_item_column_id (polimórfico)
   -- user_id XOR team_id
   -- access: 'view' | 'edit'
-  -- Ejemplo: columna "Costo" → equipo "Compras" con 'edit', equipo "Ventas" con 'view'
+  -- Admin de workspace siempre bypass (ve+edita todo).
+  -- Ejemplo: costo_interno en catálogo con default='restricted' + override Compras='edit'
 
 -- ─── ITEMS (registros de cualquier board) ───
 items (id, sid, workspace_id, board_id, stage_id, name, owner_id, territory_id, deadline, position, created_at, updated_at)
@@ -228,19 +237,33 @@ email (email, is_system)
 
 ## Permisos (RLS)
 
-### Roles
+### Roles (workspace-level — campo `users.role`)
 ```
 superadmin → ve todo, todos los workspaces
 admin      → ve todo de su workspace, configura
-member     → ve según board_members y territories
+member     → ve según board_members (puede ser board admin de un board específico)
 viewer     → solo lectura
 ```
 
-### Board access (board_members)
-Un board tiene miembros. Un miembro es una persona (`user_id`) o un equipo (`team_id`). Cada miembro tiene `access: 'view' | 'edit'`. Si un board NO tiene registros en board_members → es público (todos los del workspace lo ven).
+Ortogonal a esto, `board_members.access` define el nivel de acceso **por board** (view/edit/admin).
 
-### Column access (column_permissions)
-Opcional. Si una columna tiene registros en `column_permissions` → solo esos users/teams la ven o editan. Si no tiene registros → visible y editable para todos los miembros del board.
+### Board access (board_members)
+Un board tiene miembros. Un miembro es una persona (`user_id`) o un equipo (`team_id`). Cada miembro tiene `access: 'view' | 'edit' | 'admin'`:
+- `view` = solo lectura
+- `edit` = lectura + editar valores de celda
+- `admin` = lo anterior + gestionar schema del board (columnas, stages, permisos, miembros)
+
+Board admins ≠ workspace admins: un user puede ser admin de Catálogo sin tocar otros boards. Workspace admin sigue siendo el superconjunto (siempre bypass). Si un board NO tiene registros en board_members → es público para todo el workspace (view).
+
+`restrict_to_own` en board_members: si true, el miembro solo ve items donde `owner_id === userId`. Ideal para vendedores que solo ven sus oportunidades.
+
+### Column access (column_permissions + default_access)
+Cada columna declara su `settings.default_access`:
+- `edit` (default) — todos los miembros del board ven y editan
+- `view` — todos ven, solo overrides con `access='edit'` pueden editar
+- `restricted` — nadie ve salvo overrides explícitos (columna se oculta del response)
+
+`column_permissions` = overrides que establecen access efectivo para un user/team, ignorando el default. Admin de workspace siempre bypassa.
 
 ### RLS simplificado
 ```sql

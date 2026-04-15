@@ -89,23 +89,7 @@ export async function DELETE(_req: Request, { params }: Context) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   }
 
-  // Check that at least 1 other view exists
-  const { data: otherViews, error: countError } = await supabase
-    .from('sub_item_views')
-    .select('id')
-    .eq('board_id', id)
-    .neq('id', viewId)
-
-  if (countError) return NextResponse.json({ error: countError.message }, { status: 500 })
-
-  if (!otherViews || otherViews.length === 0) {
-    return NextResponse.json(
-      { error: 'Cannot delete the last sub-item view' },
-      { status: 400 }
-    )
-  }
-
-  // Delete the view
+  // Delete the view — allowed even if it's the last one (UI shows empty state + "Agregar vista")
   const { error } = await supabase
     .from('sub_item_views')
     .delete()

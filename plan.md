@@ -64,1190 +64,494 @@ Fase 19: WhatsApp Integration (adapter sobre el mismo engine)
 
 ---
 
-## Fase 0 — Schema + Seed
+## Fase 0 — Schema + Seed ✅
 
-**Goal:** Base de datos limpia, probada, con data de ejemplo. `sid` en TODA entidad.
+**Goal:** Base de datos con `sid` global y 5 boards de sistema preconfigurados.
+
+**Entregado:**
+- Secuencia `tratto_sid_seq` + todas las entidades principales con sid único (workspaces, boards, items, sub-items, stages, columnas)
+- Migrations 001-004: schema core + triggers (auto-provisioning, activity log, autonumber) + RLS policies + seed data (1 workspace, 5 boards sistema, 10 items ejemplo)
+- Funciones: `seed_system_boards()`, `handle_new_auth_user()`, `find_by_sid(bigint)`
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 1 — Auth ✅
+
+**Goal:** Login con phone OTP, sessions con auto-refresh, protección /app/* y /api/*.
+
+**Entregado:**
+- Next.js + Supabase clients (browser, server, service)
+- Auth helpers: `requireAuth()`, `requireAdmin()`, `optionalAuth()` (return userId, workspaceId, role, userSid)
+- Middleware: JWT refresh + protección de rutas
+- OTP login page → redirect a /app
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 2 — Layout ✅
+
+**Goal:** Sidebar con boards dinámicos, header, navegación principal.
+
+**Entregado:**
+- Shell layout con sidebar (logo + workspace name + boards listados dinámicamente)
+- System boards (arriba) vs custom boards (abajo) separados visualmente
+- Redirect /app → /app/b/[sid_opportunities]
+- Settings + Superadmin button + Logout
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 3 — BoardView (la tabla) ✅
+
+**Goal:** Tabla genérica estilo Airtable + 11 cell types + inline edit + CRUD items.
+
+**Entregado:**
+- `GenericDataTable`: TanStack Table v8 + sort, sticky first column, bulk select, inline edit
+- Cell system: text, number, date, select, multiselect, people, relation, phone, email, boolean, file (11 tipos)
+- BoardView: fetch board/columns/items/values → rows transform → inline edit (PATCH items core, PUT item_values custom)
+- API: GET /api/boards/[id], GET /api/boards/[id]/columns, GET/POST/PATCH/DELETE /api/items, PUT /api/items/[id]/values
+- `resolveBoardBySid()` helper
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 4 — ItemDetailView ✅
+
+**Goal:** Página de detalle con editor de campos + tabs (Sub-items, Channels, Activity).
+
+**Entregado:**
+- Detalle con header editable (nombre + stage + sid visible)
+- Info panel: campos core + custom (mismo cell system que tabla)
+- Tabs: Sub-items | Channels | Activity
+- Breadcrumb back to board
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 5 — Sub-items (columnas dinámicas + snapshot) ✅
+
+**Goal:** Sub-items con columnas configurables, source board seleccionable, snapshot engine.
+
+**Entregado:**
+- `sub_item_columns`: configurables por board (igual que board_columns) con `source_col_key` para trazabilidad
+- `source_item_id`: ref al item original en snapshot
+- Snapshot engine: copia valores del source (punto en el tiempo) → editables independientemente
+- Formula columns (multiply/add/subtract/percent): computadas frontend, read-only
+- SourceColumnMapper: modal para elegir columnas a importar y mapear
+- InlineSubItems + SubItemsView: tablas dinámicas con valores editables
+- ProductPicker: busca en source board con preview de columnas
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 6 — Import Wizard ✅
+
+**Goal:** Plugin architecture para importar desde cualquier fuente (Airtable, CSV, extensible a Monday, Notion, etc.).
+
+**Entregado:**
+- `ImportSource` interface + registry pattern
+- AirtableSource + CsvSource implementados
+- ImportWizard genérico: picker → ConnectStep → ColumnMapper → bulk import
+- Column creation inline + board refresh post-import
+- API: POST /api/import/bulk (genérico)
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 7 — Canales + Activity Log ✅
+
+**Goal:** Comunicación interna + audit trail automático.
+
+**Entregado:**
+- ItemChannels: canales General + Sistema automáticos por item (en pipeline)
+- ChannelMessages + mentions + replies
+- ActivityFeed: log automático de cambios (items + sub-items)
+- Tabs en ItemDetailView integrados
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 8 — Settings + Board Views ✅
+
+**Goal:** Admin configura todo (boards, stages, columns, members, teams, territories). Usuarios crean vistas por board con column visibility.
+
+**Entregado:**
+- Settings layout (sidebar secundario) con Boards, Teams, Territories, Workspace, Superadmin sections
+- Board CRUD: stages + columns + members (view/edit + restrict_to_own toggle)
+- Teams + Territories CRUD
+- Board Views: tab strip, create/rename/delete views, column visibility per view, "Default" siempre existe
+- Migration 011: `board_views` + `board_view_columns` (sin miembros — eso es Fase 9)
+- API: GET/POST/PATCH/DELETE /api/boards/[id]/views, PUT /api/boards/[id]/views/[viewId]/columns
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 9 — Permisos granulares ✅
+
+**Goal:** RLS enforcement + board_members + column_permissions + restrict_to_own + board_view_members.
+
+**Entregado:**
+- RLS real: 35 API routes migradas a createClient() (JWT + RLS es el único enforcement)
+- board_members: user/team con access level (view/edit)
+- column_permissions: user/team con access per column
+- restrict_to_own: vendedor solo ve sus propios items
+- Territory filter: dropdown en toolbar
+- board_view_members: quién puede ver qué vista (sin registros = todos los miembros del board)
+- Migration 012: `board_view_members` table
+- ColumnSettingsPanel: permisos UI con 3-dot hover
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 10 — Column Settings Editor ✅
+
+**Goal:** Unified editor para nombre, tipo, opciones, fórmulas, relations, permisos — un solo componente reutilizable.
+
+**Entregado:**
+- `ColumnSettingsPanel` (drawer): tabs General | Opciones | Fórmula | Relation | Número | Permisos
+- Integrado en BoardView column picker (⋯) y Settings → Boards → Columns
+- API: PATCH /api/boards/[id]/columns/[colId] extendido para `name`, `kind`, `settings` (jsonb)
+- Opciones persistidas en `board_columns.settings.options = [{value, label, color}]`
+- Cambiar kind muestra advertencia
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 11 — Column Upgrades: Files, Buttons, Signature ✅
+
+**Goal:** Tres nuevos column types que desbloquean quotes, gates y aprobaciones.
+
+**Entregado:**
+- **file**: Bucket storage + signed URLs + FileCell (chips + download)
+- **button**: Inline action buttons (change_stage, create_quote, run_automation) + settings.label/action/confirm
+- **signature**: Immutable watermark (doc_id, signed_by, email, signed_at, user_id) + SignatureCell (read-only post-sign)
+- API: POST /api/items/[id]/files (upload), ButtonCell actions (change_stage implemented)
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 12 — Variantes L2 + Vistas por board ✅
+
+**Goal:** Exploit L1 → L2 variantes (Cartesian product). Filter view depth per board. Reuse + refresh snapshots.
+
+**Entregado:**
+- L2 rendering: indented hierarchy, expand/collapse L1, drag-reorder
+- "Explotar variantes": botón ⊞ → modal choose multiselect columns → creates L2 Cartesian product (skips duplicates)
+- formula `sum_children`: sums L2 qty per L1 (read-only, computed frontend)
+- `subitem_view` setting: L1_only | L1_L2 | L2_only per board
+- NativeRenderer: SubItemsView con drawer lateral (w-72) para editar sub-item fields
+- Linked navigation: ↗ en L1 → catálogo source item (resolved batch), ↓ → import source's L2s as children, ⟳ → refresh snapshot (blocked if is_closed)
+- `is_closed` rename-safe in select options + Status column auto-seed for opportunities
+- Migration 20260414000002-004: boards.settings jsonb, Estado status column, option.is_closed
+- SelectCell renders badge when closed, dropdown when editing
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 13 — Formula Columns ✅
+
+**Goal:** Configurable formulas (arithmetic, IF, concat, date_diff, count_if) on board_columns + sub_item_columns, computed frontend.
+
+**Entregado:**
+- `lib/formula-engine.ts`: evaluateCondition() + computeFormula() (5 formula types, puro/testeable)
+- kind='formula' on board_columns (was sub-item only)
+- ColumnSettingsPanel tab "Fórmula": type selector + column refs + preview
+- GenericDataTable + NativeRow: eval formulas on render
+- IF fórmula: condition + col_true/col_false (col_key or literal)
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 14 — Rollup Columns ✅
+
+**Goal:** Aggregate child values up (L2→L1, L1→Item, L1→board column). Key case: sum(L2.qty) visible in L1 + sum(L1.total) in opportunity.
+
+**Entregado:**
+- `lib/rollup-engine.ts`: computeRollup() (sum/avg/count/min/max/count_not_empty, children + descendants)
+- kind='rollup' on sub_item_columns (L1 aggregates L2) + board_columns (item aggregates L1)
+- Battery bar in SubItemsView: visual rollup of status (collapsed L1, segmented bar by color/stage, %)
+- ColumnSettingsPanel tab "Rollup": level + source column + function
+- Pre-calc in GET /api/items when board has rollup columns
+- Reactive recalc: edit L2 → L1 rollup updates immediately (optimistic)
+- Row footer: sum/avg/min/max/count per numeric/formula/rollup column, click cycles function
+- Migrations 20260414000008-009: sub_item_columns.view_id + column_permissions support both board/sub_item columns
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 15 — Column Validations + IF Formula + Stage Gates ✅
+
+**Goal:** Native validation per column (condition builder). Stage gates are button columns that evaluate gates before advancing.
+
+**Entregado:**
+- Validation per column in `board_columns.settings.validation`: condition (empty/not_empty/>/</=/!=/contains) + message
+- IF formula completed: condition + col_true/col_false (col_key or literal number/string)
+- Default values: applied on item/sub-item creation
+- Stage gates: stored as `board_columns.settings.stage_gates = {[stage_id]: [col_keys]}`
+- ButtonCell.runValidations(): evaluates only gate columns, shows blocking messages (red cells + toast)
+- ColumnCell visual feedback: red border + ❌ overlay when validation fails
+- NativeRow: same red overlay for formula/rollup/validation columns
+- ColumnSettingsPanel tabs: General (default_value) | Fórmula (IF) | Validación | Botón (label/action) | Etapa (stage_gates checklist)
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 16 — Herencia de Permisos de Columna ✅
+
+**Goal:** Column permissions travel with data. If a column is private in the source, Ventas never sees it — not in board, sub-items, or quote snapshots.
+
+**Entregado:**
+- `permission_mode` in sub_item_columns: public (all) | inherit (from source's column_permissions) | custom (own permissions)
+- Snapshot engine: verifies userCanViewColumn() on source columns before copying; unaccepted columns omitted silently
+- `lib/permissions.ts`: userCanViewColumn() (column_id + user + workspace) + resolveInheritedPermissions() (sub_item_col + source board resolution)
+- Row-level constraints: userCanAccessItem() (admin bypass + owner + board_members + restrict_to_own) used in GET /api/sub-items + refresh/expand endpoints
+- NativeRow: gray cell `bg-gray-50` for columns without user_access, no edit
+- ColumnSettingsPanel tab Permisos: radio permission_mode (3 opciones auto-detectadas), permission list hidden in public/inherit modes
+- RelationCell preview: TODO comment for future field filtering
+- Migration 20260415000010: sub_item_columns.permission_mode DEFAULT 'public'
+- Audit: 4 service client leaks in sub-items routes fixed + workspace_id validation added
+
+_Detalle completo en `plan_20260415.md`._
+
+---
+
+## Fase 16.5 — System Columns + Meta-tags + Activity Audit
+
+**Goal:** Consolidar columnas universales (created_by + timestamps), meta-tags semánticos en columnas (owner, primary_stage), defaults en oportunidades (contacto → institución) y auditar que Activity captura eventos de sub-items. Pre-requisito de Fase 17 para que el onboarding invite usuarios a un sistema ya coherente.
+
+### 16.5.A — Columnas de sistema universales
+
+3 columnas auto-creadas en cada board nuevo (items + sub_items), `is_system=true`, read-only en UI:
+- `created_by` (people) — user que creó el registro
+- `created_at` (date) — timestamp creación
+- `updated_at` (date) — timestamp última modificación
+
+Para items ya existen `created_at`/`updated_at` físicos — solo falta exponerlos como `board_columns` sistema y agregar `created_by` físico. Para sub_items: verificar y mismo patrón. Triggers DB rellenan automáticamente.
+
+`ColumnSettingsPanel` detecta `is_system` → deshabilita rename / delete / cambio de tipo. Cells muestran valor en formato relativo ("hace 2 horas").
+
+### 16.5.B — Column meta tags (owner + primary_stage)
+
+Agregar `settings.role: 'owner' | 'primary_stage' | null` a `board_columns` (no migration — es jsonb existente).
+
+- **`role='owner'`** — cualquier columna `people` puede marcarse. Sistema usa esa columna como owner del item (reemplaza el hardcoded `owner_id` físico o sincroniza). Máx 1 por board.
+- **`role='primary_stage'`** — cualquier columna `select` puede marcarse. Stage gates, `is_closed`, rollup % leen de esta columna en lugar del hardcoded `col_key='stage'`. Máx 1 por board.
+
+Seeder marca "Etapa" y "Owner" con el role automáticamente al crear system boards.
+
+UI: ColumnSettingsPanel tab General → dropdown "Rol del sistema" (None / Owner / Stage primaria).
+
+Beneficio: un board custom puede tener columna "Vendedor" con `role=owner` y funciona idéntico a oportunidades sin hacks.
+
+### 16.5.C — Defaults de oportunidades (Oportunidad → Contacto → Institución)
+
+Seeder extendido para system boards:
+- `opportunities`:
+  - `contacto` relation → `contacts` (required)
+  - `institucion` relation → `accounts` (required)
+- `contacts`:
+  - `institucion` relation → `accounts` (opcional)
+
+**Cascade auto-fill:** al seleccionar un contacto en una oportunidad, el campo `institucion` se pre-rellena desde `contact.institucion` si existe. Editable después. Implementación: `RelationCell.settings.auto_fill_from: 'col_key_source'`.
+
+**Required enforcement:** reusa sistema de validación de Fase 15 (`settings.required: true`). Items sin contacto/institucion muestran overlay rojo y bloquean stage gates.
+
+### 16.5.D — Activity audit (sub-item events)
+
+User reporta que Activity del item no muestra eventos de sub-items. Requiere audit primero, fix después.
+
+**Audit:**
+- Listar triggers actuales en `item_activity` (migrations 002/008)
+- Probar en dev: crear/editar/borrar sub-item → ¿aparece fila en `item_activity`?
+- Verificar si `ActivityFeed` filtra acciones de sub-items o simplemente no llegan
+
+**Fix esperado:**
+- Triggers nuevos en `sub_items` + `sub_item_values` → insertan en `item_activity` con actions `sub_item_created`, `sub_item_updated`, `sub_item_deleted`, `sub_item_value_changed`
+- `ActivityFeed` render de cada action con copy legible + link al drawer del sub-item
+- Realtime subscription en `item_activity` por `item_id` (si no existe)
 
 ### Tareas
 
-- [ ] **0.1** Crear proyecto Supabase nuevo (o reset completo)
-- [ ] **0.2** Migration 001: Core tables
-  ```sql
-  -- Secuencia global compartida:
-  CREATE SEQUENCE tratto_sid_seq START 10000000;
-  
-  -- TODA tabla con sid usa: DEFAULT nextval('tratto_sid_seq')
-  -- Entidades con sid: workspaces, users, teams, territories,
-  --   boards, board_stages, board_columns, items, sub_items
+#### 16.5.A — System columns
+- [ ] **16.5.1** Audit: verificar si `items.created_by` existe físicamente (grep migrations). Si no → migration que agrega columna
+- [ ] **16.5.2** Migration equivalente para `sub_items.created_by` + verificar timestamps
+- [ ] **16.5.3** Seeder extendido: al crear board nuevo, insertar 3 board_columns sistema (created_by/created_at/updated_at)
+- [ ] **16.5.4** Mismo seeder: 3 sub_item_columns sistema al crear primera vista native
+- [ ] **16.5.5** Triggers DB: INSERT/UPDATE set created_by/created_at/updated_at en items + sub_items
+- [ ] **16.5.6** `ColumnSettingsPanel`: `is_system` deshabilita rename/delete/type-change (verificar estado actual primero)
+- [ ] **16.5.7** Cell render: created_at/updated_at muestran formato relativo ("hace 2h"); created_by usa PeopleCell read-only
 
-  workspaces (id uuid PK, sid bigint UNIQUE DEFAULT nextval, name, created_at)
-  users (id uuid PK, sid bigint UNIQUE, name, phone UNIQUE, email, role, workspace_id FK, created_at)
-  teams (id, sid, workspace_id, name, created_at)
-  user_teams (user_id, team_id) -- PK compuesto
-  territories (id, sid, workspace_id, name, parent_id SELF-REF NULL, created_at)
-  user_territories (user_id, territory_id) -- PK compuesto
+#### 16.5.B — Meta-tags (owner + primary_stage)
+- [ ] **16.5.8** Type extension: `board_columns.settings.role?: 'owner' | 'primary_stage'` documentado en types compartidos
+- [ ] **16.5.9** `ColumnSettingsPanel` tab General: dropdown "Rol del sistema" (None / Owner / Stage primaria), solo visible cuando kind coincide (owner→people, primary_stage→select)
+- [ ] **16.5.10** Backend validation en PATCH column: enforzar max 1 `role='owner'` y max 1 `role='primary_stage'` por board → 409 si ya existe otra
+- [ ] **16.5.11** `lib/boards.ts` helpers: `getOwnerColId(boardId)`, `getPrimaryStageColId(boardId)` que leen `settings.role` con fallback a `col_key='owner'`/`col_key='stage'` (backward-compat)
+- [ ] **16.5.12** Refactor stage gates + `is_closed` + rollup % para usar `getPrimaryStageColId` en vez de hardcoded `col_key='stage'`
+- [ ] **16.5.13** Seeder system boards: marca "Etapa" con `role='primary_stage'` y "Owner" con `role='owner'` automáticamente
 
-  boards (id, sid, slug UNIQUE per workspace, workspace_id, name, type, description, system_key, sub_items_source_board_id NULL, created_at)
-  board_stages (id, sid, board_id, name, color, position, is_closed, created_at)
-  board_columns (id, sid, board_id, col_key, name, kind, position, is_system, is_hidden, required, settings jsonb, created_at)
+#### 16.5.C — Opportunities + relation defaults
+- [ ] **16.5.14** Seeder: board `opportunities` incluye columnas `contacto` (relation → contacts) y `institucion` (relation → accounts) con `settings.required=true`
+- [ ] **16.5.15** Seeder: board `contacts` incluye columna `institucion` (relation → accounts) opcional
+- [ ] **16.5.16** `RelationCell` settings: soportar `auto_fill_from: col_key` — al seleccionar un item relacionado, otro campo se pre-rellena desde el `item_values` del item fuente
+- [ ] **16.5.17** Config en seeder: `contacto.settings.auto_fill_targets = [{ source_col_key: 'institucion', target_col_key: 'institucion' }]` para que oportunidad herede institución del contacto
+- [ ] **16.5.18** Verificar en tests manuales: required de contacto/institución bloquea stage gate al mover oportunidad a etapa siguiente si están vacíos
 
-  board_members (id, board_id, user_id NULL, team_id NULL, access, created_at)
-    -- CHECK: exactly one of user_id/team_id is NOT NULL
-    -- access: 'view' | 'edit'
-    -- UNIQUE(board_id, user_id) WHERE user_id IS NOT NULL
-    -- UNIQUE(board_id, team_id) WHERE team_id IS NOT NULL
-
-  column_permissions (id, column_id, user_id NULL, team_id NULL, access, created_at)
-    -- Same XOR pattern as board_members
-
-  items (id, sid, workspace_id, board_id, stage_id NULL, name, owner_id, territory_id NULL, deadline NULL, position, created_at, updated_at)
-  item_values (id, item_id, column_id, value_text, value_number, value_date, value_json, created_at)
-    -- UNIQUE(item_id, column_id)
-
-  sub_items (id, sid, workspace_id, item_id, parent_id NULL, depth smallint DEFAULT 0, name, source_item_id NULL, position, created_at)
-    -- qty/unit_price/notes eliminados — son sub_item_columns ahora
-    -- source_item_id = ref al item del board-source usado en el snapshot (solo trazabilidad)
-
-  sub_item_columns (id, board_id, col_key, name, kind, position, is_hidden, required, settings jsonb, source_col_key TEXT NULL)
-    -- UNIQUE(board_id, col_key)
-    -- source_col_key = qué col_key del source board se copia en snapshot; NULL = columna manual
-    -- kind incluye 'formula' además de los tipos normales
-
-  sub_item_values (id, sub_item_id, column_id, value_text, value_number, value_date, value_json)
-    -- UNIQUE(sub_item_id, column_id)
-    -- columnas kind='formula' NO se almacenan aquí; se computan en frontend
-
-  item_channels (id, workspace_id, item_id, name, type, team_id NULL, position, created_at)
-  channel_messages (id, workspace_id, channel_id, user_id NULL, body, type, metadata jsonb, whatsapp_sid NULL, created_at)
-  channel_members (channel_id, user_id, added_by NULL, created_at) -- PK compuesto
-  mentions (id, workspace_id, message_id, mentioned_user_id, notified boolean, replied boolean, reply_message_id NULL, created_at)
-
-  item_activity (id, workspace_id, item_id, sub_item_id NULL, actor_id NULL, action, old_value, new_value, metadata jsonb, created_at)
-
-  quote_templates (id, workspace_id, board_id, name, stage_id NULL, template_html, header_fields jsonb, line_columns jsonb, footer_fields jsonb, show_prices boolean, created_at)
-  quotes (id, workspace_id, item_id, template_id, generated_by, pdf_url, status, created_at)
-  ```
-
-- [ ] **0.3** Migration 002: Functions + Triggers
-  ```sql
-  seed_system_boards(workspace_id)   → crea 5 boards de sistema + columnas de sistema
-  handle_new_auth_user()             → trigger en auth.users, auto-provisioning
-  trg_default_channels               → auto-crea General + Sistema al insertar item en board pipeline
-  trg_item_activity                  → log automático de cambios en items y sub_items
-  trg_seed_columns                   → genera columnas de sistema al crear board
-  auto_fill_autonumber()             → trigger para columnas tipo autonumber
-  find_by_sid(bigint)                → busca cualquier entidad por sid
-  ```
-
-- [ ] **0.4** Migration 003: RLS policies
-  ```sql
-  -- workspace_isolation en TODAS las tablas
-  -- items: admin OR owner OR board_member (user directo o via team) OR territory
-  -- boards: workspace_isolation + board_members check
-  -- sub_items: hereda permisos del item padre
-  ```
-
-- [ ] **0.5** Seed data
-  ```sql
-  -- 1 workspace "CMP" (con sid)
-  -- 1 user admin (con sid, phone de test +521234567890)
-  -- 5 system boards con sus columnas de sistema (cada uno con sid)
-  -- Board "opportunities": 5 stages (Nueva, Cotización, Costeo, Presentada, Cerrada)
-  -- 10 items de ejemplo en opportunities
-  -- Board "contacts": 5 contactos ejemplo (como items, no tabla separada)
-  -- Board "accounts": 3 cuentas ejemplo
-  -- Board "catalog": 10 productos ejemplo
-  -- 1 team "Ventas" + 1 team "Compras" (con sid)
-  -- 3 territories: Norte, Centro, Sur (con sid)
-  -- board_members: team "Ventas" → board "opportunities" con 'edit'
-  ```
+#### 16.5.D — Activity audit + fix
+- [ ] **16.5.19** Audit: `supabase db pull` o inspección de migrations 002+008 para listar triggers que escriben en `item_activity`
+- [ ] **16.5.20** Audit: test manual — crear sub-item, editar value, borrar → contar rows en `item_activity` antes/después
+- [ ] **16.5.21** Reporte del audit en 5 bullets: qué dispara, qué falta, qué falla
+- [ ] **16.5.22** Migration (si aplica): triggers nuevos en `sub_items` + `sub_item_values` → insert `item_activity` con `sub_item_created` / `sub_item_updated` / `sub_item_deleted` / `sub_item_value_changed`
+- [ ] **16.5.23** `ActivityFeed` component: copy para cada action de sub-item con link al drawer (`"Efraín agregó sub-item 'Chaleco M' · hace 2 min"`)
+- [ ] **16.5.24** `ActivityFeed`: realtime subscription a `item_activity` filtrado por `item_id` (verificar si ya existe)
+- [ ] **16.5.25** Verificación manual: abrir item detail → agregar sub-item → Activity feed muestra el evento en <1s sin refresh
 
 ### Verificación
-- [ ] `supabase db reset` sin errores
-- [ ] Queries: `SELECT sid, name FROM boards` retorna 5 boards con sids únicos
-- [ ] `SELECT * FROM find_by_sid(10000100)` retorna el item correcto
-- [ ] Todos los sids son únicos globalmente: `SELECT sid, COUNT(*) FROM (SELECT sid FROM boards UNION ALL SELECT sid FROM items UNION ALL SELECT sid FROM users ...) GROUP BY sid HAVING COUNT(*) > 1` → 0 filas
-- [ ] RLS: usuario solo ve datos de su workspace
 
-### Archivos
-```
-supabase/migrations/
-  001_core_schema.sql
-  002_functions_triggers.sql
-  003_rls_policies.sql
-  004_seed_data.sql
-```
+- [ ] Crear board nuevo → aparecen 3 columnas sistema (created_by/created_at/updated_at) automáticamente
+- [ ] ColumnSettingsPanel sobre columna sistema → campos rename/delete/tipo deshabilitados
+- [ ] Marcar columna "Vendedor" con `role='owner'` en un board custom → filtros `restrict_to_own` leen de ahí
+- [ ] Crear oportunidad nueva sin contacto → stage gate bloquea avance
+- [ ] Seleccionar contacto con institución asignada → campo institución de la oportunidad se auto-rellena
+- [ ] Agregar sub-item → Activity feed del item muestra el evento al instante
 
----
+### Dudas pendientes (resolver antes de empezar)
 
-## Fase 1 — Auth
-
-**Goal:** Login funcional con phone OTP. Redirect a /app si autenticado.
-
-### Tareas
-
-- [ ] **1.1** Next.js project setup: `npx create-next-app@latest web --typescript --tailwind --app`
-- [ ] **1.2** Deps: `@supabase/supabase-js`, `@supabase/ssr`
-- [ ] **1.3** Supabase clients:
-  ```
-  lib/supabase/client.ts    → createClient() para browser/server
-  lib/supabase/server.ts    → createClient() para server components
-  lib/supabase/service.ts   → createServiceClient() para API routes
-  ```
-- [ ] **1.4** Auth helpers:
-  ```
-  lib/auth/index.ts         → requireAuth(), requireAdmin(), optionalAuth()
-  lib/auth/api.ts           → requireAuthApi(), requireAdminApi()
-                               Retorna: { userId, workspaceId, role, userSid }
-  ```
-- [ ] **1.5** Middleware: refresh JWT, protect /app/* y /api/* (excepto /api/auth)
-- [ ] **1.6** Login page: phone input → OTP → redirect a /app
-- [ ] **1.7** Logout: `POST /api/auth/logout`
-- [ ] **1.8** Test OTP en Supabase Dashboard: `+521234567890` → `123456`
-
-### Verificación
-- [ ] Login con número de test → redirect a /app
-- [ ] /app sin sesión → redirect a /login
-- [ ] API sin sesión → 401
-
-### Archivos
-```
-web/middleware.ts
-web/lib/supabase/{client,server,service}.ts
-web/lib/auth/{index,api}.ts
-web/app/login/page.tsx
-web/app/api/auth/logout/route.ts
-```
+1. `items.created_by` físico: ¿existe en migration 001? Grep rápido dice sí/no.
+2. Cascade auto-fill: ¿scope completo ahora o marcamos 16.5.16–17 como stretch goals?
+3. `role='primary_stage'` en código existente: ¿backward-compat con fallback, o migración hard que rompe boards legacy?
 
 ---
 
-## Fase 2 — Layout
+## Fase 17 — Invitations + Email Auth + Session Optimization
 
-**Goal:** Shell de la app: sidebar con boards dinámicos, header, navegación.
+**Goal:** Onboarding sin costo vía invitación por email, login por email como método primario, sesiones largas con trusted devices, y multi-identity (varios emails apuntando a un user). Meta: reducir costo OTP SMS de ~$1.50/mes a <$0.20/mes para CMP.
 
-### Tareas
-
-- [x] **2.1** Layout: `app/app/layout.tsx`
-- [x] **2.2** Sidebar:
-  - Logo "T" + nombre workspace
-  - Boards del workspace (fetch desde API), cada uno navega a `/app/b/[board.sid]`
-  - System boards arriba, custom abajo (separador visual)
-  - Settings icon, Superadmin button (condicional), Logout
-- [ ] **2.3** Header: pageName dinámico + breadcrumb
-- [x] **2.4** API: `GET /api/boards` → boards del workspace con sid y slug
-- [x] **2.5** Redirect: `/app` → `/app/b/{sid_de_opportunities}` (dinámico por system_key)
-- [x] **2.6** Placeholder en `/app/b/[boardSid]/page.tsx`
-
-### Verificación
-- [ ] Login → sidebar con 5 boards de sistema (mostrando nombre, no sid)
-- [ ] Click en board → navega a `/app/b/[board.sid]` (ej: `/app/b/10000020`)
-- [ ] Cada board muestra su sid en algún lugar sutil (tooltip o badge)
-
-### Archivos
-```
-web/app/app/layout.tsx
-web/app/app/page.tsx
-web/app/app/b/[boardSid]/page.tsx
-web/app/api/boards/route.ts
-web/components/layout/{sidebar,header}.tsx
-```
-
----
-
-## Fase 3 — BoardView (la tabla)
-
-**Goal:** Tabla genérica estilo Airtable que funciona para CUALQUIER board.
-
-### Tareas
-
-- [x] **3.1** `GenericDataTable.tsx`:
-  - Recibe: `columns: ColumnDef[]`, `rows: Row[]`, `onCellChange(rowId, colKey, value)`
-  - Sort by column, sticky first column, row click, inline edit, bulk select
-  - Empty state, loading state
-  - **Pura presentación — no sabe de boards/items/API**
-
-- [x] **3.2** Cell system:
-  ```
-  cells/types.ts             → ColumnDef, CellProps, CellValue
-  cells/ColumnCell.tsx        → switch(kind) dispatcher
-  cells/TextCell.tsx
-  cells/NumberCell.tsx
-  cells/DateCell.tsx
-  cells/SelectCell.tsx        → opciones desde column.settings.options o board_stages
-  cells/MultiSelectCell.tsx
-  cells/PeopleCell.tsx        → dropdown de workspace users
-  cells/BooleanCell.tsx
-  cells/RelationCell.tsx      → picker de items de otro board (target_board_id en settings)
-  cells/PhoneCell.tsx
-  cells/EmailCell.tsx
-  ```
-
-- [x] **3.3** `BoardView.tsx`:
-  - Fetch: board + columns + items + item_values
-  - Transforma → rows para GenericDataTable
-  - onCellChange → PATCH items (core) o PUT item_values (custom)
-  - Toolbar: "+ Nuevo", búsqueda, count
-  - Row click → `/app/b/[board.sid]/[item.sid]`
-
-- [x] **3.4** Server page: resuelve board por SID + workspace
-
-- [x] **3.5** API:
-  ```
-  GET  /api/boards/[id]             → board + stages
-  GET  /api/boards/[id]/columns     → columnas (con sid)
-  GET  /api/items?boardId=          → items con values
-  POST /api/items                   → crear (retorna sid)
-  PATCH /api/items/[id]             → campos core
-  DELETE /api/items/[id]
-  DELETE /api/items/bulk
-  GET  /api/items/[id]/values
-  PUT  /api/items/[id]/values       → upsert
-  GET  /api/workspace-users         → usuarios (con sid)
-  ```
-
-- [x] **3.6** `lib/boards/index.ts`: `resolveBoardBySid()`, `getFirstBoard()`, `getBoardItems()`
-
-### Decisiones clave
-
-- Columnas de sistema (`is_system=true`) se renderizan con el mismo ColumnCell que custom. La diferencia es que `onCellChange` para system columns hace PATCH a `items.*`, para custom hace PUT a `item_values`.
-- Stages se muestran en SelectCell con badge de color, opciones de `board_stages`.
-- Owner se muestra en PeopleCell con avatar + nombre.
-- RelationCell muestra el nombre del item target, con picker que busca items del `target_board_id`.
-- La tabla muestra `sid` como primera columna (readonly, tipo autonumber visual).
-
-### Verificación
-- [ ] `/app/b/[sid_opportunities]` → tabla con 10 items, columnas de sistema visibles
-- [ ] `/app/b/[sid_contacts]` → misma tabla, distintas columnas (phone, email, account)
-- [ ] Inline edit de stage, owner, deadline funciona
-- [ ] Crear item → aparece con sid nuevo
-- [ ] Bulk delete funciona
-- [ ] Sort por columna funciona
-- [ ] La columna sid se muestra en cada fila
-
-### Archivos
-```
-web/components/data-table/GenericDataTable.tsx
-web/components/cells/{types,ColumnCell,TextCell,NumberCell,DateCell,SelectCell,MultiSelectCell,PeopleCell,BooleanCell,RelationCell,PhoneCell,EmailCell}.tsx
-web/app/app/b/[boardSid]/{page,BoardView}.tsx
-web/app/api/items/{route,[id]/route,[id]/values/route,bulk/route}.ts
-web/app/api/boards/[id]/{route,columns/route}.ts
-web/app/api/workspace-users/route.ts
-web/lib/boards/index.ts
-```
-
----
-
-## Fase 4 — ItemDetailView
-
-**Goal:** Página de detalle universal con panel de info editable + tabs.
-
-### Tareas
-
-- [x] **4.1** Server page: resuelve item por sid, board por sid (no slug)
-- [x] **4.2** `ItemDetailView.tsx`:
-  - Header: nombre editable + stage badge + sid visible
-  - Info panel: campos core + custom editables (mismo cell system)
-  - Tabs: Sub-items (placeholder) | Canales (placeholder) | Actividad (placeholder)
-  - ~~Prev/Next navigation~~ — eliminado por decisión de diseño; breadcrumb al board
-- [x] **4.3** API: `GET /api/items/[id]` ya existía; datos pre-fetcheados en server page
-
-### Verificación
-- [x] Click en row → `/app/b/10000020/10000107` → detalle con sid en header
-- [x] Editar fields → guarda
-- [x] Breadcrumb → volver al board
-- ~~Prev/Next~~ — eliminado
-
-### Archivos
-```
-web/app/app/b/[boardSid]/[itemSid]/{page,ItemDetailView}.tsx
-```
-
----
-
-## Fase 5 — Sub-items (columnas dinámicas + snapshot)
-
-**Goal:** Sub-items con columnas configurables por board, source board seleccionable, snapshot al importar. Máxima flexibilidad: ninguna columna hardcodeada excepto `name`.
-
-### Arquitectura
-
-```
-boards.sub_items_source_board_id  →  qué board se usa como fuente
-sub_item_columns (por board)      →  columnas configurables (igual que board_columns)
-sub_item_values                   →  valores celda por celda (igual que item_values)
-sub_items.source_item_id          →  ref al item original del snapshot (solo trazabilidad)
-```
-
-**Columnas `kind='formula'`** — se computan en frontend, no se almacenan en DB:
-```json
-{ "formula": "multiply", "col_a": "qty", "col_b": "unit_price" }
-```
-Tipos soportados: `multiply`, `add`, `subtract`, `percent`.
-
-**L1/L2:** `parent_id` y `depth` ya están en el schema. UI de variantes (sidebar)
-se deja para Fase 8 — hoy sub-items son planos visualmente.
-
-**Snapshot al importar:**
-- Copia valores del source item → sub_item_values (punto en el tiempo)
-- Valores editables post-snapshot de forma independiente
-- Nueva columna en sub_item_columns → empieza vacía en sub-items existentes (no backfill automático)
-- Futuro: botón "Refresh desde fuente" por sub-item (rellena solo celdas vacías)
-
-### Tareas
-
-- [x] **5.0** Migration: ajustar schema
-  ```sql
-  -- sub_items: quitar qty, unit_price, notes, catalog_item_id; agregar source_item_id
-  -- CREATE TABLE sub_item_columns (id, board_id, col_key, name, kind, position,
-  --   is_hidden, required, settings jsonb, source_col_key text, UNIQUE(board_id, col_key))
-  -- sub_item_values ya existe en schema 001 — verificar
-  -- boards: agregar sub_items_source_board_id uuid NULL REFERENCES boards(id)
-  ```
-
-- [x] **5.1** Source selector en BoardView toolbar (junto a "+ Nuevo")
-  - Dropdown: elige qué board es el source (boards del workspace)
-  - Al elegir source: modal `SourceColumnMapper` para seleccionar columnas a mapear
-    - Columnas del source board en lista izquierda
-    - Usuario elige cuáles importar + les da nombre + tipo en sub_item_columns
-    - Puede agregar columnas manuales sin source (ej. "Notas internas")
-  - API: `PATCH /api/boards/[id]` guarda `sub_items_source_board_id`
-  - API: `POST /api/boards/[id]/sub-item-columns/sync` crea/actualiza sub_item_columns
-
-- [x] **5.2** API sub-item-columns
-  ```
-  GET    /api/boards/[id]/sub-item-columns   → columnas configuradas para sub-items
-  POST   /api/boards/[id]/sub-item-columns   → crear columna
-  PATCH  /api/sub-item-columns/[colId]       → rename, reorder, hide
-  DELETE /api/sub-item-columns/[colId]       → eliminar (con confirm si tiene datos)
-  ```
-
-- [x] **5.3** API sub-items (refactor del CRUD existente)
-  ```
-  GET    /api/sub-items?itemId=              → sub-items + sub_item_values + columnas del board
-  POST   /api/sub-items                      → crear + snapshot (si source_item_id dado)
-  PATCH  /api/sub-items/[id]                 → actualizar name u otros campos core
-  DELETE /api/sub-items/[id]                 → cascade children
-  PUT    /api/sub-items/[id]/values          → upsert sub_item_values (igual que item_values)
-  ```
-
-- [x] **5.4** Snapshot engine (en POST /api/sub-items)
-  ```ts
-  // Cuando viene source_item_id:
-  // 1. Leer item_values del source item
-  // 2. Por cada sub_item_column con source_col_key: copiar valor → sub_item_values
-  // 3. name = source item name (siempre)
-  ```
-
-- [x] **5.5** `InlineSubItems` rediseñado
-  - Usa `sub_item_columns` del board para renderizar tabla dinámica (mini GenericDataTable)
-  - Barra superior: label del source + botón "+ Agregar"
-  - Agregar → si hay source board: `ProductPicker` (busca en source)
-               si no hay source: input de texto manual
-  - Formula cols: renderizadas como celdas read-only con valor computado
-  - Chevron en BoardView row → expande InlineSubItems (ya implementado)
-
-- [x] **5.6** `ProductPicker` rediseñado
-  - Busca items en `sub_items_source_board_id`
-  - Muestra columnas configuradas en source_col_key
-  - Al seleccionar → POST /api/sub-items con source_item_id → snapshot automático
-
-- [x] **5.7** `SubItemsView` en ItemDetailView (tab "Sub-items")
-  - Misma lógica que InlineSubItems pero vista completa (más espacio)
-  - Columnas configurables visibles, fórmulas computadas
-
-### Decisiones clave
-
-- Sin columnas hardcodeadas: `qty`, `unit_price`, `notes` son columnas default que el usuario puede renombrar/eliminar
-- Fórmulas se computan en frontend: no valor en DB, no complejidad de eval
-- L1/L2 en schema, UI plana por ahora — sidebar de variantes en Fase 8
-- Nueva columna en sub_item_columns → vacía en sub-items existentes (no backfill)
-- Un solo source board por board (múltiples sources en backlog)
-
-### Verificación
-- [ ] Configurar source "Productos" → modal mapea columnas → sub_item_columns creadas
-- [ ] Agregar sub-item desde catálogo → snapshot copia valores → sid asignado
-- [ ] Editar valor post-snapshot → no afecta al producto original
-- [ ] Columna formula (qty × precio) → muestra total calculado → no editable
-- [ ] Agregar/eliminar columnas de sub-items → tabla se actualiza
-- [ ] Badge de count en BoardView row → se actualiza al agregar/eliminar
-
-### Archivos
-```
-supabase/migrations/20260413000001_sub_items_dynamic.sql
-web/components/InlineSubItems.tsx              (refactor)
-web/components/SubItemsView.tsx                (refactor)
-web/components/ProductPicker.tsx               (refactor)
-web/components/SourceColumnMapper.tsx          (nuevo — modal config)
-web/app/app/b/[boardSid]/BoardView.tsx         (source selector en toolbar)
-web/app/api/sub-items/{route,[id]/route,[id]/values/route}.ts
-web/app/api/boards/[id]/sub-item-columns/route.ts
-web/app/api/sub-item-columns/[colId]/route.ts
-```
-
----
-
-## Fase 6 — Import Wizard
-
-**Goal:** Importar data a cualquier board desde cualquier fuente. Arquitectura de plugins — agregar fuente nueva = 1 archivo.
-
-### Arquitectura (implementada)
-```
-components/import/
-  ImportWizard.tsx          ← orquestador genérico: picker → ConnectStep → ColumnMapper → import
-  ColumnMapper.tsx          ← step genérico: mapear campos + crear columnas nuevas inline
-  sources/
-    types.ts                ← interface ImportSource (ConnectStep, ConnectResult, ImportField)
-    index.ts                ← IMPORT_SOURCES registry ← agregar Monday aquí
-    AirtableSource.tsx      ← ConnectStep Airtable (PAT + base + table, client-side fetch)
-    CsvSource.tsx           ← ConnectStep CSV (parse en cliente)
-
-api/import/bulk/            ← único endpoint genérico; todas las fuentes envían aquí
-```
-
-**Para agregar una fuente nueva (Monday, Notion, etc.):**
-1. Crear `sources/MondaySource.tsx` con icon + ConnectStep + `ImportSource` export
-2. Agregar a `sources/index.ts` → aparece automáticamente en el wizard
-
-### Tareas
-- [x] **6.1** Arquitectura de plugins: `ImportSource` interface + registry
-- [x] **6.2** `ImportWizard.tsx` genérico + `ColumnMapper.tsx` con "Crear columna nueva"
-- [x] **6.3** `AirtableSource.tsx` + `CsvSource.tsx`
-- [x] **6.4** API: `POST /api/import/bulk` (genérico) + `POST /api/boards/[id]/columns`
-- [x] **6.5** Integrar en BoardView toolbar + `refreshAll` (items + columns post-import)
-- [ ] **6.6** Refresh desde fuente (Airtable/similares): botón "Reimportar" que conserva
-  el mapping anterior y re-ejecuta `fetchAll()` → útil para sync periódica.
-  Requiere persistir `{ source_id, connect_params, field_map }` por board en DB.
-  Candidato: nueva tabla `board_import_configs (id, board_id, source_id, params jsonb, field_map jsonb)`
-
-### Verificación
-- [ ] Import CSV a catalog → items con sids nuevos, columnas nuevas creadas si aplica
-- [ ] Import Airtable → mapeo de columnas → items creados, columnas nuevas visibles
-- [ ] Funciona en CUALQUIER board
-- [ ] Agregar nueva fuente solo requiere 1 archivo nuevo + 1 línea en index.ts
-
----
-
-## Fase 7 — Canales + Activity Log
-
-**Goal:** Comunicación interna + audit trail.
-
-### Tareas
-- [x] **7.1** `ItemChannels.tsx` + `ActivityFeed.tsx`
-- [x] **7.2** API: channels, messages, members, activity
-- [x] **7.3** Integrar como tabs en ItemDetailView
-
----
-
-## Fase 8 — Settings + Board Views
-
-**Goal:** Admin configura boards, stages, columns, members, teams, territories. Usuarios crean vistas por board con columnas configurables.
-
-### Tareas
-- [x] **8.1** Settings layout + nav (Cursor-inspired: sidebar secundario + content area)
-- [x] **8.2** Boards: CRUD + stages + columns + members tab (view/edit + restrict_to_own)
-- [x] **8.3** Teams: CRUD + miembros
-- [x] **8.4** Territories: CRUD + jerarquía padre/hijo
-- [x] **8.5** Workspace config (nombre + zona de peligro)
-- [x] **8.6** Superadmin: workspace switcher
-- [x] **8.7** Board Views: tab strip entre header y tabla + column visibility por vista
-  - Migration 011: `board_views` + `board_view_columns` (sin `board_view_members` — eso es Fase 9)
-  - API: CRUD vistas + toggle visibilidad de columnas por vista
-  - UI: tab strip bonito entre board name y tabla, "+" inline para crear vista nueva, rename on double-click
-  - "Default" siempre existe, no se puede eliminar
-  - Board sin views → todas las columnas visibles (backward compatible)
-  - Column picker por vista: eye icon en el header de la tabla → checkbox por columna
-
-### Schema (8.7)
+### Modelo de datos
 
 ```sql
-board_views (
-  id uuid PK,
-  sid bigint UNIQUE DEFAULT nextval('tratto_sid_seq'),
-  board_id uuid FK boards(id) ON DELETE CASCADE,
-  workspace_id uuid FK workspaces(id),
-  name text NOT NULL,               -- "Default", "Vista Ventas", "Vista Costos"
-  is_default boolean DEFAULT false, -- la view que se abre al entrar al board
-  position int DEFAULT 0,
-  created_by uuid FK users(id) NULL,
-  created_at timestamptz DEFAULT now()
+-- Invitaciones pendientes
+invitations (
+  id, sid,
+  workspace_id, email,
+  role,                     -- 'admin' | 'member' | 'viewer'
+  token,                    -- random 32 chars, URL-safe
+  expires_at,               -- created_at + 7 days
+  accepted_at,              -- null si pendiente
+  created_by,               -- user_id del admin que invita
+  created_at
 )
 
-board_view_columns (
-  id uuid PK,
-  view_id uuid FK board_views(id) ON DELETE CASCADE,
-  column_id uuid FK board_columns(id) ON DELETE CASCADE,
-  position int DEFAULT 0,
-  is_visible boolean DEFAULT true,
-  width int DEFAULT 200,
-  UNIQUE(view_id, column_id)
+-- Multi-email: aliases del mismo user
+user_emails (
+  id,
+  user_id,                  -- FK users
+  email,                    -- UNIQUE global (un email → 1 user)
+  is_primary,               -- true para el email canónico de Supabase Auth
+  verified_at,              -- null hasta que haga OTP
+  created_at
 )
--- board_view_members → Fase 9 (permisos por vista)
+
+-- Trusted devices (para bypass OTP)
+user_trusted_devices (
+  id,
+  user_id,
+  device_id,                -- UUID generado cliente, persiste en localStorage
+  device_label,             -- "Chrome en Mac · 192.x.x.x · 2026-04-15"
+  last_seen_at,
+  expires_at,               -- +365 days default, extendible
+  created_at
+)
 ```
 
-### API routes (8.7)
+### Estrategia de auth
 
+**Métodos disponibles (en este orden de preferencia):**
+1. **Email OTP** (default, gratis) — Supabase `signInWithOtp({ email })` con magic link o 6-digit code
+2. **Phone SMS OTP** (opt-in) — para vendedores en campo sin laptop
+3. **Trusted device** (bypass) — si el device_id está registrado y no expirado, salta OTP completo
+
+**Session config (Supabase dashboard):**
+- JWT access token: 1h (default)
+- JWT refresh token: **90 días** (vs 30 default) — configurable en Supabase Auth settings
+- Auto-refresh: cliente renueva JWT silenciosamente mientras el refresh token sea válido
+- Rate limit OTP: 3 requests/hora por email/phone
+
+**Flujo de login optimizado:**
 ```
-GET    /api/boards/[id]/views                       → list views (con column config)
-POST   /api/boards/[id]/views                       → crear vista nueva
-PATCH  /api/boards/[id]/views/[viewId]              → rename, reorder, set default
-DELETE /api/boards/[id]/views/[viewId]              → eliminar (no la default)
-PUT    /api/boards/[id]/views/[viewId]/columns      → bulk update visibility + positions
-PATCH  /api/boards/[id]/views/[viewId]/columns/[colId] → toggle is_visible, set width
+1. User abre /login
+2. Si localStorage tiene device_id Y user_email → POST /api/auth/trusted-check
+   → Si device está en user_trusted_devices AND !expired → emite JWT sin OTP
+   → Else → sigue al paso 3
+3. Paso "elegir método": Email (default) / Phone
+4. Envía OTP via Supabase signInWithOtp
+5. User ingresa código
+6. verifyOtp → JWT
+7. Checkbox "Recordar este dispositivo" → POST /api/auth/trust-device
 ```
-
-### Reglas clave (8.7)
-
-```
-1. Board sin board_views → GET /api/boards/[id]/columns retorna todas las columnas (legacy)
-2. Board con views → GET con ?viewId= filtra por board_view_columns.is_visible
-3. Vista sin board_view_columns para una columna → columna visible por default
-4. Al crear nueva columna con ?viewId= activo:
-   → INSERT board_columns (pertenece al board)
-   → INSERT board_view_columns is_visible=true para vista activa
-   → INSERT board_view_columns is_visible=false para todas las demás vistas
-```
-
-### Pendiente para Fase 9
-- **8.7-defer** Column permissions UI (settings → board → column → toggle quién ve/edita)
-- **8.7-defer** `board_view_members` (quién puede ver esta vista — permisos por vista)
-- [x] **8.8** Sub-item views: múltiples configuraciones de source por board
-- **8.9** Billing page (mock con créditos AI + storage — integración real en Fase 10)
-
----
-
-## Fase 9 — Permisos granulares
-
-**Goal:** RLS real con board_members, column_permissions, view-level access.
-
-### Tareas
-- [x] **9.0** Seguridad base: 35 API routes migradas de createServiceClient → createClient; RLS ahora es el único enforcement; service client solo en admin/seed y superadmin
-- [x] **9.1** RLS refinado: board_members (user o team) con access level (ya estaba implementado en migration 003)
-- [x] **9.2** Column visibility: GET /api/boards/[id]/columns filtra columnas según column_permissions del user + devuelve `user_access`
-- [x] **9.3** Territory filter: dropdown en BoardView toolbar filtra items por territorio (client-side, lazy load)
-- [x] **9.4** Verificado: RLS bloquea board privado; restrict_to_own enforced en GET /api/items
-- [x] **9.5** Column permissions UI (settings → board → columnas tab → 3-dot (⋯) hover → panel inline con add/remove permisos por usuario)
-- [x] **9.6** `board_view_members` (migration 012): UI en BoardView tab strip → 3-dot (⋯) hover por vista → popup gestión de acceso
-  ```sql
-  board_view_members (
-    id uuid PK,
-    view_id uuid FK board_views(id) ON DELETE CASCADE,
-    user_id uuid FK users(id) NULL,
-    team_id uuid FK teams(id) NULL,
-    CHECK: XOR user_id/team_id
-  )
-  -- Sin registros → visible para todos los miembros del board
-  ```
-- [x] **9.7** Sub-item views: múltiples source configs por board — implementado en sesión 19
-- [x] **9.8** Billing page mock — implementado en Fase 8
-
----
-
-## Fase 10 — Column Settings Editor (NEXT — VITAL)
-
-**Goal:** Editor completo de configuración de columna accesible desde el panel "Columnas" del BoardView (⋯ por columna) y desde Settings. Mismo componente, mismos datos.
-
-### Contexto
-El ⋯ en el panel Columnas del BoardView actualmente abre permisos. Necesita crecer para ser el punto central de configuración de cualquier columna: nombre, tipo, opciones, fórmulas, target board (relation), etc.
 
 ### Tareas
 
-- [x] **10.1** `ColumnSettingsPanel` — componente genérico (drawer o modal) que recibe `column` y `boardId`, muestra y guarda toda la configuración:
-  ```
-  Secciones:
-  ├── General: nombre editable, kind (tipo), col_key (readonly)
-  ├── Opciones (kind=select|multiselect): lista de opciones con color picker, add/remove/reorder
-  ├── Fórmula (kind=formula): selector de operación (multiply/add/subtract/percent) + col_a + col_b
-  ├── Relation (kind=relation): target_board_id picker (dropdown de boards del workspace)
-  ├── Number (kind=number): formato (currency, percentage, plain), decimales
-  └── Permisos: quién puede ver/editar (reusa lógica ya implementada)
-  ```
+#### 17.A — Invitations
+- [ ] **17.1** Migration: `invitations` table + índices + RLS
+- [ ] **17.2** `POST /api/invitations` (admin only) — crea row + envía email vía Resend/SendGrid con link `/invite/<token>`
+- [ ] **17.3** `GET /api/invitations?workspace_id=X` — lista pendientes + enviadas
+- [ ] **17.4** `DELETE /api/invitations/[id]` — revocar invitación
+- [ ] **17.5** Page `/invite/[token]` — landing pública: valida token, muestra workspace, botón "Aceptar" → login con email pre-rellenado
+- [ ] **17.6** `POST /api/invitations/accept` — marca accepted_at + auto-crea user en workspace con el role invitado
+- [ ] **17.7** Settings → Members → botón "Invitar por email" — modal con email + role → POST
+- [ ] **17.8** Email template (Resend) con branding minimalista
 
-- [x] **10.2** Integrar en panel Columnas del BoardView: el ⋯ abre `ColumnSettingsPanel` en lugar del mini-panel de permisos actual
+#### 17.B — Email auth (Supabase native)
+- [ ] **17.9** Login page: toggle "Email / Teléfono" — email usa `signInWithOtp({ email })`
+- [ ] **17.10** Trigger `handle_new_auth_user` actualizado para soportar signups vía email (además de phone)
+- [ ] **17.11** Lookup durante OTP: resolver user por email desde `user_emails` (cualquier alias) → obtener primary email → enviar OTP a ese
 
-- [x] **10.3** Integrar en Settings → Boards → Columnas tab: el ⋯ abre el mismo `ColumnSettingsPanel` (reemplaza el panel de permisos actual de settings)
+#### 17.C — Multi-identity
+- [ ] **17.12** Migration: `user_emails` table + UNIQUE(email) global + RLS
+- [ ] **17.13** Seed: copiar `users.email` actuales a `user_emails` con `is_primary=true, verified_at=now()`
+- [ ] **17.14** Settings → Profile → tab "Correos": lista + agregar nuevo email (envía verificación) + marcar primario + eliminar
+- [ ] **17.15** `POST /api/user-emails` — agrega email pendiente, dispara OTP de verificación
+- [ ] **17.16** `POST /api/user-emails/[id]/verify` — marca verified_at, permite login desde este alias
 
-- [x] **10.4** API: `PATCH /api/boards/[id]/columns/[colId]` — extendido para aceptar `name`, `kind`, `settings` (jsonb con opciones/formato/target_board_id)
+#### 17.D — Session + trusted device
+- [ ] **17.17** Supabase dashboard config: refresh token 90 días (documentar en plan, no código)
+- [ ] **17.18** Migration: `user_trusted_devices` table + RLS
+- [ ] **17.19** Cliente: generar device_id (UUID) en primer login, guardar en localStorage
+- [ ] **17.20** `POST /api/auth/trust-device` — registra device_id + user agent + IP + label legible
+- [ ] **17.21** `POST /api/auth/trusted-check` — si (device_id, user_email) matchea → emite JWT directo sin OTP
+- [ ] **17.22** Login UI: checkbox "Recordar este dispositivo por 1 año"
+- [ ] **17.23** Settings → Profile → tab "Dispositivos": lista trusted devices con last_seen + botón revocar
+- [ ] **17.24** Middleware: auto-extend trusted device (sliding window) cada vez que se usa
 
-- [x] **10.5** Para `kind=select|multiselect`: persistir opciones en `board_columns.settings.options = [{ value, label, color }]` — mismo formato que ya usa SelectCell
-
-### Decisiones clave
-- `ColumnSettingsPanel` es un componente independiente en `components/ColumnSettingsPanel.tsx`
-- Se puede abrir como drawer lateral (slide-in desde la derecha) o modal — decidir en implementación
-- Cambiar `kind` de una columna con datos existentes: advertencia al usuario ("los valores existentes pueden quedar incompatibles")
-- Reorder de opciones: drag-and-drop simple (o flechas arriba/abajo para evitar dependencia nueva)
-
----
-
-## Fase 11 — Column Upgrades: Files, Buttons, Signature
-
-**Goal:** Tres nuevos `kind` de columna que desbloquean quotes, gates y aprobaciones.
-
-### 11.1 — kind: 'file'
-
-```typescript
-// item_values.value_json:
-[{ name: string, url: string, size: number, mime: string, uploaded_at: string }]
-```
-
-- Bucket `item-files` en Supabase Storage (RLS por workspace)
-- API: `POST /api/items/[id]/files` → genera signed upload URL → cliente sube directo a Storage
-- `FileCell`: chips con nombre + icono + botón download; botón "+" para subir
-- Múltiples archivos por celda (array en value_json)
-
-### 11.2 — kind: 'button'
-
-```typescript
-// board_columns.settings:
-{
-  label: string,              // texto del botón
-  action: 'change_stage'      // acción directa
-        | 'create_quote'
-        | 'run_automation',   // Fase 14
-  // por acción:
-  stage_id?: string,          // para change_stage
-  template_id?: string,       // para create_quote
-  automation_id?: string,     // para run_automation
-  confirm?: boolean,          // pedir confirmación antes de ejecutar
-  confirm_message?: string,
-}
-```
-
-- `ButtonCell`: botón inline en la tabla, no editable
-- On click → ejecuta acción via API según settings → muestra feedback (spinner → check / error)
-- `change_stage` y `create_quote` no requieren Fase 14
-
-### 11.3 — kind: 'signature'
-
-```typescript
-// item_values.value_json cuando firmado:
-{
-  doc_id: string,    // UUID generado al firmar (único, inmutable)
-  signed_by: string, // nombre del usuario
-  email: string,
-  signed_at: string, // ISO timestamp
-  user_id: string,   // FK a users.id para auditoría
-}
-// null cuando no está firmado
-```
-
-- `SignatureCell`: sin firma → botón "Firmar" (solo roles permitidos por `settings.allowed_roles`); con firma → watermark estilo DocuSeal
-- On click "Firmar" → modal de confirmación → guarda JSON → **read-only para siempre** (RLS + API)
-- Admin puede invalidar con log de actividad obligatorio
-- `settings.allowed_roles: string[]` — qué roles pueden firmar
-- En PDF de quote: si el item tiene columna signature firmada → incluir watermark en footer
-
-### Tareas
-- [x] **11.1** Bucket Storage + API upload + FileCell
-- [x] **11.2** ButtonCell + acciones `change_stage` y `create_quote` (sin automation engine)
-- [x] **11.3** SignatureCell + lógica de inmutabilidad
+#### 17.E — Cost monitoring
+- [ ] **17.25** Tabla `auth_events (user_id, method, cost_estimate, created_at)` — log de cada OTP enviado
+- [ ] **17.26** Settings → Workspace → "Uso de auth" — total OTP este mes + estimado mensual
 
 ### Verificación
-- [ ] Subir archivo a item → aparece en celda → descargable
-- [ ] Botón cambia stage del item al hacer click
-- [ ] Firma guarda watermark → no editable después → aparece en PDF
-
----
-
-## Fase 12 — Variantes L2 + Vistas por board
-
-**Goal:** Explotar un sub-item en variantes por talla/color. Configurar qué niveles se ven por board.
-
-### Contexto
-
-```
-Oportunidad (item)
-  └── Camisa táctica azul (sub-item L1, depth=0)
-        └── S  | qty: 50 (sub-item L2, depth=1)
-        └── M  | qty: 80
-        └── L  | qty: 40
-        └── XL | qty: 30
-```
-
-- En board **Oportunidades**: ver solo L1 (total por producto, sin desglose de tallas)
-- En board **Proyectos**: ver L1+L2 (desglose completo por talla)
-
-### Schema (ya existe, solo UI faltante)
-
-```sql
-sub_items.depth      -- 0 = L1, 1 = L2
-sub_items.parent_id  -- L2 apunta a L1
-```
-
-### Feature: Auto-expand L1 → L2 (producto cartesiano)
-
-```typescript
-// boards.settings (jsonb):
-{
-  variant_dimensions: ['tallas_col_id', 'colores_col_id'],  // 1..N columnas multiselect
-  variant_value_columns: ['qty', 'unit_price']              // columnas en blanco en cada L2
-}
-
-// Ejemplos:
-// 1 dimensión: tallas=[S,M,L,XL]              → 4 L2s ("S", "M", "L", "XL")
-// 2 dimensiones: tallas × colores (4×3)       → 12 L2s ("S / Azul", "M / Negro"...)
-// 3 dimensiones: talla × color × tela (4×3×2) → 24 L2s ("S / Azul / Ripstop"...)
-```
-
-Botón "Explotar variantes" en L1 → lee valores de todas las `variant_dimensions` del sub-item → calcula producto cartesiano → crea un L2 por cada combinación con `name = "dim1 / dim2 / ..."` y `variant_value_columns` en blanco.
-
-Si ya existen L2s para ese L1 → pregunta si reemplazar o agregar faltantes (no duplicar combinaciones ya existentes).
-
-### Feature: Formula sum L2 en L1
-
-```typescript
-// sub_item_columns.settings para kind='formula' en L1:
-{
-  formula: 'sum_children',   // nuevo tipo: suma una columna de todos los L2 hijos
-  child_column: 'qty'
-}
-```
-
-Computable en frontend: `sum(row.subRows.map(l2 => l2.qty))`. Read-only. Útil para validar sum(tallas) = total pedido.
-
-### Feature: View config por board
-
-```typescript
-// boards.settings (jsonb, ya existe):
-{
-  subitem_view: 'L1_only' | 'L1_L2' | 'L2_only'
-}
-```
-
-`BoardView` y `ItemDetailView` respetan este setting al renderizar sub-items.
-
-### Tareas
-- [x] **12.1** UI de L2 en `SubItemsView` (NativeRenderer): indentación, expand/collapse L1, L2 como filas hijas anidadas
-- [x] **12.2** Botón "Explotar variantes" (⊞) en L1 → modal para elegir dimensiones multiselect → crea L2s
-- [x] **12.3** Formula `sum_children` en sub_item_columns — computable en frontend: `children.reduce(sum, col_key)`
-- [x] **12.4** Setting `subitem_view` por board → `L1_only` oculta L2, `L1_L2` normal, `L2_only` auto-expande y oculta L1 rows
-- [x] **12.5** API `POST /api/sub-items/[id]/expand` → recibe `column_ids[]`, calcula cartesiano, crea L2s, skips duplicados por nombre
-- [x] **12.6** API `POST /api/sub-items/[id]/import-children` → copia sub-items del source item como L2 hijos del L1 (desde catálogo)
-- [x] **12.7** API `POST /api/sub-items/[id]/refresh` → re-copia `item_values` del source item vía `source_col_key` mapping; bloqueado si sub-item tiene estado `is_closed`
-- [x] **12.8** Navegación desde sub-item → source item: ↗ en L1 rows resuelve `source_item_sid` + `source_board_sid` (batch en API) y renderiza `<a href>` al catálogo; fallback a drawer si no tiene source
-- [x] **12.9** `SubItemDetailDrawer`: drawer fijo lateral (w-72) con todos los campos editables del sub-item; select cols con badge pill; fórmulas read-only
-- [x] **12.10** `SelectCell` en NativeRenderer: badge de color cuando closed (vista), `<select>` dropdown cuando editing
-- [x] **12.11** Migration `boards.settings jsonb` — `ALTER TABLE boards ADD COLUMN IF NOT EXISTS settings jsonb NOT NULL DEFAULT '{}'`
-- [x] **12.12** Migration `Estado` sub-item column — para boards con `system_key='opportunities'`: inserta columna select (Pendiente/En producción/Entregado/Terminado con colores), escribe `status_sub_col_key: 'estado'` en boards.settings
-- [x] **12.13** `is_closed: boolean` en select options — rename-safe terminal state, consistente con `board_stages.is_closed`; migration reemplaza `closed_sub_values[]` en boards.settings; ColumnSettingsPanel toggle con lock icon por opción
-- [x] **12.14** `boards.settings` threaded desde `b/[boardSid]/page.tsx` → BoardView → SubItemsView (y por ItemDetailView → ItemDetailView → SubItemsView)
-- [x] **12.15** `resolveBoardBySid` actualizado para incluir `settings` en el SELECT
-
-### Decisiones clave (sesión 20)
-
-- **Snapshot vs live:** Sub-items propios son snapshot (copiados del catálogo, editables independientemente). El botón ⟳ re-sincroniza valores desde la fuente en cualquier momento, excepto si el sub-item tiene estado con `is_closed=true`.
-- **L2 desde catálogo:** El botón ↓ en L1 importa los sub-items del producto origen como L2 hijos — permite ver tallas/variantes del catálogo sin explotar cartesiano manualmente.
-- **is_closed rename-safe:** `closed_sub_values: string[]` en boards.settings era frágil (rompía al renombrar opciones). Reemplazado por `option.is_closed: boolean` dentro del objeto de opción — idéntico a `board_stages.is_closed`.
-- **status_sub_col_key en boards.settings:** Designa cuál columna de sub-item es el "estado" — usado por el endpoint `/refresh` para verificar si está bloqueado.
-
-### Verificación
-- [x] L1 con multiselect tallas S/M/L/XL → explotar → genera 4 L2
-- [x] sum(L2.qty) se computa en L1 al cargar (formula sum_children)
-- [x] subitem_view=L1_only → solo L1 visible; L1_L2 → ambos; L2_only → solo L2 expandidos
-- [x] ↗ en L1 con source → navega a /app/b/[boardSid]/[itemSid] del catálogo
-- [x] ↓ en L1 → importa sub-items del producto como L2
-- [x] ⟳ en L1 → re-copia valores del source; bloqueado si is_closed=true
-- [x] Estado column en opportunities boards con opciones coloreadas
-- [x] ColumnSettingsPanel → lock icon por opción toggle is_closed
-
-### Archivos (sesión 20)
-```
-supabase/migrations/20260414000002_boards_settings.sql     (nuevo)
-supabase/migrations/20260414000003_sub_item_estado.sql     (nuevo)
-supabase/migrations/20260414000004_option_is_closed.sql    (nuevo)
-web/app/api/sub-items/[id]/expand/route.ts                 (nuevo)
-web/app/api/sub-items/[id]/import-children/route.ts        (nuevo)
-web/app/api/sub-items/[id]/refresh/route.ts                (nuevo)
-web/app/api/sub-item-views/[viewId]/data/route.ts          (source_item_sid + source_board_sid batch-resolved)
-web/components/SubItemsView.tsx                            (NativeRenderer: drawer, import-children, refresh, nav links, select badge, sum_children)
-web/components/ColumnSettingsPanel.tsx                     (is_closed toggle per option)
-web/lib/boards/index.ts                                    (settings en resolveBoardBySid SELECT)
-web/app/app/b/[boardSid]/page.tsx                          (boardSettings + subitemView derivados)
-web/app/app/b/[boardSid]/BoardView.tsx                     (boardSettings + subitemView props)
-web/app/app/b/[boardSid]/[itemSid]/page.tsx                (boardSettings + subitemView derivados)
-web/app/app/b/[boardSid]/[itemSid]/ItemDetailView.tsx      (boardSettings + subitemView props)
-```
-
----
-
-## Fase 13 — Formula Columns
-
-**Goal:** Fórmulas configurables en `board_columns` y `sub_item_columns` — operaciones entre columnas del mismo nivel, computadas en frontend, sin almacenamiento en DB.
-
-### Alcance
-
-Las fórmulas actuales en `sub_item_columns` solo soportan `multiply/add/subtract/percent` con dos columnas numéricas hardcodeadas. Esta fase las generaliza y las extiende a `board_columns`.
-
-### Tipos de fórmula
-
-```typescript
-// settings.formula_config en board_columns / sub_item_columns con kind='formula'
-type FormulaConfig =
-  | { type: 'arithmetic'; op: 'add' | 'subtract' | 'multiply' | 'divide' | 'percent'; col_a: string; col_b: string }
-  | { type: 'if';         condition: FormulaCondition; col_true: string | number; col_false: string | number }
-  | { type: 'concat';     cols: string[]; separator: string }
-  | { type: 'date_diff';  col_a: string; col_b: string; unit: 'days' | 'hours' }
-  | { type: 'count_if';   col: string; operator: '>' | '<' | '=' | '!='; value: unknown }
-
-type FormulaCondition = { col: string; operator: '>' | '<' | '=' | '!=' | 'empty' | 'not_empty'; value?: unknown }
-```
-
-### Motor de cómputo
-
-```typescript
-// lib/formula-engine.ts
-export function computeFormula(config: FormulaConfig, row: Record<string, unknown>): unknown
-// Recibe settings.formula_config + row de valores planos (col_key → value).
-// Retorna el valor computado (number | string | null).
-// Puro — sin side effects, sin fetch, testeable con jest.
-```
-
-Llamado desde:
-- `NativeRow` (sub-items L1/L2) en SubItemsView
-- `ColumnCell` kind='formula' en GenericDataTable (items del board principal)
-
-### UI en ColumnSettingsPanel
-
-Tab "Fórmula" (visible solo si kind='formula'):
-```
-┌─────────────────────────────────────────────────┐
-│  Tipo de fórmula:  [Aritmética ▾]               │
-│                                                 │
-│  Columna A:  [Cantidad     ▾]                   │
-│  Operación:  [×  Multiplicar ▾]                 │
-│  Columna B:  [Precio unitario ▾]                │
-│                                                 │
-│  Vista previa:  240 × 150 = 36,000              │
-└─────────────────────────────────────────────────┘
-```
-
-### Tareas
-- [x] **13.1** `lib/formula-engine.ts` — motor puro con todos los tipos
-- [x] **13.2** Extender `kind='formula'` en `board_columns` (actualmente solo en sub_item_columns) — migration si necesario, ColumnCell dispatcher
-- [x] **13.3** ColumnSettingsPanel: tab "Fórmula" con selector de tipo + columnas de referencia
-- [x] **13.4** GenericDataTable: evaluar fórmulas en columnas de board_columns kind='formula'
-
-### Verificación
-- [x] `Precio unitario` × `Cantidad` → columna Total computable en sub-items
-- [x] Misma fórmula funciona en columnas del board principal (items)
-- [ ] `date_diff(deadline, hoy)` → "días restantes" en columna de oportunidades
-- [x] Cambiar una columna fuente → fórmula re-evalúa sin refresh
-
----
-
-## Fase 14 — Rollup Columns
-
-**Goal:** Agregar valores de niveles inferiores hacia arriba: L2 → L1, L1 → Item, Item → columna del board. El caso clave de CMP: `sum(L2.cantidad)` visible en L1, y `sum(L1.total)` visible en la oportunidad.
-
-### Concepto
-
-Una columna `kind='rollup'` no almacena datos propios — agrega valores de sus descendientes. Read-only. Computada en frontend al cargar, recalculada si cambia un hijo.
-
-```typescript
-// settings.rollup_config en board_columns / sub_item_columns con kind='rollup'
-type RollupConfig = {
-  source_level: 'children' | 'descendants'  // L2 directos o todos los niveles
-  source_col_key: string                     // col_key de la columna a agregar
-  aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max' | 'count_not_empty'
-}
-```
-
-### Niveles de rollup
-
-| Columna rollup en | Agrega desde | Caso de uso |
-|---|---|---|
-| `sub_item_columns` (L1) | L2 hijos directos | `sum(L2.cantidad)` en cada L1 |
-| `board_columns` | L1 sub-items del item | `sum(L1.total)` en la oportunidad |
-
-### Motor de cómputo
-
-```typescript
-// lib/rollup-engine.ts
-export function computeRollup(config: RollupConfig, row: SubItemData | ItemData): unknown
-// row debe incluir children (pre-cargados) para source_level='children'
-// Retorna number | string | null
-```
-
-El motor es llamado:
-- En `NativeRow` para columnas rollup en sub_item_columns
-- En `ColumnCell` kind='rollup' en GenericDataTable, con `row._subItemsRollup` precalculado
-
-### Pre-cálculo en endpoint
-
-Para columnas rollup en `board_columns`, el endpoint `GET /api/sub-item-views/[viewId]/data` ya devuelve la estructura `children`. El endpoint de items (`GET /api/items?boardId=`) necesita incluir sub-item aggregates cuando el board tenga columnas rollup:
-
-```typescript
-// Solo cuando board tiene columnas kind='rollup' en board_columns
-// Añade a cada item: _rollup: { [col_key]: number | null }
-```
-
-### UI en ColumnSettingsPanel
-
-Tab "Rollup" (visible solo si kind='rollup'):
-```
-┌─────────────────────────────────────────────────┐
-│  Agregar desde:    [Sub-items L1 ▾]             │
-│  Columna fuente:   [Total        ▾]             │
-│  Función:          [Σ Suma       ▾]             │
-│                                                 │
-│  Resultado:  suma de "Total" de todos los       │
-│              sub-items L1 de este item          │
-└─────────────────────────────────────────────────┘
-```
-
-### Tareas
-- [x] **14.0** Battery bar en `SubItemsView` — rollup visual de status: L2→L1 collapsed, barra segmentada por color/stage, `done/total · X% completado`. kind='rollup' implícito sobre columna status.
-- [x] **14.1** `lib/rollup-engine.ts` — motor puro con todos los aggregates (sum/avg/count/min/max/count_not_empty, children + descendants)
-- [x] **14.2** Soporte kind='rollup' en `sub_item_columns` — evaluar en NativeRow al renderizar L1; rollups computados ANTES que fórmulas para que puedan usarse como operandos
-- [x] **14.3** Soporte kind='rollup' en `board_columns` — pre-calcular aggregates en `GET /api/items` + `RollupCell` (teal) en GenericDataTable
-- [x] **14.4** ColumnSettingsPanel: tab "Rollup" con selector de nivel + columna fuente + función; fetch `/api/boards/[id]/sub-item-columns`
-- [x] **14.5** Recalculo reactivo: editar un L2 → L1 rollup actualiza inmediatamente (optimistic patch en árbol de estado); fila de totales en pie de tabla con sum/avg/min/max/count por columna numérica, fórmula y rollup — click cicla función
-
-### Verificación
-- [ ] `sum(L2.cantidad)` visible en cada L1 de sub-items
-- [ ] `sum(L1.total_formula)` visible como columna en la tabla de Oportunidades
-- [ ] Editar cantidad en L2 → total en L1 cambia inmediatamente (sin refresh)
-- [ ] `count_not_empty(L1.firma)` → "Firmas completadas: 3/5" en el item
-
-### Bugs y mejoras completadas en esta fase
-- [x] **14.B1** Fix hydration mismatch en `GenericDataTable` — `columnSizing` inicializa como `{}`, lee localStorage solo en `useEffect`
-- [x] **14.B2** Aislamiento de vistas de sub-items — migration `view_id uuid FK sub_item_views` en `sub_items`; `POST /api/sub-items` guarda `view_id`; `nativeHandler` filtra por `view_id` con fallback legacy (`view_id IS NULL`)
-- [x] **14.B3** Botón eliminar vista de sub-items — `×` en tab strip de `SubItemsView` (solo si `views.length > 1` y `onDeleteView` provisto); endpoint `DELETE /api/boards/[id]/sub-item-views/[viewId]` usa `sub_item_views.workspace_id` directo (evita RLS en boards)
-- [x] **14.B4** Gate admin para operaciones destructivas — eliminar vistas de board, eliminar boards, eliminar vistas de sub-items: solo `admin | superadmin`; prop `userRole` en `BoardView` desde `page.tsx`
-- [x] **14.B5** Gestión de roles en `Settings → Miembros` — endpoint `PATCH /api/workspace-users/[userId]` (admin-only; no permite asignar `superadmin`); bootstrap: miembro puede auto-promoverse a admin si no existe ningún admin en el workspace; migration eleva primer miembro sin admin a `admin`
-- [x] **14.B6** Fix tipos de columna en `AddColumnInline` — 13 tipos completos (text, number, select, date, relation, formula, rollup, file, user, url, phone, boolean, email); `stopPropagation` en wrapper y select para evitar que el dropdown se cierre solo
-- [x] **14.B7** SourceColumnMapper: columnas no se creaban — duplicación silenciosa por unique constraint `(board_id, col_key)` cuando `source_col_key` ya existía; ahora re-usa la columna existente y la retorna en `savedColumns` para sincronizar estado BoardView
-- [x] **14.B8** Fix RLS en `GET /api/sub-item-views/[viewId]/data` — `nativeHandler` usaba `createClient()` (JWT de usuario, sujeto a RLS); la política de `sub_item_columns_select` hace un subquery a través de `boards` que falla silenciosamente retornando 0 columnas; cambiado a `createServiceClient()` después de validar workspace_id manualmente (auth ya validado por `requireAuthApi()`)
-- [x] **14.B9** Columnas de sub-items con scope por vista — `sub_item_columns` compartía columnas entre todas las vistas nativas del board; migration `20260414000008` agrega `view_id uuid FK sub_item_views`; `nativeHandler` filtra por `view_id`; `POST sub-item-columns` acepta `view_id`; `AddColumnInline` y `SourceColumnMapper` pasan `view_id`; `onConfigureColumns` en `SubItemsView` recibe el `viewId` de la vista activa
-
-### Fase 14.C — Column permissions parity (sub-item columns = 1st class citizens)
-
-**Goal:** Permisos por columna funcionan igual para `board_columns` y `sub_item_columns`. `ColumnSettingsPanel` es 100% genérico — sin tabs ocultos ni lógica de endpoint hardcodeada.
-
-**Decisión:** No fusionar `board_columns` + `sub_item_columns` (tienen semánticas distintas: is_system, source_col_key, view_id). Solo extender `column_permissions` para soportar ambas.
-
-#### Tareas
-- [x] **14.C1** Migration `20260414000009`: `column_permissions.column_id` nullable + `sub_item_column_id uuid FK sub_item_columns` + constraint `exactly_one` + RLS actualizado
-- [x] **14.C2** API routes `GET/POST /api/sub-item-columns/[colId]/permissions/route.ts` + `DELETE /api/sub-item-columns/[colId]/permissions/[permId]/route.ts` — idénticas a board columns permissions pero con `sub_item_column_id`
-- [x] **14.C3** `ColumnSettingsPanel`: reemplazar `!patchEndpoint → muestra Permisos` por prop `permissionsEndpoint?: string`; usar en todas las URLs del tab Permisos; pasar desde SubItemsView headers, SubItemDetailDrawer, y ItemDetailView
-
-### Nota RLS — patrón confirmado
-En rutas API que ya validaron autorización con `requireAuthApi()` + check de `workspace_id`, usar siempre `createServiceClient()` para las queries de datos, NO `createClient()`. El RLS de tablas con políticas que hacen subqueries a través de `boards` (ej. `sub_item_columns`, `sub_item_values`) puede retornar 0 filas silenciosamente con JWT de usuario incluso cuando el usuario es el dueño correcto del workspace.
-
----
-
-## Fase 15 — Column Validations + IF Formula + Stage Gates
-
-**Goal:** Validaciones nativas por columna. Las condiciones viven en la columna, no en la etapa. El stage gate es un botón (`kind='button'`) que evalúa todas las columnas con validación antes de avanzar.
-
-### Diseño
-
-**Decisión arquitectónica (sesión 27):** Las condiciones no viven en `board_stages.entry_conditions` sino en `board_columns.settings.validation`. Ventaja: la columna sabe si está "ok", visible inmediatamente en la tabla. Para sub-item aggregates se usan rollup columns como intermediarias — la condición solo referencia col_keys del mismo nivel (incluyendo rollups).
-
-#### Validación por columna
-
-```typescript
-// board_columns.settings.validation  (jsonb — sin migration)
-{
-  condition: {
-    col: string            // cualquier col_key del mismo nivel, incluyendo rollups
-    operator: 'empty' | 'not_empty' | '>' | '<' | '=' | '!=' | 'contains' | 'not_contains'
-    value?: unknown        // literal; para 'contains' sobre multiselect = string a buscar
-  },
-  message: string          // "Cantidad debe ser mayor a 0"
-}
-```
-
-**Ejemplo cross-level (via rollup):**
-- Rollup column `total_l1_qty = sum(L1.cantidad)` ya existe en el board
-- Validation en esa columna: `{ col: 'total_l1_qty', operator: '>', value: 0 }`
-
-#### IF fórmula (completa)
-
-```typescript
-// formula_config en board_columns / sub_item_columns con kind='formula'
-{ type: 'if'; condition: FormulaCondition; col_true: string | number; col_false: string | number }
-// col_true / col_false = col_key ó literal (number o string prefijado "literal:")
-```
-
-#### Default value
-
-```typescript
-// board_columns.settings.default_value  (jsonb — sin migration)
-// Tipo ajustado al kind de la columna; se aplica al crear item/sub-item nuevo
-```
-
-#### Button column como stage gate
-
-```typescript
-// board_columns.settings  (kind='button')
-{
-  action: 'change_stage',
-  target_stage_id: 'uuid'    // estático por ahora
-  label?: string             // texto del botón, default = nombre de la columna
-}
-```
-
-**Flujo al click:**
-1. Recolecta todas las columnas del board con `settings.validation`
-2. Evalúa `evaluateCondition(condition, row)` para cada una
-3. Si alguna falla → cells rojos + toast con mensajes, sin cambio de etapa
-4. Si todas ok → `PATCH /api/items/[id] { stage_id }`
-
-### Tareas
-- [x] **15.1** `formula-engine.ts`: agregar `contains`/`not_contains` a `evaluateCondition`; exportar función; tipar `FormulaCondition` con nuevo operador
-- [x] **15.2** `ColumnSettingsPanel` tab **Fórmula** completo: UI para `type: 'if'` (condition builder + true/false; columna o literal); `handleSaveFormula` guarda IF config
-- [x] **15.3** `ColumnSettingsPanel` tab **Validación** (nuevo, todos los kinds): condition builder reutilizando mismos inputs; campo mensaje; `handleSaveValidation` hace PATCH en `settings.validation`
-- [x] **15.4** `ColumnSettingsPanel` tab **General**: campo "Valor por defecto" según kind (text input / number / date / select dropdown / checkbox / user picker); `POST /api/items` aplica default_value al crear
-- [x] **15.5** `ColumnCell`: si `column.settings.validation` existe, evalúa contra row → borde rojo + ❌ en esquina cuando falla; fallback a col_key propio cuando `condition.col` vacío; NativeRow sub-items también muestra overlay rojo
-- [x] **15.6** `ButtonCell` (`action: 'change_stage'`): antes de ejecutar, evalúa validaciones de todas las columnas del board → lista de mensajes bloqueantes inline; botón rojo cuando hay fallas
-- [x] **15.7** `GenericDataTable` propaga `allColumns` + `row` a cada `ColumnCell`; `ColumnSettings` tipado con `validation`, `default_value`, `target_stage_id`, `rollup_config`
-
-### Bugs corregidos (sesión 27)
-- [x] `conditionMatches`: null/undefined ya no pasa `>` / `<` — `String(null)>"0"` era `true` lexicográfico
-- [x] NativeRow en SubItemsView: `formulaCols` y `rollupCols` muestran overlay rojo ❌ igual que `displayCols`
-- [x] `AddColumnButton` popover se abre a la izquierda cuando está al borde derecho de la ventana
-- [x] `AddColumnButton` panel no se cierra al interactuar con el selector — reemplazado `<select>` nativo por lista de botones (portal)
-- [x] `AddColumnInline` en sub-items: mismo fix selector + `z-20` en wrapper para no conflictar con resize handles
-
-### Fase 15.B — Stage Gates rediseño (sesión 27)
-- [x] **15.B.1** `ColumnSettingsPanel` columna Botón: tab General completo con label, acción (radio), stage destino, confirmación — todo en un `handleSaveButtonConfig`
-- [x] **15.B.2** Gates movidos de columna Botón a columna **Etapa**: `settings.stage_gates = { [stage_id]: [col_keys] }` — un solo lugar de config
-- [x] **15.B.3** Tab Validación columna Etapa: todas las etapas expandidas, cada una con checklist de columnas con validación configurada
-- [x] **15.B.4** Tab Validación columna Botón: mensaje redirect a columna Etapa (sin builder propio)
-- [x] **15.B.5** `ButtonCell.runValidations()`: lee `stage_gates[target_stage_id]` de la stage column en `allColumns`; evalúa solo esas columnas
-- [x] **15.B.6** `ColumnSettings` tipado con `stage_gates`; `allColumns` en BoardView y SubItemsView pasa `settings`
-- [x] **15.B.7** `isStageCol` matchea `col_key === 'stage'`; stages se cargan para botón y stage col
-- [x] **15.B.8** `GET /api/boards/[id]/stages`: usa `createServiceClient()` para evitar bloqueo silencioso por RLS
-
-### Verificación
-- [ ] Columna "Cantidad" con validation `> 0` → cell roja mientras el valor es 0 o vacío
-- [ ] Rollup `total_l1_qty` con validation `> 0` → cell roja si no hay sub-items con cantidad
-- [ ] IF formula `IF(precio > 1000, "Premium", "Estándar")` → muestra texto correcto según valor
-- [ ] IF con `contains` en multiselect → `IF(colores contains "rojo", 1, 0)` funciona
-- [ ] Columna Etapa → Validación → tilda condiciones por stage → guarda `stage_gates`
-- [ ] Botón con `target_stage_id` → bloquea si gates del stage destino no se cumplen; avanza si ok
-- [ ] Default value en columna select → nuevo item ya trae la opción preseleccionada
-
-### Fixes pendientes (antes de Fase 16)
-- [ ] **fix-sv-1** Permitir eliminar TODAS las vistas de sub-items, incluyendo la vista "Sub-items" default (actualmente deshabilitado en `SubItemsView`). Si se elimina la última vista → estado vacío con botón "Agregar vista". Sin protección obligatoria sobre la primera vista.
-
----
-
-## Fase 16 — Herencia de Permisos de Columna
-
-**Goal:** Los permisos de columna viajan con los datos. Si una columna es privada para Compras en el catálogo, Ventas no la ve nunca — ni en el board, ni en sub-items, ni en un snapshot de cotización. Pre-requisito obligatorio antes de Fase 17 (Quotes).
-
-### El problema sin esta fase
-
-```
-Board "Catálogo"
-  └── col 'costo_interno' → column_permission: solo equipo Compras (edit/view)
-                            Ventas no tiene acceso
-
-Sin herencia de permisos:
-  Vendedor genera cotización → snapshot copia sub-items al board 'quotes'
-  → sub-item tiene campo 'costo_interno' con el valor copiado
-  → Ventas abre el quote item → ve 'costo_interno' ← BRECHA
-```
-
-### Solución: enforcement en tres capas
-
-#### Capa 1 — Snapshot engine respeta permisos de la fuente
-
-Al copiar sub-items (snapshot), el engine verifica si el usuario que genera tiene VIEW access a cada columna de origen. Si no tiene acceso → el valor NO se copia, el campo queda vacío en el destino.
-
-```typescript
-// lib/snapshot-engine.ts — lógica extendida
-for (const col of sourceColumns) {
-  const canView = await userCanViewColumn(col.id, ctx.userId, ctx.workspaceId)
-  if (!canView) continue   // omite silenciosamente — sin error, sin valor
-  values[col.col_key] = sourceItem.values[col.col_key]
-}
-```
-
-#### Capa 2 — `permission_mode` en sub_item_columns
-
-```sql
--- sin migration nueva: agrega campo a sub_item_columns
-sub_item_columns.permission_mode text DEFAULT 'public'
-  -- 'public'  : visible para todos los miembros del board (comportamiento actual)
-  -- 'inherit' : hereda los column_permissions de la columna fuente (source_col_key)
-  -- 'custom'  : usa column_permissions propios en la tabla column_permissions
-```
-
-Cuando `permission_mode = 'inherit'` y `source_col_key` está configurado:
-- El sistema busca los `column_permissions` de la columna fuente en el board de origen
-- Aplica exactamente los mismos grupos/usuarios al renderizar la columna destino
-- Si el usuario no tiene VIEW en la fuente → celda vacía y no editable en destino
-
-#### Capa 3 — RelationCell no muestra columnas prohibidas
-
-Al mostrar datos de un board relacionado en una RelationCell (preview del item relacionado), el renderer consulta `column_permissions` del board destino para el usuario actual y oculta las columnas sin acceso. El valor del campo `value_text` (item_id) sigue guardándose — solo cambia lo que se muestra.
-
-### UI en ColumnSettingsPanel (sub_item_columns)
-
-Tab "Permisos" cuando `source_col_key` está configurado:
-```
-Modo de permisos:
-  ○ Público (todos los miembros del board)
-  ● Heredar del origen  ← si se elige: muestra "heredando de [col_name] en [board_name]"
-  ○ Personalizado (configurar manualmente)
-```
-
-### Capa 4 — Row-level constraints (restrict_to_own completo)
-
-`restrict_to_own` ya existe en `board_members` (Fase 9) y se aplica en `GET /api/items`. Esta fase audita y extiende el enforcement a todos los puntos donde un vendedor podría ver items que no son suyos.
-
-**Puntos de enforcement que faltan:**
-
-| Punto | Riesgo sin enforcement | Fix |
-|-------|----------------------|-----|
-| `GET /api/sub-items?itemId=X` | Vendedor A puede pedir sub-items de un item de Vendedor B si sabe el `item_id` | Verificar que el item padre es accesible antes de devolver sub-items |
-| Snapshot engine | Al generar quote, si `source_item_id` apunta a item de otro usuario | Validar acceso al item fuente antes de copiar |
-| `RelationCell` picker | El picker de items relacionados muestra todos los items del board, no solo los del vendedor | Picker respeta `restrict_to_own` al listar opciones |
-| `GET /api/items` con `boardId` directo | Si alguien llama la API con un `boardId` sabiendo IDs | Ya cubierto en Fase 9, pero auditar service client leaks |
-| `GET /api/boards/[id]/sub-item-views/[viewId]/data` | Data endpoint del NativeRenderer podría no aplicar `restrict_to_own` en el join con items | Verificar filtro en el data endpoint |
-
-```typescript
-// lib/permissions.ts — función nueva
-export async function userCanAccessItem(itemId: string, userId: string, workspaceId: string): Promise<boolean> {
-  // 1. Item existe y pertenece al workspace
-  // 2. Usuario tiene acceso al board (board_members o público)
-  // 3. Si restrict_to_own=true en board_members → item.owner_id === userId
-}
-```
-
-Esta función se llama en: `GET /api/sub-items`, snapshot engine, `POST /api/sub-items/[id]/refresh`, `POST /api/sub-items/[id]/expand`.
-
-### Tareas
-
-#### 16.A — Column permissions
-- [ ] **16.1** Migration: agregar `permission_mode text DEFAULT 'public'` a `sub_item_columns`
-- [ ] **16.2** `lib/permissions.ts`: `userCanViewColumn(columnId, userId, workspaceId)` — consulta `column_permissions`; si no hay registros → true (público); acepta tanto `column_id` como `sub_item_column_id`
-- [ ] **16.3** `lib/permissions.ts`: `resolveInheritedPermissions(subItemColId)` — si `permission_mode='inherit'`, resuelve los permisos de la columna fuente y los aplica
-- [ ] **16.4** Snapshot engine: antes de copiar cada valor, llama `userCanViewColumn` sobre la columna fuente; si false → omite el valor silenciosamente
-- [ ] **16.5** `ColumnCell` + `NativeRow`: antes de renderizar, verifica permisos de la columna; si sin VIEW → celda vacía, no editable, sin tooltip de valor
-- [ ] **16.6** `RelationCell` preview: al mostrar campos del item relacionado, filtra columnas que el usuario no puede ver en el board destino
-- [ ] **16.7** `ColumnSettingsPanel` tab Permisos en sub_item_columns: radio `permission_mode` (Público / Heredar del origen / Personalizado); si Heredar → muestra de dónde hereda
-
-#### 16.B — Row-level constraints (restrict_to_own audit)
-- [ ] **16.8** `lib/permissions.ts`: `userCanAccessItem(itemId, userId, workspaceId)` — valida board membership + restrict_to_own en un solo helper reutilizable
-- [ ] **16.9** `GET /api/sub-items`: antes de devolver, verifica `userCanAccessItem` sobre el item padre; 403 si no tiene acceso
-- [ ] **16.10** `POST /api/sub-items/[id]/refresh` + `/expand`: verificar acceso al item padre y al source_item_id antes de ejecutar
-- [ ] **16.11** `GET /api/boards/[id]/sub-item-views/[viewId]/data` (NativeRenderer data endpoint): aplicar join con items y filtrar por `restrict_to_own` si aplica al board
-- [ ] **16.12** `RelationCell` picker: al listar opciones del board relacionado, aplicar `restrict_to_own` del usuario en ese board (vendedor solo puede relacionar items que ve)
-- [ ] **16.13** Audit de rutas con `createServiceClient()`: revisar que todas las rutas que usan service client aplican manualmente `workspace_id` + `restrict_to_own` donde corresponde (no delegan seguridad a RLS)
-
-### Verificación
-- [ ] `costo_interno` en catálogo (solo Compras) → snapshot → Ventas abre quote → celda vacía y no editable
-- [ ] Compras abre mismo quote → ve y edita `costo_interno`
-- [ ] `permission_mode='inherit'` → cambiar permisos en fuente → refleja en todos los boards que heredan
-- [ ] RelationCell en oportunidades → Ventas no ve `costo_interno` en preview de producto
-- [ ] Vendedor A no puede obtener sub-items de item de Vendedor B aunque conozca el `item_id`
-- [ ] RelationCell picker solo muestra items a los que el usuario tiene acceso (respeta `restrict_to_own`)
-
----
-
-## Fase 17 — Quote Engine
+- [ ] Admin invita 3 users por email → reciben email con link → aceptan → aparecen en Members
+- [ ] User con 2 emails registrados → login con cualquiera de los dos → mismo account
+- [ ] User marca "Recordar device" → cierra sesión → reabre → entra directo sin OTP
+- [ ] User revoca trusted device desde Settings → next login pide OTP
+- [ ] Métrica: contar OTP enviados antes vs después → reducción ≥70%
+
+## Fase 18 — Quote Engine
 
 **Goal:** Generación de cotizaciones PDF desde items del pipeline. Los datos viven en el item (oportunidad) + sus sub-items (productos). El board `quotes` es tracking e historial, no fuente de datos.
 
@@ -1413,19 +717,19 @@ PDF — secciones:
 **Folio:** columna `autonumber` en el board `quotes` — usa el engine de autonumber que ya existe. Formato configurable en `workspaces.settings.quote_folio_prefix` (ej: `"COT-{YYYY}-{N}"` → `COT-2024-001`).
 
 ### Tareas
-- [ ] **17.1** Migration: `quote_templates`; agregar `system_key='quotes'` a `seed_system_boards` con:
+- [ ] **18.1** Migration: `quote_templates`; agregar `system_key='quotes'` a `seed_system_boards` con:
   - stages: Borrador/Enviada/Aceptada/Rechazada/Facturada
   - board_columns: oportunidad(relation), contacto(relation), monto(number), pdf(file), firma(signature), folio(autonumber), vigencia(date), iva_pct(number, default 16), moneda(select: MXN/USD), notas(text), generado_por(people), version(number)
   - sub_item_columns: producto(relation→catalog), qty(number), precio_unit(number), descuento(number), subtotal(formula)
   - column_permissions seed: precio_unit/descuento → solo equipo `compras` edita; qty → todos editan; producto → view only
-- [ ] **17.2** `workspaces.settings.quote_folio_prefix` — campo en Settings → Workspace para configurar el formato del folio (ej: `COT-{YYYY}-{N}`)
-- [ ] **17.3** Settings → Boards → tab "Cotizaciones": CRUD de templates
+- [ ] **18.2** `workspaces.settings.quote_folio_prefix` — campo en Settings → Workspace para configurar el formato del folio (ej: `COT-{YYYY}-{N}`)
+- [ ] **18.3** Settings → Boards → tab "Cotizaciones": CRUD de templates
   - **Paso 1 — Vista fuente**: dropdown de `sub_item_views` del board (vista de donde se copian los sub-items); cambiar vista limpia `line_columns`
   - **Paso 2 — Columnas PDF**: header_fields (col_keys del item), line_columns (col_keys de la vista fuente), footer_fields (col_keys del item: subtotales, IVA, total)
   - **Paso 3 — Condiciones**: pre_conditions con level picker, col_key, operator, value, match, mensaje
   - Preview con datos ficticios + logo del workspace
-- [ ] **17.4** `lib/quote-validator.ts`: `validatePreConditions(template, item, subItems)` → `{ ok, errors[] }`; reutiliza `evaluateCondition` de formula-engine
-- [ ] **17.5** Edge Function `generate-quote`:
+- [ ] **18.4** `lib/quote-validator.ts`: `validatePreConditions(template, item, subItems)` → `{ ok, errors[] }`; reutiliza `evaluateCondition` de formula-engine
+- [ ] **18.5** Edge Function `generate-quote`:
   - Input: `{ item_id, template_id, user_id, signature_data_url? }`
   - Fetch item + sub-items de la vista fuente (`sub_item_view_id`) + valores + logo del workspace
   - Snapshot: copia sub-items al nuevo quote item (respeta Fase 16 column permissions)
@@ -1434,10 +738,10 @@ PDF — secciones:
   - Upload → Supabase Storage → URL
   - Crea item en board `quotes`: folio auto, relations, version++, pdf en columna file
   - Retorna `{ pdf_url, quote_item_sid, folio }`
-- [ ] **17.6** `ButtonCell` `action: 'generate_quote'`: corre `validatePreConditions`; si falla → errores inline; si ok → llama `POST /api/generate-quote`
-- [ ] **17.7** `POST /api/generate-quote`: `requireAuthApi()` → `validatePreConditions` → Edge Function → retorna `{ pdf_url, folio, quote_item_sid }`
-- [ ] **17.8** `SignatureCell` `settings.on_sign`: al firmar, llama `POST /api/generate-quote/[quoteItemId]/sign` → regenera PDF con firma embebida → actualiza columna `pdf` del quote → avanza stage si `change_stage_to` configurado
-- [ ] **17.9** Tab "Cotizaciones" en ItemDetailView:
+- [ ] **18.6** `ButtonCell` `action: 'generate_quote'`: corre `validatePreConditions`; si falla → errores inline; si ok → llama `POST /api/generate-quote`
+- [ ] **18.7** `POST /api/generate-quote`: `requireAuthApi()` → `validatePreConditions` → Edge Function → retorna `{ pdf_url, folio, quote_item_sid }`
+- [ ] **18.8** `SignatureCell` `settings.on_sign`: al firmar, llama `POST /api/generate-quote/[quoteItemId]/sign` → regenera PDF con firma embebida → actualiza columna `pdf` del quote → avanza stage si `change_stage_to` configurado
+- [ ] **18.9** Tab "Cotizaciones" en ItemDetailView:
   - Lista: folio, fecha, vigencia, versión, stage badge, ✍️ si firmada, monto total
   - Botón "Nueva cotización" (genera nueva versión sin pisar las anteriores)
   - Click en quote → preview PDF en modal + descarga + link compartible
@@ -1456,7 +760,8 @@ PDF — secciones:
 
 ---
 
-## Fase 18 — Tratto AI Agent + Sidebar Chat
+
+## Fase 19 — Tratto AI Agent + Sidebar Chat
 
 **Goal:** Engine de IA compartido que corre idéntico en sidebar web, WhatsApp, y futura app móvil. El transporte cambia; el agente no.
 
@@ -1758,25 +1063,25 @@ Comportamiento:
 ### Tareas
 
 #### 17.A — Engine core
-- [ ] **17.1** Migration: `chat_sessions` + `chat_messages` + índice
-- [ ] **17.2** `lib/tratto-agent/types.ts`: `AgentInput`, `AgentOutput`, `ChatMessage`, `TrattoTool`, `ToolResult`, tipos para cada tool input/output
-- [ ] **17.3** `lib/tratto-agent/context.ts`: `buildSystemPrompt(user, workspace, board?)` — inyecta fecha MX, usuario, board activo
-- [ ] **17.4** `lib/tratto-agent/session.ts`: `loadOrCreateSession()`, `loadHistory(sessionId, limit=20)`, `appendMessage()` — usa serviceClient
-- [ ] **17.5** `lib/tratto-agent/tools/search-items.ts`: tool `search_items` — query full-text + filtros (board_key, stage, owner_me, overdue); retorna array con sid, name, stage, owner, deadline
-- [ ] **17.6** `lib/tratto-agent/tools/get-item.ts`: tool `get_item` — fetch item por sid + valores de columnas + count sub-items
-- [ ] **17.7** `lib/tratto-agent/tools/create-item.ts`: tool `create_item` — `POST /api/items` internamente; resuelve board_key→board_id, stage_name→stage_id
-- [ ] **17.8** `lib/tratto-agent/tools/update-item.ts`: tool `update_item` — `PUT /api/items/[id]/values`; acepta `Record<col_key, value>`
-- [ ] **17.9** `lib/tratto-agent/tools/change-stage.ts`: tool `change_stage` — evalúa stage gates antes de ejecutar; retorna error descriptivo si bloquea
-- [ ] **17.10** `lib/tratto-agent/tools/add-message.ts`: tool `add_message` — postea en canal General del item
-- [ ] **17.11** `lib/tratto-agent/tools/list-boards.ts` + `get-board-summary.ts`: tools de consulta de boards
-- [ ] **17.12** `lib/tratto-agent/tools/index.ts`: `TRATTO_TOOLS` — array con `name`, `description`, `input_schema` para cada tool (formato Anthropic tool_use)
-- [ ] **17.13** `lib/tratto-agent/agent.ts`: loop principal — `runAgent(input: AgentInput)` → llama Claude API con `tool_use`, ejecuta tools en loop hasta `stop_reason='end_turn'`, retorna `AgentOutput`; soporta modo streaming y batch
+- [ ] **19.1** Migration: `chat_sessions` + `chat_messages` + índice
+- [ ] **19.2** `lib/tratto-agent/types.ts`: `AgentInput`, `AgentOutput`, `ChatMessage`, `TrattoTool`, `ToolResult`, tipos para cada tool input/output
+- [ ] **19.3** `lib/tratto-agent/context.ts`: `buildSystemPrompt(user, workspace, board?)` — inyecta fecha MX, usuario, board activo
+- [ ] **19.4** `lib/tratto-agent/session.ts`: `loadOrCreateSession()`, `loadHistory(sessionId, limit=20)`, `appendMessage()` — usa serviceClient
+- [ ] **19.5** `lib/tratto-agent/tools/search-items.ts`: tool `search_items` — query full-text + filtros (board_key, stage, owner_me, overdue); retorna array con sid, name, stage, owner, deadline
+- [ ] **19.6** `lib/tratto-agent/tools/get-item.ts`: tool `get_item` — fetch item por sid + valores de columnas + count sub-items
+- [ ] **19.7** `lib/tratto-agent/tools/create-item.ts`: tool `create_item` — `POST /api/items` internamente; resuelve board_key→board_id, stage_name→stage_id
+- [ ] **19.8** `lib/tratto-agent/tools/update-item.ts`: tool `update_item` — `PUT /api/items/[id]/values`; acepta `Record<col_key, value>`
+- [ ] **19.9** `lib/tratto-agent/tools/change-stage.ts`: tool `change_stage` — evalúa stage gates antes de ejecutar; retorna error descriptivo si bloquea
+- [ ] **19.10** `lib/tratto-agent/tools/add-message.ts`: tool `add_message` — postea en canal General del item
+- [ ] **19.11** `lib/tratto-agent/tools/list-boards.ts` + `get-board-summary.ts`: tools de consulta de boards
+- [ ] **19.12** `lib/tratto-agent/tools/index.ts`: `TRATTO_TOOLS` — array con `name`, `description`, `input_schema` para cada tool (formato Anthropic tool_use)
+- [ ] **19.13** `lib/tratto-agent/agent.ts`: loop principal — `runAgent(input: AgentInput)` → llama Claude API con `tool_use`, ejecuta tools en loop hasta `stop_reason='end_turn'`, retorna `AgentOutput`; soporta modo streaming y batch
 
 #### 17.B — Transport sidebar (web)
-- [ ] **17.14** `app/api/chat/route.ts`: endpoint POST, SSE streaming — `requireAuthApi()`, carga sesión, llama `runAgent()` en modo stream, envía eventos `{ type: 'text_delta' | 'tool_start' | 'tool_end' | 'done' }`
-- [ ] **17.15** `components/ChatPanel.tsx`: drawer derecho 400px, toggle desde header, burbujas user/assistant, streaming render, indicadores de tool calls, scroll automático
-- [ ] **17.16** `hooks/useChat.ts`: maneja SSE stream, estado de mensajes, `sessionId` en sessionStorage, función `sendMessage(text)`
-- [ ] **17.17** Integrar `<ChatPanel>` en layout principal — botón en header, contexto del board activo pasado como prop
+- [ ] **19.14** `app/api/chat/route.ts`: endpoint POST, SSE streaming — `requireAuthApi()`, carga sesión, llama `runAgent()` en modo stream, envía eventos `{ type: 'text_delta' | 'tool_start' | 'tool_end' | 'done' }`
+- [ ] **19.15** `components/ChatPanel.tsx`: drawer derecho 400px, toggle desde header, burbujas user/assistant, streaming render, indicadores de tool calls, scroll automático
+- [ ] **19.16** `hooks/useChat.ts`: maneja SSE stream, estado de mensajes, `sessionId` en sessionStorage, función `sendMessage(text)`
+- [ ] **19.17** Integrar `<ChatPanel>` en layout principal — botón en header, contexto del board activo pasado como prop
 
 #### 17.C — Verificación
 - [ ] "busca oportunidades de Juan que estén en propuesta" → lista correcta
@@ -1788,7 +1093,8 @@ Comportamiento:
 
 ---
 
-## Fase 19 — WhatsApp Integration
+
+## Fase 20 — WhatsApp Integration
 
 **Goal:** WhatsApp como transporte adicional del mismo engine de Fase 17. Zero código de IA nuevo — solo adapter Twilio → `runAgent()`.
 
@@ -1824,24 +1130,24 @@ Twilio WA → Edge Function twilio-webhook
 ```
 
 ### Tareas
-- [ ] **18.1** Edge Function `twilio-webhook`:
+- [ ] **20.1** Edge Function `twilio-webhook`:
   - Recibe mensaje WA entrante (Twilio signature verify)
   - Lookup usuario por `phone` en `users` (E.164)
   - Llama `runAgent({ userId, workspaceId, message, transport: 'whatsapp' })` en modo batch
   - Formatea respuesta para WA (sin markdown, máx 1600 chars)
   - `sendWhatsApp(phone, text)` vía `whatsapp-outbound`
-- [ ] **18.2** Edge Function `mentions-trigger`:
+- [ ] **20.2** Edge Function `mentions-trigger`:
   - Cron cada 2 min
   - Busca `mentions WHERE notified=false`
   - Envía WA con preview del mensaje + link al canal
   - Marca `notified=true`
-- [ ] **18.3** Edge Function `daily-digest`:
+- [ ] **20.3** Edge Function `daily-digest`:
   - Cron 8:30 AM America/Mexico_City
   - Query directa (sin agente): items overdue + items due today + menciones sin responder por usuario
   - Mensaje WA formateado
-- [ ] **18.4** Edge Function `whatsapp-outbound`:
+- [ ] **20.4** Edge Function `whatsapp-outbound`:
   - Sender genérico: `sendWhatsApp(phone, message)` via Twilio REST API
-- [ ] **18.5** UI: Settings → Workspace → tab "WhatsApp"
+- [ ] **20.5** UI: Settings → Workspace → tab "WhatsApp"
   - Conectar número Twilio (webhook URL + auth token)
   - Test de envío manual
   - Log de `chat_messages` donde `session.transport='whatsapp'`
@@ -1989,3 +1295,86 @@ No canvas. Lista simple. Cada fila = 1 trigger + N acciones.
 - [ ] **A.4** Implementar acción `cross_board_copy` (con copy_subitems + expand_variants)
 - [ ] **A.5** UI: Settings → Boards → tab "Automations" (lista de recetas + editor)
 - [ ] **A.6** ButtonCell con `action: 'run_automation'` (completar Fase 11.2)
+
+---
+
+
+## Fase 21 — Filter / Sort / Group (vistas configurables)
+
+**Goal:** Cada vista de un board guarda su propia configuración de filtros, ordenamiento y agrupación. Cliente renderiza en vivo, persistencia en `board_views.config` jsonb. Tipo Monday.
+
+### Arquitectura de datos
+
+```typescript
+// board_views.config extends with:
+type ViewConfig = {
+  filters?: ViewFilter[]       // AND entre filtros
+  sort?:    ViewSort[]         // ordenamiento multi-columna (prioridad por posición)
+  group_by?: string            // col_key por el cual agrupar (null = sin agrupación)
+}
+
+type ViewFilter = {
+  col_key:  string
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains'
+          | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
+          | 'is_empty' | 'is_not_empty' | 'in' | 'not_in'
+  value:    string | number | string[] | [string|number, string|number] | null
+}
+
+type ViewSort = { col_key: string; dir: 'asc' | 'desc' }
+```
+
+### Client-side engine
+
+`lib/view-engine.ts` — funciones puras:
+- `applyFilters(rows, filters, columns)` — retorna subset filtrado
+- `applySort(rows, sort)` — retorna rows ordenados (multi-col)
+- `groupRows(rows, groupBy, columns)` — retorna `{ groupKey, groupLabel, rows[] }[]` (maneja buckets por tipo de columna: select/stage = value, date = day/week/month, number = ranges opcionales, text = first-char opcional)
+
+Todo vive en cliente. Backend no cambia (por ahora — si el board crece a >5k items, se mueve a query).
+
+### UI — Toolbar de BoardView
+
+3 botones nuevos al lado de "+ Nuevo" en el toolbar:
+- **Filtrar** — badge con count si hay filtros activos. Click → popover con filas editables.
+- **Ordenar** — badge con count. Click → lista reorderable de sorts.
+- **Agrupar** — click → dropdown con columnas groupables (select/stage/people/date).
+
+Los tres persisten en `view.config` vía PATCH `/api/boards/[id]/views/[viewId]`.
+
+### Grouping en la tabla
+
+`GenericDataTable` recibe prop opcional `groups?: { key, label, rows }[]`. Cuando se pasa:
+- Renderiza cada grupo como sub-header colapsable con count + footer de agregados del grupo
+- Sub-header color/label según tipo de columna (stage usa color de la etapa, select usa option color, etc.)
+- Empty group (0 rows) se oculta por default
+
+### Tareas
+
+#### 21.A — Engine client-side
+- [ ] **21.1** `lib/view-engine.ts` — `applyFilters`, `applySort`, `groupRows` con tests de cada operator
+- [ ] **21.2** Types en `components/data-table/types.ts`: `ViewFilter`, `ViewSort`, `ViewConfig`
+- [ ] **21.3** Helpers de bucket por tipo de columna (date → día/semana/mes)
+
+#### 21.B — Persistencia
+- [ ] **21.4** `PATCH /api/boards/[id]/views/[viewId]` acepta `config.filters`, `config.sort`, `config.group_by`
+- [ ] **21.5** `BoardView` lee `activeView.config` y aplica engine antes de pasar a `GenericDataTable`
+
+#### 21.C — UI paneles
+- [ ] **21.6** `FilterPanel.tsx` — popover con filas {col picker, operator, value input}; value input cambia según kind (text → input, select → dropdown, date → date picker)
+- [ ] **21.7** `SortPanel.tsx` — lista reorderable (drag handles) con dir toggle
+- [ ] **21.8** `GroupPanel.tsx` — dropdown simple de columnas groupables
+- [ ] **21.9** 3 botones en toolbar de BoardView con badges activos
+
+#### 21.D — Grouping render
+- [ ] **21.10** `GenericDataTable` acepta prop `groups?: GroupedRows[]` — renderiza headers colapsables + footer por grupo
+- [ ] **21.11** Estado expand/collapse de grupos en localStorage por vista
+- [ ] **21.12** Agregados footer por grupo (reusa colAggregates config ya existente en sub-items)
+
+#### 21.E — UX niceties
+- [ ] **21.13** Chip compacto en toolbar "3 filtros activos · Stage, Owner · Agrupado por Etapa" → click abre el panel correspondiente
+- [ ] **21.14** Botón "Limpiar" en cada panel para resetear ese eje
+- [ ] **21.15** Filter/Sort/Group en sub-items también (reusa engine, UI compacta)
+
+---
+

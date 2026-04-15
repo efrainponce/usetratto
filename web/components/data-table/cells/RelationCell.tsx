@@ -5,6 +5,8 @@ import type { CellProps } from '../types'
 // Relation cells display a linked item name.
 // Editing opens a picker modal — BoardView provides onPickRelation via column.settings.
 // For Phase 3 we render display-only; full picker in Phase 4.
+// TODO Fase 16.6: when showing related-item field preview, filter columns
+// the user cannot view in the target board via userCanViewColumn()
 export function RelationCell({ value, onStartEdit }: CellProps) {
   const label = typeof value === 'string' ? value : (Array.isArray(value) ? value[0] : null)
 

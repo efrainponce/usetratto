@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getColumnUserAccess } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -31,99 +32,24 @@ export async function GET(req: Request, { params }: Context) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Skip permission filtering for admins
-  if (auth.role === 'admin' || auth.role === 'superadmin') {
-    const columnsWithAccess = (columns ?? []).map(col => ({
-      ...col,
-      user_access: 'edit',
-    }))
-    return NextResponse.json(columnsWithAccess)
-  }
-
-  // Fetch column permissions for all columns
-  const columnIds = (columns ?? []).map(c => c.id)
-  if (columnIds.length === 0) {
-    return NextResponse.json([])
-  }
-
-  const { data: columnPerms, error: permsError } = await supabase
-    .from('column_permissions')
-    .select('column_id, user_id, team_id, access')
-    .in('column_id', columnIds)
-
-  if (permsError) {
-    return NextResponse.json({ error: permsError.message }, { status: 500 })
-  }
-
-  // Fetch user's team memberships
-  const { data: userTeams, error: teamsError } = await supabase
-    .from('user_teams')
-    .select('team_id')
-    .eq('user_id', auth.userId)
-
-  if (teamsError) {
-    return NextResponse.json({ error: teamsError.message }, { status: 500 })
-  }
-
-  // Build set of team IDs the user belongs to
-  const userTeamSet = new Set((userTeams ?? []).map(t => t.team_id))
-
-  // Group permissions by column_id
-  const permsMap = new Map<string, typeof columnPerms>()
-  ;(columnPerms ?? []).forEach(perm => {
-    if (!permsMap.has(perm.column_id)) {
-      permsMap.set(perm.column_id, [])
-    }
-    permsMap.get(perm.column_id)!.push(perm)
-  })
-
-  // Filter columns and add user_access
-  const filteredColumns = (columns ?? [])
-    .filter(col => {
-      const perms = permsMap.get(col.id)
-
-      // No restrictions if no perms for this column
-      if (!perms || perms.length === 0) {
-        return true
-      }
-
-      // Check if user has direct access (user_id match)
-      if (perms.some(p => p.user_id === auth.userId)) {
-        return true
-      }
-
-      // Check if user's team has access
-      if (perms.some(p => p.team_id && userTeamSet.has(p.team_id))) {
-        return true
-      }
-
-      // User doesn't have access to this column
-      return false
-    })
-    .map(col => {
-      const perms = permsMap.get(col.id)
-
-      // Determine user_access level
-      let userAccess = 'edit'
-      if (perms && perms.length > 0) {
-        // Check direct user permission
-        const userPerm = perms.find(p => p.user_id === auth.userId)
-        if (userPerm) {
-          userAccess = userPerm.access
-        } else {
-          // Check team permission
-          const teamPerm = perms.find(p => p.team_id && userTeamSet.has(p.team_id))
-          if (teamPerm) {
-            userAccess = teamPerm.access
-          }
-        }
-      }
-
+  // Annotate user_access for each column using getColumnUserAccess
+  const columnsWithAccess = await Promise.all(
+    (columns ?? []).map(async (col) => {
+      const userAccess = await getColumnUserAccess(
+        { type: 'board', id: col.id },
+        auth.userId,
+        auth.workspaceId,
+        auth.role
+      )
       return {
         ...col,
         user_access: userAccess,
       }
     })
+  )
+
+  // Filter out columns with no access (restricted without override)
+  const filteredColumns = columnsWithAccess.filter(col => col.user_access !== null)
 
   return NextResponse.json(filteredColumns)
 }

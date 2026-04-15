@@ -1,5 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
+import { userCanAccessItem, userCanViewColumn } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -20,6 +21,17 @@ export async function POST(_req: Request, { params }: Context) {
 
   if (!subItem) {
     return NextResponse.json({ error: 'Sub-item not found' }, { status: 404 })
+  }
+
+  // 16.13: Verify workspace_id matches
+  if (subItem.workspace_id !== auth.workspaceId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // 16.10: Verify item access
+  const canAccess = await userCanAccessItem(subItem.item_id, auth.userId, auth.workspaceId, auth.role)
+  if (!canAccess) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Check depth is 0
@@ -122,6 +134,9 @@ export async function POST(_req: Request, { params }: Context) {
   // For each sub_item_column with source_col_key, copy values
   let updated = 0
 
+  // 16.4: Cache permission checks per source board column
+  const permissionCache: Record<string, boolean> = {}
+
   for (const subItemCol of subItemCols) {
     const sourceColKey = subItemCol.source_col_key as string
 
@@ -135,6 +150,18 @@ export async function POST(_req: Request, { params }: Context) {
 
     if (!sourceBoardCol) {
       // Source column doesn't exist, skip
+      continue
+    }
+
+    // 16.4: Check if user can view this source board column
+    if (!(sourceBoardCol.id in permissionCache)) {
+      permissionCache[sourceBoardCol.id] = await userCanViewColumn(
+        { type: 'board', id: sourceBoardCol.id },
+        auth.userId,
+        auth.workspaceId
+      )
+    }
+    if (!permissionCache[sourceBoardCol.id]) {
       continue
     }
 

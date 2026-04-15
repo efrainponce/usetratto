@@ -1,5 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
+import { userCanAccessItem } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
 type SubItemData = {
@@ -31,6 +32,17 @@ export async function POST(_req: Request, { params }: Ctx) {
 
   if (loadError || !subItem) {
     return NextResponse.json({ error: 'Sub-item not found' }, { status: 400 })
+  }
+
+  // 16.13: Verify workspace_id matches
+  if (subItem.workspace_id !== auth.workspaceId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // 16.10: Verify item access
+  const canAccess = await userCanAccessItem(subItem.item_id, auth.userId, auth.workspaceId, auth.role)
+  if (!canAccess) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Check if depth is 0 (L1)

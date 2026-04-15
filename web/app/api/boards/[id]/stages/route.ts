@@ -1,4 +1,5 @@
-import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
+import { requireAuthApi, isAuthError } from '@/lib/auth/api'
+import { requireBoardAdmin } from '@/lib/permissions'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
@@ -32,10 +33,15 @@ export async function GET(req: Request, { params }: Context) {
 }
 
 export async function POST(req: Request, { params }: Context) {
-  const auth = await requireAdminApi()
+  const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const { id } = await params
+  const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+  }
+
   const body = await req.json() as { name?: string; color?: string }
 
   if (!body.name?.trim()) {

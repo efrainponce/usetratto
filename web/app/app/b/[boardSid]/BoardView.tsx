@@ -33,8 +33,6 @@ type ViewMember = {
 }
 
 
-// ─── Territory type ───────────────────────────────────────────────────────────
-type Territory = { id: string; sid: number; name: string; parent_id: string | null }
 
 // System col_keys that map directly to items table fields
 const ITEMS_FIELD: Record<string, keyof BoardItem> = {
@@ -71,6 +69,7 @@ type Props = {
   boardSettings:         Record<string, unknown>
   subitemView:           'L1_only' | 'L1_L2' | 'L2_only'
   userRole:              string
+  isBoardAdmin:          boolean
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -79,7 +78,7 @@ export function BoardView({
   boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
   initialSubItemColumns, initialSourceBoardId, initialViews, initialSubItemViews,
-  boardSettings, subitemView, userRole,
+  boardSettings, subitemView, userRole, isBoardAdmin,
 }: Props) {
   const router = useRouter()
   const isAdmin = userRole === 'admin' || userRole === 'superadmin'
@@ -112,17 +111,12 @@ export function BoardView({
   const [newViewMemberId, setNewViewMemberId] = useState('')
   const [viewMemberTeams, setViewMemberTeams] = useState<{ id: string; name: string }[]>([])
   const [viewMemberTeamsLoaded, setViewMemberTeamsLoaded] = useState(false)
-  const [territories, setTerritories]           = useState<Territory[]>([])
-  const [territoriesLoaded, setTerritoriesLoaded] = useState(false)
-  const [territoryFilter, setTerritoryFilter]   = useState<string | null>(null)
-  const [showTerritoryPicker, setShowTerritoryPicker] = useState(false)
   // Column settings panel
   const [colSettingsCol, setColSettingsCol] = useState<BoardColumn | null>(null)
 
   const newViewInputRef    = useRef<HTMLInputElement>(null)
   const colPickerRef       = useRef<HTMLDivElement>(null)
   const viewMembersPanelRef = useRef<HTMLDivElement>(null)
-  const territoryPickerRef = useRef<HTMLDivElement>(null)
   const viewSubmittingRef  = useRef(false)
 
   // col_key → column UUID  (for item_values lookups)
@@ -159,11 +153,8 @@ export function BoardView({
 
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
-    const items = territoryFilter
-      ? rawItems.filter(i => i.territory_id === territoryFilter)
-      : rawItems
-    return items.map(item => toRow(item, colIdMap, columns))
-  }, [rawItems, colIdMap, columns, territoryFilter])
+    return rawItems.map(item => toRow(item, colIdMap, columns))
+  }, [rawItems, colIdMap, columns])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -383,16 +374,6 @@ export function BoardView({
     }
   }
 
-  // Load territories handler
-  const loadTerritories = useCallback(async () => {
-    if (territoriesLoaded) return
-    const res = await fetch('/api/territories')
-    if (res.ok) {
-      setTerritories(await res.json())
-      setTerritoriesLoaded(true)
-    }
-  }, [territoriesLoaded])
-
   // ── Supabase Realtime — live item updates for all users on this board ────────
   useEffect(() => {
     const supabase = createClient()
@@ -475,18 +456,6 @@ export function BoardView({
     return () => document.removeEventListener('mousedown', handler)
   }, [viewMembersOpen])
 
-  // Close territory picker on click outside
-  useEffect(() => {
-    if (!showTerritoryPicker) return
-    const handler = (e: MouseEvent) => {
-      if (territoryPickerRef.current && !territoryPickerRef.current.contains(e.target as Node)) {
-        setShowTerritoryPicker(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showTerritoryPicker])
-
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -528,70 +497,33 @@ export function BoardView({
           </svg>
           Importar
         </button>
-        <a
-          href={`/app/settings/boards/${boardId}`}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-          title="Configuración del board"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
-            <circle cx="6" cy="6" r="2" strokeWidth="1.3"/>
-            <path d="M6 1v1.5M6 9.5V11M1 6h1.5M9.5 6H11M2.4 2.4l1.1 1.1M8.5 8.5l1.1 1.1M2.4 9.6l1.1-1.1M8.5 3.5l1.1-1.1" strokeWidth="1.3" strokeLinecap="round"/>
-          </svg>
-          Configurar
-        </a>
+        {isBoardAdmin && (
+          <a
+            href={`/app/settings/boards/${boardId}`}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+            title="Configuración del board"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <circle cx="6" cy="6" r="2" strokeWidth="1.3"/>
+              <path d="M6 1v1.5M6 9.5V11M1 6h1.5M9.5 6H11M2.4 2.4l1.1 1.1M8.5 8.5l1.1 1.1M2.4 9.6l1.1-1.1M8.5 3.5l1.1-1.1" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            Configurar
+          </a>
+        )}
 
-        {/* Territory filter */}
-        <div className="relative" ref={territoryPickerRef}>
-          <button
-            onClick={() => {
-              setShowTerritoryPicker(p => !p)
-              loadTerritories()
-            }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] border rounded-md transition-colors ${
-              territoryFilter
-                ? 'text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100'
-                : 'text-gray-600 border-gray-200 hover:bg-gray-50'
-            }`}
+        {/* Permissions — link to board access settings */}
+        {isBoardAdmin && (
+          <a
+            href={`/app/settings/boards/${boardId}?tab=acceso`}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
-              <circle cx="6" cy="5" r="3" strokeWidth="1.3"/>
-              <path d="M6 1v1M6 9v1M1 5h1M10 5h1" strokeWidth="1.3" strokeLinecap="round"/>
-              <path d="M3 8.5c0 1.5 1.34 2 3 2s3-.5 3-2" strokeWidth="1.3"/>
+              <rect x="2.5" y="5.5" width="7" height="5" rx="1" strokeWidth="1.3"/>
+              <path d="M4 5.5V3.5a2 2 0 0 1 4 0v2" strokeWidth="1.3" strokeLinecap="round"/>
             </svg>
-            {territoryFilter
-              ? territories.find(t => t.id === territoryFilter)?.name ?? 'Territorio'
-              : 'Territorio'}
-          </button>
-
-          {showTerritoryPicker && (
-            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
-              <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 mb-1">
-                Filtrar por territorio
-              </div>
-              <button
-                onClick={() => { setTerritoryFilter(null); setShowTerritoryPicker(false) }}
-                className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 ${!territoryFilter ? 'text-indigo-600 font-medium' : 'text-gray-700'}`}
-              >
-                Todos
-              </button>
-              {!territoriesLoaded && (
-                <p className="px-3 py-2 text-[12px] text-gray-400">Cargando...</p>
-              )}
-              {territories.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => { setTerritoryFilter(t.id); setShowTerritoryPicker(false) }}
-                  className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 flex items-center gap-1.5 ${
-                    territoryFilter === t.id ? 'text-teal-700 font-medium' : 'text-gray-700'
-                  }`}
-                >
-                  {t.parent_id && <span className="text-gray-300 text-[10px]">└</span>}
-                  {t.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+            Permisos
+          </a>
+        )}
 
         <span className="text-[12px] text-gray-400">
           {rows.length} registro{rows.length !== 1 ? 's' : ''}
@@ -655,8 +587,8 @@ export function BoardView({
               title="Quién puede ver esta vista"
             >⋯</span>
 
-            {/* Delete button — not on default, admin only */}
-            {!view.is_default && isAdmin && (
+            {/* Delete button — not on default, board admin only */}
+            {!view.is_default && isBoardAdmin && (
               <span
                 role="button"
                 onClick={e => { e.stopPropagation(); handleDeleteView(view.id) }}
@@ -751,7 +683,7 @@ export function BoardView({
               className="text-[12px] border border-indigo-300 rounded px-2 py-0.5 w-32 outline-none focus:ring-1 focus:ring-indigo-300"
             />
           </div>
-        ) : (
+        ) : isBoardAdmin ? (
           <button
             onClick={() => setAddingView(true)}
             className="flex items-center gap-1 px-2.5 py-2 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
@@ -761,7 +693,7 @@ export function BoardView({
             </svg>
             <span>Nueva vista</span>
           </button>
-        )}
+        ) : null}
 
         <div className="flex-1" />
 
@@ -835,11 +767,12 @@ export function BoardView({
                 itemId={rowId}
                 boardId={boardId}
                 views={subItemViews}
+                users={users}
                 compact
                 columnsVersion={columnsVersion}
                 onCountChange={(count) => handleSubItemCountChange(rowId, count)}
                 onAddView={() => setShowViewWizard(true)}
-                onDeleteView={isAdmin ? async (viewId) => {
+                onDeleteView={isBoardAdmin ? async (viewId) => {
                   if (!confirm('¿Eliminar esta vista?')) return
                   const res = await fetch(`/api/boards/${boardId}/sub-item-views/${viewId}`, { method: 'DELETE' })
                   if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
@@ -848,6 +781,7 @@ export function BoardView({
                 onBoardColumnCreated={() => refreshAll()}
                 boardSettings={boardSettings}
                 subitemView={subitemView}
+                isBoardAdmin={isBoardAdmin}
               />
             </div>
           )}
@@ -857,7 +791,7 @@ export function BoardView({
             const col = rawCols.find(c => c.col_key === colKey)
             if (col) setColSettingsCol(col)
           }}
-          onAddColumn={handleAddColumn}
+          onAddColumn={isBoardAdmin ? handleAddColumn : undefined}
           loading={false}
         />
       </div>
@@ -917,6 +851,7 @@ export function BoardView({
           boardId={boardId}
           allColumns={rawCols.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind, settings: c.settings ?? {} }))}
           users={users}
+          permissionsEndpoint={`/api/boards/${boardId}/columns/${colSettingsCol.id}/permissions`}
           onClose={() => setColSettingsCol(null)}
           onPatched={updated => { setRawCols(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c)) }}
           onUpdated={updated => {

@@ -1,4 +1,5 @@
-import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
+import { requireAuthApi, isAuthError } from '@/lib/auth/api'
+import { requireBoardAdmin, getBoardIdForSubItemColumn } from '@/lib/permissions'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
@@ -48,10 +49,19 @@ export async function GET(req: Request, { params }: Context) {
 }
 
 export async function POST(req: Request, { params }: Context) {
-  const auth = await requireAdminApi()
+  const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const { colId } = await params
+  const boardId = await getBoardIdForSubItemColumn(colId)
+  if (!boardId) {
+    return NextResponse.json({ error: 'Column not found' }, { status: 404 })
+  }
+  const isAdmin = await requireBoardAdmin(boardId, auth.userId, auth.workspaceId, auth.role)
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+  }
+
   const body = await req.json() as {
     user_id?: string
     team_id?: string

@@ -1,5 +1,14 @@
 # log
 
+## 2026-04-15
+
+**~sesión 1**
+- Fase 16 completa (13 tareas): herencia permisos columna, `lib/permissions.ts` con userCanViewColumn/userCanEditColumn/userCanAccessItem/requireBoardAdmin, 5 rutas sub-items hardened con workspace_id + access checks
+- Nuevo modelo `default_access` (edit/view/restricted) + admin bypass + ColumnSettingsPanel dropdown + backend anota user_access por columna + cells renderizan empty/readonly/edit
+- Per-board admin: migration `board_members.access` con nivel 'admin', 12 rutas migradas de requireAdminApi→requireBoardAdmin, frontend gating (BoardView/SubItemsView/ItemDetailView reciben isBoardAdmin server-side), Settings Members dropdown 3 niveles
+- Fix: botón Territorio → Permisos con link a `?tab=acceso`, users prop propagada a sub-item panels, eliminar última vista permitido, default_access solo oculta lista en sub-item cols
+- Plan: Fase 17/18 rotadas (Invites ↔ Quote), Fase 16.5 nueva (system cols + meta-tags + activity audit), Fase 21 Filter/Sort/Group, backup `plan_20260415.md`, plan.md compactado Fases 0–16 (2189→1380 líneas)
+
 ## 2026-04-14
 
 **~sesión 29**

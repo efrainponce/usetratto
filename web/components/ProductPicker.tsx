@@ -30,6 +30,7 @@ export function ProductPicker({ sourceBoardId, onSelect, onClose }: Props) {
     let cancelled = false
     setLoading(true)
 
+    // 16.12: picker uses GET /api/items which already enforces restrict_to_own (Fase 9)
     fetch(`/api/items?boardId=${sourceBoardId}`)
       .then(r => r.json())
       .then((data: Array<{

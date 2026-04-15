@@ -1,5 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
+import { userCanEditColumn } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -51,6 +52,17 @@ export async function PUT(req: Request, { params }: Context) {
     .single()
 
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Check edit permission for this column
+  const canEdit = await userCanEditColumn(
+    { type: 'board', id: column_id },
+    auth.userId,
+    auth.workspaceId,
+    auth.role
+  )
+  if (!canEdit) {
+    return NextResponse.json({ error: 'No tienes permiso para editar esta columna' }, { status: 403 })
+  }
 
   // Determine column kind for correct typed field
   const { data: col } = await supabase

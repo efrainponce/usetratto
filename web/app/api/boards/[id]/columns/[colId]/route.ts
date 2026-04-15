@@ -1,4 +1,5 @@
-import { requireAdminApi, isAuthError } from '@/lib/auth/api'
+import { requireAuthApi, isAuthError } from '@/lib/auth/api'
+import { requireBoardAdmin } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
@@ -11,10 +12,15 @@ const VALID_KINDS = [
 ]
 
 export async function PATCH(req: Request, { params }: Context) {
-  const auth = await requireAdminApi()
+  const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const { id, colId } = await params
+  const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+  }
+
   const body = await req.json() as {
     name?: string
     kind?: string
@@ -78,10 +84,15 @@ export async function PATCH(req: Request, { params }: Context) {
 }
 
 export async function DELETE(req: Request, { params }: Context) {
-  const auth = await requireAdminApi()
+  const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const { id, colId } = await params
+  const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+  }
+
   const svc = createServiceClient()
 
   const { data: board } = await svc

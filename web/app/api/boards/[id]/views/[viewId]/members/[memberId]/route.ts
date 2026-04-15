@@ -1,14 +1,20 @@
-import { requireAdminApi, isAuthError } from '@/lib/auth/api'
+import { requireAuthApi, isAuthError } from '@/lib/auth/api'
+import { requireBoardAdmin } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string; viewId: string; memberId: string }> }
 
 export async function DELETE(req: Request, { params }: Context) {
-  const auth = await requireAdminApi()
+  const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const { id, viewId, memberId } = await params
+  const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+  }
+
   const supabase = await createClient()
 
   // Verify board belongs to workspace

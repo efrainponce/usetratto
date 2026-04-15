@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
+import { requireBoardAdmin } from '@/lib/permissions'
 import { resolveBoardBySid, resolveItemBySid, getBoardContext, getWorkspaceUsers, getItemData, getSubItemViews } from '@/lib/boards'
 import { ItemDetailView } from './ItemDetailView'
 
@@ -21,11 +22,12 @@ export default async function ItemPage({ params }: Props) {
   const item = await resolveItemBySid(itemSidNum, board.id, user.workspaceId)
   if (!item) notFound()
 
-  const [{ stages, columns }, users, itemData, subItemViews] = await Promise.all([
+  const [{ stages, columns }, users, itemData, subItemViews, isBoardAdmin] = await Promise.all([
     getBoardContext(board.id),
     getWorkspaceUsers(user.workspaceId),
     getItemData(item.id, user.workspaceId),
     getSubItemViews(board.id, user.workspaceId),
+    requireBoardAdmin(board.id, user.userId, user.workspaceId, user.role),
   ])
 
   if (!itemData) notFound()
@@ -45,6 +47,7 @@ export default async function ItemPage({ params }: Props) {
       initialSubItemViews={subItemViews}
       boardSettings={boardSettings}
       subitemView={subitemView}
+      isBoardAdmin={isBoardAdmin}
     />
   )
 }

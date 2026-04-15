@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { ProductPicker } from './ProductPicker'
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 import { evaluateCondition, type FormulaCondition } from '../lib/formula-engine'
-import { ColumnSettingsPanel } from './ColumnSettingsPanel'
+import { ColumnSettingsPanel, type PanelUser } from './ColumnSettingsPanel'
 import { SelectCell } from './data-table/cells/SelectCell'
 
 // ─── Sub-item view types ──────────────────────────────────────────────────────
@@ -23,6 +23,8 @@ type SubItemColumn = {
   id: string; col_key: string; name: string; kind: string
   position: number; is_hidden: boolean; required: boolean
   settings: Record<string, unknown>; source_col_key: string | null
+  permission_mode?: 'public' | 'inherit' | 'custom'
+  user_access?: 'edit' | 'view' | null
 }
 
 type BoardColumn = {
@@ -63,6 +65,7 @@ type Props = {
   itemId:                  string
   boardId:                 string
   views:                   SubItemView[]
+  users?:                  PanelUser[]
   onCountChange?:          (count: number) => void
   onAddView?:              () => void
   onDeleteView?:           (viewId: string) => void
@@ -72,16 +75,28 @@ type Props = {
   columnsVersion?:         number
   boardSettings?:          Record<string, unknown>
   subitemView?:            'L1_only' | 'L1_L2' | 'L2_only'
+  isBoardAdmin?:           boolean
 }
 
-export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onDeleteView, onConfigureColumns, onBoardColumnCreated, compact, columnsVersion, boardSettings, subitemView }: Props) {
+export function SubItemsView({ itemId, boardId, views, users, onCountChange, onAddView, onDeleteView, onConfigureColumns, onBoardColumnCreated, compact, columnsVersion, boardSettings, subitemView, isBoardAdmin }: Props) {
   const [activeViewId, setActiveViewId] = useState<string>(views[0]?.id ?? '')
   const activeView = views.find(v => v.id === activeViewId) ?? views[0]
 
   if (!activeView) {
     return (
-      <div className="flex items-center justify-center h-full text-[13px] text-gray-400 italic">
-        Sin vistas configuradas
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-[13px] text-gray-400">
+        <span className="italic">Sin vistas configuradas</span>
+        {onAddView && isBoardAdmin && (
+          <button
+            onClick={onAddView}
+            className="px-3 py-1.5 text-[12px] font-medium text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors flex items-center gap-1.5"
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            Agregar vista
+          </button>
+        )}
       </div>
     )
   }
@@ -107,8 +122,8 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
                   <span className="ml-1.5 text-[10px] text-blue-400 font-normal">ref</span>
                 )}
               </button>
-              {/* ⚙ config button — only on active native tab */}
-              {isActive && v.type === 'native' && onConfigureColumns && (
+              {/* ⚙ config button — only on active native tab, board admin only */}
+              {isActive && v.type === 'native' && onConfigureColumns && isBoardAdmin && (
                 <button
                   onClick={() => onConfigureColumns(v.id)}
                   title="Configurar columnas"
@@ -121,8 +136,8 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
                   </svg>
                 </button>
               )}
-              {/* × delete — visible on hover, only if not the default (first) view */}
-              {onDeleteView && views.length > 1 && views.indexOf(v) > 0 && (
+              {/* × delete — any view can be removed, including the last one, board admin only */}
+              {onDeleteView && isBoardAdmin && (
                 <button
                   onClick={e => { e.stopPropagation(); onDeleteView(v.id) }}
                   title="Eliminar vista"
@@ -157,18 +172,20 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
           boardId={boardId}
           viewId={activeView.id}
           config={activeView.config}
+          users={users}
           onCountChange={onCountChange}
           onBoardColumnCreated={onBoardColumnCreated}
           compact={compact}
           boardSettings={boardSettings}
           subitemView={subitemView}
+          isBoardAdmin={isBoardAdmin}
         />
       )}
       {activeView.type === 'board_items' && (
         <BoardItemsRenderer key={activeView.id} itemId={itemId} viewId={activeView.id} viewName={activeView.name} compact={compact} />
       )}
       {activeView.type === 'board_sub_items' && (
-        <BoardSubItemsRenderer key={activeView.id} itemId={itemId} viewId={activeView.id} viewName={activeView.name} compact={compact} />
+        <BoardSubItemsRenderer key={activeView.id} itemId={itemId} viewId={activeView.id} viewName={activeView.name} compact={compact} isBoardAdmin={isBoardAdmin} />
       )}
     </div>
   )
@@ -180,17 +197,19 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
 // Without source_board_id → manual add form.
 
 function NativeRenderer({
-  itemId, boardId, viewId, config, onCountChange, onBoardColumnCreated, compact, boardSettings, subitemView,
+  itemId, boardId, viewId, config, users, onCountChange, onBoardColumnCreated, compact, boardSettings, subitemView, isBoardAdmin,
 }: {
   itemId:                  string
   boardId:                 string
   viewId:                  string
   config:                  Record<string, unknown>
+  users?:                  PanelUser[]
   onCountChange?:          (count: number) => void
   onBoardColumnCreated?:   () => void
   compact?:                boolean
   boardSettings?:          Record<string, unknown>
   subitemView?:            'L1_only' | 'L1_L2' | 'L2_only'
+  isBoardAdmin?:           boolean
 }) {
   const sourceBoardId = (config.source_board_id as string) ?? null
 
@@ -673,11 +692,13 @@ function NativeRenderer({
                     className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-teal-500' : 'opacity-0 group-hover/col:opacity-100 text-gray-400 hover:text-teal-500'}`}
                   >↑</button>
                 )}
-                <button
-                  onClick={e => { e.stopPropagation(); setColSettings(c) }}
-                  title="Configurar columna"
-                  className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
-                >⋯</button>
+                {isBoardAdmin && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setColSettings(c) }}
+                    title="Configurar columna"
+                    className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                  >⋯</button>
+                )}
               </div>
               <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
                 <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
@@ -700,11 +721,13 @@ function NativeRenderer({
                   title={hasRollup ? 'Resumen activo — click para editar' : 'Agregar resumen al item'}
                   className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-teal-500' : 'opacity-0 group-hover/col:opacity-100 text-gray-400 hover:text-teal-500'}`}
                 >↑</button>
-                <button
-                  onClick={e => { e.stopPropagation(); setColSettings(c) }}
-                  title="Configurar columna"
-                  className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
-                >⋯</button>
+                {isBoardAdmin && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setColSettings(c) }}
+                    title="Configurar columna"
+                    className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                  >⋯</button>
+                )}
               </div>
               <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
                 <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
@@ -907,11 +930,13 @@ function NativeRenderer({
             row={detailRow}
             columns={columns}
             boardId={boardId}
+            users={users}
             computeFormula={computeFormula}
             onCommit={(f, v) => editField(detailRow.id, f, v)}
             onColUpdated={updated => setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))}
             onColDeleted={colId => setColumns(prev => prev.filter(c => c.id !== colId))}
             onClose={() => setOpenDetailId(null)}
+            isBoardAdmin={isBoardAdmin}
           />
         )
       })()}
@@ -921,7 +946,7 @@ function NativeRenderer({
           column={{ ...colSettings, is_system: false }}
           boardId={boardId}
           allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind, settings: (c.settings as Record<string, unknown>) ?? {} }))}
-          users={[]}
+          users={users ?? []}
           patchEndpoint={`/api/sub-item-columns/${colSettings.id}`}
           permissionsEndpoint={colSettings ? `/api/sub-item-columns/${colSettings.id}/permissions` : undefined}
           onClose={() => setColSettings(null)}
@@ -1014,7 +1039,7 @@ function BoardItemsRenderer({ itemId, viewId, viewName, compact }: { itemId: str
 // Reference mode: shows sub_items of items from another board related to current item.
 // Read-only. config: { source_board_id, relation_col_id }
 
-function BoardSubItemsRenderer({ itemId, viewId, viewName, compact }: { itemId: string; viewId: string; viewName: string; compact?: boolean }) {
+function BoardSubItemsRenderer({ itemId, viewId, viewName, compact, isBoardAdmin }: { itemId: string; viewId: string; viewName: string; compact?: boolean; isBoardAdmin?: boolean }) {
   const [data,    setData]    = useState<BoardSubData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -1132,6 +1157,16 @@ function NativeRow({
 
       {/* Value columns */}
       {displayCols.map(col => {
+        // Check user access level: 'edit' | 'view' | null
+        const access = col.user_access
+
+        if (access === null || access === undefined) {
+          // No permission: render empty gray cell
+          return (
+            <div key={col.id} className="flex-none bg-gray-50 h-full w-full" style={{ width: w(col.id, 96) }} title="Sin permiso" />
+          )
+        }
+
         const val = row.values.find(v => v.column_id === col.id)
         const cellValue = col.kind === 'number' ? (val?.value_number ?? null) : (val?.value_text ?? null)
 
@@ -1150,6 +1185,9 @@ function NativeRow({
           } catch { return false }
         })()
 
+        // Determine if user can edit this column
+        const canEdit = access === 'edit'
+
         if (col.kind === 'select') {
           const opts = (col.settings.options as { value: string; label: string; color?: string }[] | undefined) ?? []
           return (
@@ -1159,7 +1197,7 @@ function NativeRow({
                 isEditing={isEditing(col.id)}
                 column={{ key: col.col_key, label: col.name, kind: 'select', settings: { options: opts } }}
                 rowId={row.id}
-                onStartEdit={() => onStartEdit(col.id)}
+                onStartEdit={canEdit ? () => onStartEdit(col.id) : () => {}}
                 onCommit={v => onCommit(col.id, v as string)}
                 onCancel={onCancel}
                 onNavigate={() => {}}
@@ -1177,7 +1215,7 @@ function NativeRow({
             <EditableCell
               value={col.kind === 'number' ? (val?.value_number ?? '') : (val?.value_text ?? '')}
               isEditing={isEditing(col.id)} kind={col.kind === 'number' ? 'number' : 'text'}
-              onStartEdit={() => onStartEdit(col.id)}
+              onStartEdit={canEdit ? () => onStartEdit(col.id) : () => {}}
               onCommit={v => onCommit(col.id, v)} onCancel={onCancel} align="right"
             />
             {isInvalid && (
@@ -1426,16 +1464,18 @@ function RollupUpPopup({
 // ─── SubItemDetailDrawer ──────────────────────────────────────────────────────
 
 function SubItemDetailDrawer({
-  row, columns, boardId, computeFormula, onCommit, onColUpdated, onColDeleted, onClose,
+  row, columns, boardId, users, computeFormula, onCommit, onColUpdated, onColDeleted, onClose, isBoardAdmin,
 }: {
   row:            SubItemData
   columns:        SubItemColumn[]
   boardId:        string
+  users?:         PanelUser[]
   computeFormula: (col: SubItemColumn, row: SubItemData) => number | null
   onCommit:       (field: string, value: unknown) => void
   onColUpdated:   (updated: SubItemColumn) => void
   onColDeleted:   (colId: string) => void
   onClose:        () => void
+  isBoardAdmin?:  boolean
 }) {
   const [localName,    setLocalName]    = useState(row.name)
   const [editingName,  setEditingName]  = useState(false)
@@ -1524,10 +1564,12 @@ function SubItemDetailDrawer({
                 <div key={col.id} className="group/dfield flex items-start gap-2 py-0.5">
                   <div className="w-20 flex-none flex items-center gap-0.5 pt-1.5">
                     <span className="flex-1 text-[12px] text-gray-500 truncate select-none">{col.name}</span>
-                    <button
-                      onClick={e => { e.stopPropagation(); setColSettings(col) }}
-                      className="opacity-0 group-hover/dfield:opacity-100 shrink-0 text-[13px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
-                    >⋯</button>
+                    {isBoardAdmin && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setColSettings(col) }}
+                        className="opacity-0 group-hover/dfield:opacity-100 shrink-0 text-[13px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                      >⋯</button>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 rounded hover:bg-gray-50 transition-colors">
                     <DrawerEditField
@@ -1567,7 +1609,7 @@ function SubItemDetailDrawer({
           column={{ ...colSettings, is_system: false }}
           boardId={boardId}
           allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind, settings: (c.settings as Record<string, unknown>) ?? {} }))}
-          users={[]}
+          users={users ?? []}
           patchEndpoint={`/api/sub-item-columns/${colSettings.id}`}
           permissionsEndpoint={colSettings ? `/api/sub-item-columns/${colSettings.id}/permissions` : undefined}
           onClose={() => setColSettings(null)}
