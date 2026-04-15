@@ -1,5 +1,5 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -9,10 +9,10 @@ export async function GET(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id } = await params
-  const supabase = await createClient()
+  const svc = createServiceClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
+  const { data: board } = await svc
     .from('boards')
     .select('id')
     .eq('id', id)
@@ -21,7 +21,7 @@ export async function GET(req: Request, { params }: Context) {
 
   if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { data: stages, error } = await supabase
+  const { data: stages, error } = await svc
     .from('board_stages')
     .select('id, sid, name, color, position, is_closed')
     .eq('board_id', id)
@@ -52,7 +52,7 @@ export async function POST(req: Request, { params }: Context) {
     )
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   // Verify board belongs to workspace
   const { data: board } = await supabase
