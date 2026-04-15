@@ -1,6 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string; colId: string }> }
@@ -10,7 +10,7 @@ export async function GET(req: Request, { params }: Context) {
   if (isAuthError(auth)) return auth
 
   const { id, colId } = await params
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const { data: board } = await supabase
     .from('boards')
@@ -81,7 +81,7 @@ export async function POST(req: Request, { params }: Context) {
     )
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const { data: board } = await supabase
     .from('boards')
@@ -144,7 +144,7 @@ export async function DELETE(req: Request, { params }: Context) {
     )
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const { data: board } = await supabase
     .from('boards')
