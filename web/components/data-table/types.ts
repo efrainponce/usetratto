@@ -62,6 +62,19 @@ export type ColumnSettings = {
   stage_gates?:     Record<string, string[]>
   // default value
   default_value?:   unknown
+  // fase 16.5 — required field (enforced via stage gates + ColumnCell isInvalid)
+  required?:        boolean
+  // fase 16.5 — role metatag
+  role?:            'owner' | 'primary_stage' | 'end_date'
+  // fase 16.5 — system column display mode
+  display?:         'read_only' | 'relative'
+  read_only?:       boolean
+  // fase 16.5 — auto_fill targets for relation cols
+  auto_fill_targets?: Array<{ source_col_key: string; target_col_key: string }>
+  // fase 16.6 — ref (mirror) column config
+  ref_source_col_key?: string
+  ref_field_col_key?:  string
+  ref_field_kind?:     string
 }
 
 export type ColumnDef = {

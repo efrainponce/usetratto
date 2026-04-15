@@ -24,6 +24,13 @@ export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
   const { canEdit = true, ...cellProps } = props
   const validation = cellProps.column.settings?.validation
   const isInvalid = (() => {
+    // Required field check: if settings.required is true, the value must be non-empty
+    if (cellProps.column.settings?.required === true) {
+      const v = cellProps.value
+      const isEmpty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
+      if (isEmpty) return true
+    }
+
     if (!validation?.condition) return false
     // When condition.col is empty, default to this column's own key
     const condition: FormulaCondition = {
@@ -84,8 +91,17 @@ export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
 
   if (!isInvalid) return cell
 
+  const tooltipMessage = (() => {
+    if (cellProps.column.settings?.required === true) {
+      const v = cellProps.value
+      const isEmpty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
+      if (isEmpty) return 'Campo requerido'
+    }
+    return validation?.message ?? 'Valor inválido'
+  })()
+
   return (
-    <div className="relative w-full h-full" title={validation?.message ?? 'Valor inválido'}>
+    <div className="relative w-full h-full" title={tooltipMessage}>
       {cell}
       <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" />
       <span className="pointer-events-none absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>

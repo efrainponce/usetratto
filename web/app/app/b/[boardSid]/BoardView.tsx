@@ -319,7 +319,63 @@ export function BoardView({
         body:    JSON.stringify({ column_id: colId, value }),
       })
     }
-  }, [colIdMap, refColsMeta, refTargetCols, rows])
+
+    // Auto-fill: after saving a relation col, propagate values from source item to empty target fields
+    const col = rawCols.find(c => c.col_key === colKey)
+    const autoFillTargets = (col?.settings as any)?.auto_fill_targets as Array<{source_col_key: string; target_col_key: string}> | undefined
+    const targetBoardIdForAutoFill = (col?.settings as any)?.target_board_id as string | undefined
+    if (col?.kind === 'relation' && autoFillTargets?.length && targetBoardIdForAutoFill && value && typeof value === 'string') {
+      try {
+        const res = await fetch(`/api/items?boardId=${targetBoardIdForAutoFill}&ids=${value}&format=col_keys`)
+        if (res.ok) {
+          const srcItems = await res.json()
+          const srcItem = Array.isArray(srcItems) ? srcItems[0] : null
+          const srcValues = srcItem?.col_values ?? {}
+
+          // Get current row state AFTER optimistic update
+          const currentRowItem = rawItems.find(it => it.id === rowId)
+          if (!currentRowItem) return
+
+          for (const { source_col_key, target_col_key } of autoFillTargets) {
+            // Find current value of target in this item
+            const targetColObj = rawCols.find(c => c.col_key === target_col_key)
+            if (!targetColObj) continue
+            const targetColId = targetColObj.id
+            const currentVal = currentRowItem.item_values?.find(iv => iv.column_id === targetColId)?.value_text
+            if (currentVal != null && currentVal !== '') continue  // don't overwrite
+
+            const nextVal = srcValues[source_col_key]
+            if (nextVal == null || nextVal === '') continue
+
+            // PUT the auto-filled value
+            await fetch(`/api/items/${rowId}/values`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ [targetColId]: nextVal }),
+            })
+
+            // Optimistic local update
+            setRawItems(prev => prev.map(it => {
+              if (it.id !== rowId) return it
+              const others = (it.item_values ?? []).filter(iv => iv.column_id !== targetColId)
+              return {
+                ...it,
+                item_values: [...others, {
+                  column_id: targetColId,
+                  value_text: String(nextVal),
+                  value_number: null,
+                  value_date: null,
+                  value_json: null,
+                }]
+              }
+            }))
+          }
+        }
+      } catch (err) {
+        console.error('[auto-fill]', err)
+      }
+    }
+  }, [colIdMap, refColsMeta, refTargetCols, rows, rawCols, rawItems])
 
   // ── Create ─────────────────────────────────────────────────────────────────
   const handleAddColumn = useCallback(async (name: string, kind: string) => {

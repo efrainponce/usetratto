@@ -29,6 +29,18 @@ export function ButtonCell({ column, rowId, row, allColumns }: CellProps) {
     const failed: string[] = []
     for (const col of allColumns) {
       if (!gateKeys.includes(col.key)) continue
+
+      // Required field check: if settings.required is true, the value must be non-empty
+      if (col.settings?.required === true) {
+        const v = row?.[col.key] ?? null
+        const isEmpty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
+        if (isEmpty) {
+          failed.push(`❌ ${col.label ?? col.key}: es requerido`)
+          continue
+        }
+      }
+
+      // Existing validation condition check
       const validation = col.settings?.validation
       if (!validation?.condition) continue
       try {

@@ -2,6 +2,16 @@
 
 ## 2026-04-15
 
+**~sesión 3 — Fase 16 CLOSED**
+- Fase 16 cerrada completa: 16.5 (25/25), 16.6 (ref cols), RelationPicker, auto-fill runtime, required enforcement
+- **RelationPicker modal**: nuevo `components/RelationPicker.tsx` con fetch target board items + search + clear button + Esc cierra; `RelationCell` ahora clickable (no double-click) llama `onCommit(item_id)`; `BoardView.relationLabelMap` useEffect batch-fetch items de target boards → `toRow` resuelve id → name en cells relation (fallback a id mientras carga)
+- **Fase 16.6 Ref Columns (mirror/lookup)**: nuevo concepto — col que muestra campo de item relacionado, editar escribe al source. `isRefCol()` helper, `GET /api/items?ids=a,b&format=col_keys` devuelve `col_values: {col_key: value}` mapeado server-side, `BoardView` refColsMeta + refMap + refTargetCols, `toRow` pobla ref cells, `handleCellChange` intercepta ref cols → PUT al source item con optimistic + revert. `ColumnCell` wrapper `bg-amber-50/30 ring-amber-200` cuando isRef. `GenericDataTable` header icon ↪ + tooltip. `ColumnSettingsPanel` tab "Reflejo" con dropdowns (relation col + target field) + handleSaveRef/handleClearRef
+- **16.5.16 auto-fill runtime**: `handleCellChange` detecta `col.settings.auto_fill_targets` en relation cols; al picker: fetch source item via `/api/items?format=col_keys`, itera targets, para cada empty en row actual hace PUT con optimistic update. Zero-overwrite (solo rellena empty)
+- **16.5.18 required enforcement**: `ButtonCell.runValidations` añade required-empty check antes de condition validation (mensaje "X es requerido"); `ColumnCell.isInvalid` considera `settings.required` → red overlay + tooltip "Campo requerido"
+- **ColumnSettings type** extendido con `required`, `role`, `display`, `read_only`, `auto_fill_targets`, `ref_source_col_key`, `ref_field_col_key`, `ref_field_kind` — centraliza config de Fase 16.5/16.6
+- **Fase 16.5 remates**: `16.5.4` sub-item-views POST auto-inyecta 3 system sub_item_columns (created_by/created_at/updated_at); `end_date` metatag agregado (role='end_date' para date cols, helper getEndDateColKey, dropdown ColumnSettingsPanel, PATCH unicidad, backfill en migration 13); backfill migration 12 agrega opportunities.contacto/institucion/monto + contacts.institucion a workspaces existentes
+- Fixes build: `ColumnSettings` type extendido para soportar nuevos campos sin `as any` en todos lados; `toRow` cast paren fix en ref cells
+
 **~sesión 2**
 - Fase 16.5 lanzada completa: 22/25 tareas done, 3 diferidas (16.5.4/16/18/25)
 - Migration `20260415000011` (263 líneas): `items.created_by`, `sub_items.created_by`+`updated_at`, `sub_item_columns.is_system`, triggers `set_created_by`/`set_updated_at`/`log_sub_item_activity`/`log_sub_item_value_activity`, rewrite `seed_system_boards` con metatags + opportunities contacto/institucion/monto + contacts.institucion + auto-inject 3 system cols por board, trigger `inject_system_board_columns` en boards nuevos, backfill existentes + metatag stage/owner

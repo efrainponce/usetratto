@@ -332,7 +332,7 @@ _Detalle completo en `plan_20260415.md`._
 
 ---
 
-## Fase 16.5 — System Columns + Meta-tags + Activity Audit ✅ (parcial; 16.5.16/18 diferidos)
+## Fase 16.5 — System Columns + Meta-tags + Activity Audit ✅
 
 **Goal:** Consolidar columnas universales (created_by + timestamps), meta-tags semánticos en columnas (owner, primary_stage), defaults en oportunidades (contacto → institución) y auditar que Activity captura eventos de sub-items. Pre-requisito de Fase 17 para que el onboarding invite usuarios a un sistema ya coherente.
 
@@ -351,10 +351,7 @@ _Detalle completo en `plan_20260415.md`._
 - `ActivityFeed`: 3 nuevas acciones `sub_item_created`/`deleted`/`value_changed` + realtime subscription a `item_activity`
 - Seeder incluye `auto_fill_targets` en `contacto` (inerte hasta que RelationCell tenga picker)
 
-**Deferido:**
-- **16.5.16** (RelationCell auto_fill runtime): bloqueado — RelationCell sigue display-only (TODO Fase 4 Picker). Se re-toma cuando se implemente el picker modal.
-- **16.5.18** (verificación manual required bloquea gate): también bloqueado por 16.5.16.
-- **16.5.4** (sub_item_columns sistema): diferido — schema listo (`is_system`), pero inyección automática no está cableada en la creación de vistas nativas.
+**Nota final sesión 2:** Todas las 25 tareas completadas + RelationPicker modal (que destrabó 16.5.16/18) + 16.6 Ref Columns (fase adicional).
 
 ### 16.5.A — Columnas de sistema universales
 
@@ -429,9 +426,9 @@ User reporta que Activity del item no muestra eventos de sub-items. Requiere aud
 #### 16.5.C — Opportunities + relation defaults
 - [x] **16.5.14** Seeder opportunities: `contacto` (relation→contacts, required), `institucion` (relation→accounts, required), `monto`
 - [x] **16.5.15** Seeder contacts: `institucion` (relation→accounts) opcional
-- [ ] **16.5.16** DIFERIDO: RelationCell sigue display-only (TODO Fase 4 Picker). Runtime auto-fill bloqueado hasta implementar picker modal
-- [x] **16.5.17** Seeder incluye `auto_fill_targets` en `contacto` (config inerte, activa al implementar 16.5.16)
-- [ ] **16.5.18** DIFERIDO: depende de 16.5.16 + enforcement de `settings.required` en stage gates (hoy Fase 15 solo valida vía `settings.validation`)
+- [x] **16.5.16** RelationPicker modal implementado; `handleCellChange` en BoardView detecta `auto_fill_targets` en cols relation y al picker: fetch source item (/api/items?format=col_keys), propaga valores a targets vacíos del item actual vía PUT + optimistic update
+- [x] **16.5.17** Seeder incluye `auto_fill_targets` en `contacto` — ahora activo gracias a 16.5.16
+- [x] **16.5.18** `settings.required` ahora enforza: `ButtonCell.runValidations` flag required-empty + `ColumnCell.isInvalid` rojo overlay + tooltip "Campo requerido" — bloquea stage gates junto con el sistema de Fase 15
 
 #### 16.5.D — Activity audit + fix
 - [x] **16.5.19** Audit: solo `trg_item_activity` en tabla `items` (20260412000002:269). ZERO triggers en sub_items/sub_item_values
