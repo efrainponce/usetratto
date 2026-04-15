@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
+import { createPortal } from 'react-dom'
 import { ProductPicker } from './ProductPicker'
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 import { evaluateCondition, type FormulaCondition } from '../lib/formula-engine'
@@ -1704,11 +1705,16 @@ function AddColumnInline({
   onCreated:      (col: SubItemColumn) => void
   onCancel:       () => void
 }) {
-  const [name,          setName]          = useState('')
-  const [kind,          setKind]          = useState('text')
-  const [sourceColKey,  setSourceColKey]  = useState('')
-  const [sourceCols,    setSourceCols]    = useState<SourceBoardCol[]>([])
-  const [saving,        setSaving]        = useState(false)
+  const [name,           setName]          = useState('')
+  const [kind,           setKind]          = useState('text')
+  const [sourceColKey,   setSourceColKey]  = useState('')
+  const [sourceCols,     setSourceCols]    = useState<SourceBoardCol[]>([])
+  const [saving,         setSaving]        = useState(false)
+  const [kindPanelPos,   setKindPanelPos]  = useState<{ top: number; left: number } | null>(null)
+  const kindBtnRef  = useRef<HTMLButtonElement>(null)
+  const kindPanelRef = useRef<HTMLDivElement>(null)
+
+  const currentKindLabel = COL_KIND_OPTIONS.find(o => o.value === kind)?.label ?? kind
 
   // Fetch source board columns so user can link a source_col_key
   useEffect(() => {
@@ -1718,6 +1724,27 @@ function AddColumnInline({
       .then((data: SourceBoardCol[]) => setSourceCols(Array.isArray(data) ? data : []))
       .catch(() => setSourceCols([]))
   }, [sourceBoardId])
+
+  // Close kind panel on outside click
+  useEffect(() => {
+    if (!kindPanelPos) return
+    const onDown = (e: MouseEvent) => {
+      if (
+        kindPanelRef.current && !kindPanelRef.current.contains(e.target as Node) &&
+        kindBtnRef.current   && !kindBtnRef.current.contains(e.target as Node)
+      ) setKindPanelPos(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [kindPanelPos])
+
+  const openKindPanel = () => {
+    if (!kindBtnRef.current) return
+    const r = kindBtnRef.current.getBoundingClientRect()
+    const PANEL_W = 140
+    const left = (r.left + PANEL_W > window.innerWidth - 8) ? Math.max(8, r.right - PANEL_W) : r.left
+    setKindPanelPos({ top: r.bottom + 2, left })
+  }
 
   const save = async () => {
     if (!name.trim()) { onCancel(); return }
@@ -1746,66 +1773,91 @@ function AddColumnInline({
     }
   }
 
-  // stopPropagation on the wrapper prevents resize-handle mousedown from interfering
+  // relative z-20 keeps this above the z-10 resize handles; stopPropagation prevents bubbling to row handlers
   return (
-    <div
-      className="flex items-center gap-1 flex-none normal-case font-normal tracking-normal select-auto"
-      onMouseDown={e => e.stopPropagation()}
-      onClick={e => e.stopPropagation()}
-    >
-      <input
-        autoFocus
-        value={name}
-        onChange={e => setName(e.target.value)}
-        placeholder="Nombre..."
-        disabled={saving}
-        className="w-28 text-[12px] border border-indigo-400 rounded px-1.5 py-0.5 outline-none bg-white"
-        onKeyDown={e => {
-          if (e.key === 'Enter') save()
-          if (e.key === 'Escape') onCancel()
-        }}
-      />
-      <select
-        value={kind}
-        onChange={e => setKind(e.target.value)}
-        disabled={saving}
+    <>
+      <div
+        className="relative z-20 flex items-center gap-1 flex-none normal-case font-normal tracking-normal select-auto"
         onMouseDown={e => e.stopPropagation()}
-        className="text-[11px] border border-gray-200 rounded px-1 py-0.5 outline-none bg-white text-gray-700"
+        onClick={e => e.stopPropagation()}
       >
-        {COL_KIND_OPTIONS.map(o => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-      {/* Source column picker — only for views linked to a source board */}
-      {sourceBoardId && sourceCols.length > 0 && (
-        <select
-          value={sourceColKey}
-          onChange={e => setSourceColKey(e.target.value)}
+        <input
+          autoFocus
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Nombre..."
           disabled={saving}
-          onMouseDown={e => e.stopPropagation()}
-          title="Vincular a columna del board fuente (opcional)"
-          className="text-[11px] border border-gray-200 rounded px-1 py-0.5 outline-none bg-white text-gray-500 max-w-[90px]"
+          className="w-28 text-[12px] border border-indigo-400 rounded px-1.5 py-0.5 outline-none bg-white"
+          onKeyDown={e => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') onCancel()
+          }}
+        />
+        {/* Kind picker button — opens portal list (avoids native select OS events) */}
+        <button
+          ref={kindBtnRef}
+          type="button"
+          disabled={saving}
+          onClick={openKindPanel}
+          className="text-[11px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-700 hover:border-indigo-400 whitespace-nowrap"
         >
-          <option value="">Sin vínculo</option>
-          {sourceCols.map(c => (
-            <option key={c.col_key} value={c.col_key}>{c.name}</option>
+          {currentKindLabel} ▾
+        </button>
+        {/* Source column picker — only for views linked to a source board */}
+        {sourceBoardId && sourceCols.length > 0 && (
+          <select
+            value={sourceColKey}
+            onChange={e => setSourceColKey(e.target.value)}
+            disabled={saving}
+            onMouseDown={e => e.stopPropagation()}
+            title="Vincular a columna del board fuente (opcional)"
+            className="text-[11px] border border-gray-200 rounded px-1 py-0.5 outline-none bg-white text-gray-500 max-w-[90px]"
+          >
+            <option value="">Sin vínculo</option>
+            {sourceCols.map(c => (
+              <option key={c.col_key} value={c.col_key}>{c.name}</option>
+            ))}
+          </select>
+        )}
+        <button
+          onClick={save}
+          disabled={saving}
+          className="text-indigo-600 hover:text-indigo-800 transition-colors text-[13px] leading-none px-0.5"
+        >
+          ✓
+        </button>
+        <button
+          onClick={onCancel}
+          className="text-gray-400 hover:text-gray-600 transition-colors text-[14px] leading-none px-0.5"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Kind picker portal */}
+      {kindPanelPos && createPortal(
+        <div
+          ref={kindPanelRef}
+          style={{ position: 'fixed', top: kindPanelPos.top, left: kindPanelPos.left, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-36"
+          onMouseDown={e => e.stopPropagation()}
+        >
+          {COL_KIND_OPTIONS.map(o => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => { setKind(o.value); setKindPanelPos(null) }}
+              className={`w-full text-left text-[12px] px-3 py-1 transition-colors ${
+                kind === o.value
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >{o.label}</button>
           ))}
-        </select>
+        </div>,
+        document.body
       )}
-      <button
-        onClick={save}
-        disabled={saving}
-        className="text-indigo-600 hover:text-indigo-800 transition-colors text-[13px] leading-none px-0.5"
-      >
-        ✓
-      </button>
-      <button
-        onClick={onCancel}
-        className="text-gray-400 hover:text-gray-600 transition-colors text-[14px] leading-none px-0.5"
-      >
-        ×
-      </button>
-    </div>
+    </>
   )
 }
 
