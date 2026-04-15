@@ -125,7 +125,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
 
   // ── Button config state ───────────────────────────────────────────────────
   const isButton    = kind === 'button'
-  const isStageCol  = column.col_key === 'stage_id'
+  const isStageCol  = kind === 'stage' || column.col_key === 'stage_id'
   const [stages,          setStages]          = useState<RemoteStage[]>([])
   const [btnLabel,        setBtnLabel]        = useState<string>(
     (column.settings?.label as string) ?? ''
@@ -146,8 +146,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   const [stageGates,      setStageGates]      = useState<Record<string, string[]>>(
     (column.settings?.stage_gates as Record<string, string[]> | undefined) ?? {}
   )
-  const [gatePickerStageId, setGatePickerStageId] = useState<string>('')
-  const [savingButton,    setSavingButton]    = useState(false)
+const [savingButton,    setSavingButton]    = useState(false)
 
   // ── Permissions state ─────────────────────────────────────────────────────
   const [permissions,   setPermissions]   = useState<ColPermission[]>([])
@@ -1153,87 +1152,79 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
                   Selecciona qué condiciones deben cumplirse antes de avanzar a cada etapa.
                 </p>
               ) : isStageCol ? (
-                /* Stage column: per-stage gate picker */
+                /* Stage column: all stages expanded with their gate checklists */
                 <>
-                  <p className="text-xs text-gray-500">
-                    Define qué validaciones de columna deben pasar antes de mover un item a cada etapa.
+                  <p className="text-xs text-gray-500 mb-3">
+                    Qué condiciones debe cumplir el item para avanzar a cada etapa.
                   </p>
 
                   {stages.length === 0 ? (
                     <p className="text-xs text-gray-400 py-2 text-center">Cargando etapas…</p>
-                  ) : (
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Etapa destino</label>
-                      <select
-                        value={gatePickerStageId}
-                        onChange={e => setGatePickerStageId(e.target.value)}
-                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
-                      >
-                        <option value="">Seleccionar etapa…</option>
-                        {stages.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {gatePickerStageId && (() => {
+                  ) : (() => {
                     const validatedCols = allColumns.filter(
-                      c => c.col_key !== 'stage_id' && c.settings?.validation
-                    )
-                    const currentKeys: string[] = stageGates[gatePickerStageId] ?? []
-                    if (validatedCols.length === 0) {
-                      return (
-                        <p className="text-xs text-gray-400 py-2 text-center">
-                          No hay columnas con validación configurada.<br />
-                          Define validaciones en otras columnas primero.
-                        </p>
-                      )
-                    }
+                      c => !isStageCol || (c.kind !== 'stage' && c.col_key !== 'stage_id')
+                    ).filter(c => c.settings?.validation)
+
                     return (
-                      <div className="space-y-2 pt-1">
-                        <p className="text-xs font-medium text-gray-600">Condiciones requeridas:</p>
-                        {validatedCols.map(c => {
-                          const val = c.settings?.validation as { message?: string } | undefined
-                          const checked = currentKeys.includes(c.col_key)
+                      <div className="space-y-4">
+                        {stages.map(stage => {
+                          const currentKeys: string[] = stageGates[stage.id] ?? []
                           return (
-                            <label key={c.col_key} className="flex items-start gap-2.5 cursor-pointer group">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => setStageGates(prev => {
-                                  const keys: string[] = prev[gatePickerStageId] ?? []
-                                  return {
-                                    ...prev,
-                                    [gatePickerStageId]: checked
-                                      ? keys.filter((k: string) => k !== c.col_key)
-                                      : [...keys, c.col_key],
-                                  }
-                                })}
-                                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                              />
-                              <div>
-                                <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{c.name}</p>
-                                {val?.message && (
-                                  <p className="text-[11px] text-gray-400">{val.message}</p>
+                            <div key={stage.id} className="border border-gray-100 rounded-lg overflow-hidden">
+                              <div className="bg-gray-50 px-3 py-2 flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-700">{stage.name}</span>
+                                {currentKeys.length > 0 && (
+                                  <span className="text-[10px] text-indigo-600 font-medium">{currentKeys.length} condición{currentKeys.length !== 1 ? 'es' : ''}</span>
                                 )}
                               </div>
-                            </label>
+                              {validatedCols.length === 0 ? (
+                                <p className="text-[11px] text-gray-400 px-3 py-2">Sin validaciones configuradas</p>
+                              ) : (
+                                <div className="px-3 py-2 space-y-2">
+                                  {validatedCols.map(c => {
+                                    const val = c.settings?.validation as { message?: string } | undefined
+                                    const checked = currentKeys.includes(c.col_key)
+                                    return (
+                                      <label key={c.col_key} className="flex items-start gap-2.5 cursor-pointer group">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => setStageGates(prev => {
+                                            const keys: string[] = prev[stage.id] ?? []
+                                            return {
+                                              ...prev,
+                                              [stage.id]: checked
+                                                ? keys.filter((k: string) => k !== c.col_key)
+                                                : [...keys, c.col_key],
+                                            }
+                                          })}
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <div className="min-w-0">
+                                          <p className="text-sm text-gray-700 group-hover:text-gray-900 truncate">{c.name}</p>
+                                          {val?.message && (
+                                            <p className="text-[11px] text-gray-400 truncate">{val.message}</p>
+                                          )}
+                                        </div>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
                           )
                         })}
+
+                        <button
+                          onClick={handleSaveStageGates}
+                          disabled={savingButton}
+                          className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+                        >
+                          {savingButton ? 'Guardando…' : 'Guardar gates'}
+                        </button>
                       </div>
                     )
                   })()}
-
-                  {gatePickerStageId && (
-                    <button
-                      onClick={handleSaveStageGates}
-                      disabled={savingButton}
-                      className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
-                    >
-                      {savingButton ? 'Guardando…' : 'Guardar gates'}
-                    </button>
-                  )}
                 </>
               ) : (
                 /* Standard columns: condition builder */
