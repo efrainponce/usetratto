@@ -2,6 +2,13 @@
 
 ## 2026-04-15
 
+**~sesión 4 — 16.6 ref cols shipped + fixes RLS/UUID**
+- `kind='reflejo'` como tipo real: CellKind union extendido, migration 14 agrega al `board_columns_kind_check`, PATCH route permite transición reflejo↔original en system cols, ColumnCell case 'reflejo' dispatcha por `ref_field_kind` (read-only), ColumnSettingsPanel.handleSaveRef persiste kind + guarda `original_kind` para revert
+- Nested relation resolution: `refNestedBoardId` state capturado en ref fetch useEffect cuando mirrored field es kind='relation'; `relationTargetBoards` memo expandido para incluir nested boards; toRow resuelve rawValue via `relationLabelMap[nestedBoardId]`
+- Bug root causes resueltos: (a) `/api/items?format=col_keys` usaba JWT+RLS para board_columns → silent 0 filas → col_values vacío; fix service client; (b) `column_permissions` GET/POST/DELETE mismo patrón → 404; fix service client; (c) toRow fallback `?? targetId/rawValue` leakeaba UUID durante carga; fix fallback null; (d) ref edit PUT leía NAME de row.cells en vez de item_id de rawItems; fix raw item lookup
+- Visual: chip `rounded-md border bg-gray-50 px-1.5 py-0.5` para relation cells, prefix ↪ ámbar dentro del chip cuando isRef, wrapper amber del ColumnCell removido
+- Migration chain aplicada: 11 (system cols+triggers+metatags), 12 (backfill contacto/institucion/monto), 13 (end_date metatag), 14 (reflejo kind constraint)
+
 **~sesión 3 — Fase 16 CLOSED**
 - Fase 16 cerrada completa: 16.5 (25/25), 16.6 (ref cols), RelationPicker, auto-fill runtime, required enforcement
 - **RelationPicker modal**: nuevo `components/RelationPicker.tsx` con fetch target board items + search + clear button + Esc cierra; `RelationCell` ahora clickable (no double-click) llama `onCommit(item_id)`; `BoardView.relationLabelMap` useEffect batch-fetch items de target boards → `toRow` resuelve id → name en cells relation (fallback a id mientras carga)

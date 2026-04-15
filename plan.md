@@ -55,11 +55,17 @@ Fase 15: Column Validations + Stage Gates
    ↓
 Fase 16: Herencia de Permisos de Columna (snapshot + sub-items + RelationCell)
    ↓
-Fase 17: Quote Engine (templates PDF, cotizaciones desde items)
+Fase 16.5: System Columns + Meta-tags + Activity Audit + RelationPicker
    ↓
-Fase 18: Tratto AI Agent + Sidebar Chat (engine compartido — sidebar, WA, móvil)
+Fase 16.6: Ref Columns (kind='reflejo', mirror/lookup con nested resolution)
    ↓
-Fase 19: WhatsApp Integration (adapter sobre el mismo engine)
+Fase 17: Invitations + Email Auth + Session Optimization
+   ↓
+Fase 18: Quote Engine (templates PDF, cotizaciones desde items)
+   ↓
+Fase 19: Tratto AI Agent + Sidebar Chat (engine compartido — sidebar, WA, móvil)
+   ↓
+Fase 20: WhatsApp Integration (adapter sobre el mismo engine)
 ```
 
 ---
@@ -456,9 +462,9 @@ User reporta que Activity del item no muestra eventos de sub-items. Requiere aud
 
 ---
 
-## Fase 16.6 — Ref Columns (Mirror / Lookup)
+## Fase 16.6 — Ref Columns (Mirror / Lookup) ✅
 
-**Goal:** Columna que *muestra* un campo de un item relacionado de otro board y al editarse escribe directamente en el item fuente. Visualmente distinta (tinte ámbar + icono ↪) con tooltip explicativo en el header.
+**Goal:** Columna que *muestra* un campo de un item relacionado de otro board. `kind='reflejo'` es tipo real en DB + frontend. Visual: chip `rounded-md bg-gray-50` con prefix ↪ ámbar; header del col también muestra ↪.
 
 **Caso de uso**: en el board `opportunities` tener una columna `telefono_contacto` que es `ref` → va al contacto relacionado (columna `contacto`) y lee/escribe su columna `phone`. Editarla desde oportunidades actualiza el contact real.
 
@@ -494,9 +500,9 @@ La columna sigue teniendo su propio `kind` (igual al del campo destino). Detecci
 
 ### Visual
 
-- **Cell**: wrapping div `bg-amber-50/30 ring-1 ring-inset ring-amber-100/60`
-- **Column header**: icon `↪` (o emoji) al lado del label, tooltip al hover: "Reflejo de *Contacto* → *phone* · Se edita en board **Contactos**"
-- **Helper (?)**: el user pidió esto explícitamente — un tooltip/info icon que deje claro que el valor no vive ahí
+- **Cell**: chip `rounded-md border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[12px]` con prefix `↪` ámbar cuando isRef (prefix vive en RelationCell chip)
+- **Column header**: icon `↪` al lado del label, tooltip al hover: "Reflejo de *Contacto* → *institucion*"
+- Ref cells son **read-only** en UI: se editan desde el board fuente, no desde el ref col
 
 ### ColumnSettingsPanel tab "Reflejo"
 
@@ -508,22 +514,30 @@ La columna sigue teniendo su propio `kind` (igual al del campo destino). Detecci
 
 ### Tareas
 
-- [ ] **16.6.1** `lib/boards/helpers.ts`: `isRefCol(col)` helper exportado
-- [ ] **16.6.2** `GET /api/items`: soportar query param `?ids=a,b,c` (filtra además de boardId); devolver items con `item_values` + un mapeo `col_keys` computado server-side para el response
-- [ ] **16.6.3** `BoardView.tsx`: detectar ref cols, useEffect para batch-fetch source items del target board, construir `refMap` + `refColMeta`, modificar `toRow()` para poblar cells ref
-- [ ] **16.6.4** `BoardView.tsx`: interceptar `handleCellChange` para ref cols → PUT al source item; update optimista de `refMap`
-- [ ] **16.6.5** `ColumnCell.tsx`: wrapper `bg-amber-50/30 ring-1 ring-inset ring-amber-100/60` cuando `isRefCol(col)`
-- [ ] **16.6.6** `GenericDataTable.tsx`: renderiza icon `↪` + tooltip en header de ref cols con texto "Reflejo de X → Y · edita en board Z"
-- [ ] **16.6.7** `ColumnSettingsPanel.tsx`: tab nuevo "Reflejo" con 2 dropdowns + botón "No reflejar"
-- [ ] **16.6.8** Seed opcional: agregar `telefono_contacto` como ref col en opportunities apuntando a `contacto` → `phone` (demo)
+- [x] **16.6.1** `lib/boards/helpers.ts`: `isRefCol(col)` helper exportado
+- [x] **16.6.2** `GET /api/items`: soportar `?ids=a,b,c` + `?format=col_keys` → devuelve `col_values: {col_key: value}` mapeado server-side (service client para board_columns lookup)
+- [x] **16.6.3** `BoardView.tsx`: refColsMeta memo + useEffect batch-fetch (agrupado por target board) + refMap + refTargetCols + refNestedBoardId; toRow rama ref resuelve + nested resolution via relationLabelMap[nestedBoardId]
+- [x] **16.6.4** `BoardView.tsx`: `handleCellChange` intercepta ref cols → PUT al source item leyendo item_id de rawItems (defensive, hoy ref cells son read-only)
+- [x] **16.6.5** Chip styling para relation/ref cells (amber wrapper removido) + prefix ↪ ámbar en chip cuando isRef
+- [x] **16.6.6** `GenericDataTable.tsx`: renderiza icon `↪` + tooltip en header de ref cols
+- [x] **16.6.7** `ColumnSettingsPanel.tsx`: tab "Reflejo" con 2 dropdowns + botón "No reflejar"; handleSaveRef persiste kind='reflejo' + original_kind en settings
+- [ ] **16.6.8** DIFERIDO: seed opcional `telefono_contacto` demo — no necesario, config vía UI
+
+**Extra (no planeadas, agregadas durante sesión 4):**
+- Migration 14 agrega `'reflejo'` al `board_columns_kind_check` constraint
+- `CellKind` union extendido con `'reflejo'`; `ColumnCell` case `'reflejo'` dispatcha por `ref_field_kind` con cell read-only
+- Nested relation resolution (ref col mirroring otro kind='relation' field resuelve via relationLabelMap del nested target)
+- RelationCell detecta isRef → canPick=false → no picker, muestra `—` cuando empty
+- Fallback UUID → null en toRow (zero leak visual durante load async)
+- Fix RLS silente en `/api/items?format=col_keys` y `/api/boards/[id]/columns/[colId]/permissions` (ambos a service client)
 
 ### Verificación
 
-- [ ] Crear ref col en opportunities → se ve con tinte ámbar + icono ↪ en header
-- [ ] Hover en header muestra tooltip explicativo
-- [ ] Editar valor de ref cell → actualiza el item fuente en contacts
-- [ ] Refrescar → valor sigue ahí, leído del source
-- [ ] Si source_item no existe (relation vacía) → cell muestra —
+- [x] Ref col en opportunities → chip gris con ↪ prefix + icono ↪ en header
+- [x] Valor resuelve vía nested relationLabelMap (institucion → Juan → accounts → SEDENA)
+- [x] Ref cells read-only en UI (no clickable)
+- [x] Refrescar → valor persiste, leído del source
+- [x] Si source_item no existe → cell muestra `—` (sin UUID leak)
 
 ### Deferidos (fuera de MVP 16.6)
 

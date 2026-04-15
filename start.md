@@ -116,10 +116,12 @@ board_stages (id, sid, board_id, name, color, position, is_closed, created_at)
 
 board_columns (id, sid, board_id, col_key, name, kind, position, is_system, is_hidden, required, settings, created_at)
   -- col_key: identificador estable tipo 'stage', 'owner', 'deadline', 'custom_1'
-  -- kind: 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'people' |
-  --        'boolean' | 'url' | 'file' | 'email' | 'phone' | 'autonumber' | 'formula' | 'relation'
-  -- is_system: true para columnas core (name, stage, owner, deadline)
-  -- settings: jsonb — opciones select, formato number, target_board_id para relation, etc.
+  -- kind: 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'people' | 'boolean' |
+  --        'url' | 'file' | 'email' | 'phone' | 'autonumber' | 'formula' | 'relation' |
+  --        'button' | 'signature' | 'rollup' | 'reflejo'
+  -- is_system: true para columnas core (name, stage, owner, deadline, created_by, created_at, updated_at)
+  -- settings: jsonb — opciones select, target_board_id relation, role metatag (owner/primary_stage/end_date),
+  --           ref_source_col_key/ref_field_col_key/ref_field_kind (reflejo), auto_fill_targets, validation, etc.
 
 -- ─── BOARD MEMBERS (acceso al board — Monday-style) ───
 -- Un board tiene miembros. Un miembro puede ser una persona O un equipo.
