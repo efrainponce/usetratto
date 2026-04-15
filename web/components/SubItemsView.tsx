@@ -21,7 +21,7 @@ type SubItemView = {
 
 type SubItemColumn = {
   id: string; col_key: string; name: string; kind: string
-  position: number; is_hidden: boolean; required: boolean
+  position: number; is_hidden: boolean; required: boolean; is_system?: boolean
   settings: Record<string, unknown>; source_col_key: string | null
   permission_mode?: 'public' | 'inherit' | 'custom'
   user_access?: 'edit' | 'view' | null
@@ -943,7 +943,7 @@ function NativeRenderer({
 
       {colSettings && (
         <ColumnSettingsPanel
-          column={{ ...colSettings, is_system: false }}
+          column={{ ...colSettings, is_system: colSettings.is_system ?? false }}
           boardId={boardId}
           allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind, settings: (c.settings as Record<string, unknown>) ?? {} }))}
           users={users ?? []}
@@ -1606,7 +1606,7 @@ function SubItemDetailDrawer({
       {/* Column settings panel */}
       {colSettings && (
         <ColumnSettingsPanel
-          column={{ ...colSettings, is_system: false }}
+          column={{ ...colSettings, is_system: colSettings.is_system ?? false }}
           boardId={boardId}
           allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind, settings: (c.settings as Record<string, unknown>) ?? {} }))}
           users={users ?? []}

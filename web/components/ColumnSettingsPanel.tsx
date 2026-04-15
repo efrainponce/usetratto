@@ -770,7 +770,7 @@ const [savingButton,    setSavingButton]    = useState(false)
               </div>
 
               {/* System role dropdown (Fase 16.5.B) */}
-              {(column.kind === 'people' || column.kind === 'select') && !column.is_system && (
+              {(column.kind === 'people' || column.kind === 'select' || column.kind === 'date') && !column.is_system && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Rol del sistema</label>
                   <select
@@ -784,14 +784,15 @@ const [savingButton,    setSavingButton]    = useState(false)
                     <option value="">Ninguno</option>
                     {column.kind === 'people' && <option value="owner">Owner (dueño del item)</option>}
                     {column.kind === 'select' && <option value="primary_stage">Etapa primaria</option>}
+                    {column.kind === 'date' && <option value="end_date">Fecha límite (end_date)</option>}
                   </select>
                   {roleError && (
                     <p className="text-xs text-red-500 mt-1">{roleError}</p>
                   )}
                   <p className="text-xs text-gray-500 mt-1">
-                    {column.kind === 'people'
-                      ? 'El owner se usa para restrict_to_own, stage gates y permisos.'
-                      : 'La etapa primaria se usa para gates, rollups y cierre.'}
+                    {column.kind === 'people' && 'El owner se usa para restrict_to_own, stage gates y permisos.'}
+                    {column.kind === 'select' && 'La etapa primaria se usa para gates, rollups y cierre.'}
+                    {column.kind === 'date' && 'La fecha límite (end_date) se usa para filtros "vencidos" y recordatorios.'}
                   </p>
                   <div className="flex justify-end mt-2">
                     <button

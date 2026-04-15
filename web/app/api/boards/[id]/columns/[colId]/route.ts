@@ -76,7 +76,7 @@ export async function PATCH(req: Request, { params }: Context) {
   if (patch.settings && typeof patch.settings === 'object') {
     const settings = patch.settings as Record<string, unknown>
     const role = settings.role
-    if (role === 'owner' || role === 'primary_stage') {
+    if (role === 'owner' || role === 'primary_stage' || role === 'end_date') {
       const { data: existing } = await svc
         .from('board_columns')
         .select('id, settings')

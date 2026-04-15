@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: Context) {
 
   let query = supabase
     .from('sub_item_columns')
-    .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+    .select('id, board_id, col_key, name, kind, position, is_hidden, required, is_system, settings, source_col_key')
     .eq('board_id', id)
     .order('position')
 
@@ -48,6 +48,7 @@ export async function POST(req: Request, { params }: Context) {
     position?: number
     is_hidden?: boolean
     required?: boolean
+    is_system?: boolean
     settings?: Record<string, unknown>
     source_col_key?: string | null
     view_id?: string | null
@@ -89,11 +90,12 @@ export async function POST(req: Request, { params }: Context) {
       position,
       is_hidden: body.is_hidden ?? false,
       required: body.required ?? false,
+      is_system: body.is_system ?? false,
       settings: body.settings ?? {},
       source_col_key: body.source_col_key ?? null,
       view_id: body.view_id ?? null,
     })
-    .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
+    .select('id, board_id, col_key, name, kind, position, is_hidden, required, is_system, settings, source_col_key')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

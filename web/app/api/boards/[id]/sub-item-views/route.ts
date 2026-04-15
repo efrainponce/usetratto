@@ -130,5 +130,38 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Auto-inject system columns for native views
+  if (view && view.type === 'native') {
+    const systemCols = [
+      { col_key: 'created_by', name: 'Creado por',           kind: 'people', position: 900, is_system: true, settings: { display: 'read_only' } },
+      { col_key: 'created_at', name: 'Fecha de creación',    kind: 'date',   position: 901, is_system: true, settings: { display: 'relative', read_only: true } },
+      { col_key: 'updated_at', name: 'Última modificación',  kind: 'date',   position: 902, is_system: true, settings: { display: 'relative', read_only: true } },
+    ]
+
+    for (const col of systemCols) {
+      // Check if column already exists for this board+view combination
+      const { data: existing } = await service
+        .from('sub_item_columns')
+        .select('id')
+        .eq('board_id', id)
+        .eq('view_id', view.id)
+        .eq('col_key', col.col_key)
+        .maybeSingle()
+
+      // Only insert if doesn't exist
+      if (!existing) {
+        await service
+          .from('sub_item_columns')
+          .insert({
+            board_id: id,
+            view_id: view.id,
+            ...col,
+          })
+          .maybeSingle()
+      }
+    }
+  }
+
   return NextResponse.json(view, { status: 201 })
 }

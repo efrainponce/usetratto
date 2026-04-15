@@ -11,3 +11,10 @@ export function getOwnerColKey(columns: Array<{ col_key: string; kind: string; s
   const fallback = columns.find(c => c.col_key === 'owner' && c.kind === 'people')
   return fallback?.col_key ?? null
 }
+
+export function getEndDateColKey(columns: Array<{ col_key: string; kind: string; settings?: any }>): string | null {
+  const tagged = columns.find(c => c.settings?.role === 'end_date' && c.kind === 'date')
+  if (tagged) return tagged.col_key
+  const fallback = columns.find(c => c.col_key === 'deadline' && c.kind === 'date')
+  return fallback?.col_key ?? null
+}
