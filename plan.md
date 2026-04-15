@@ -47,13 +47,19 @@ Fase 11: Column Upgrades (files, buttons, signature)
    ↓
 Fase 12: Variantes L2 + Vistas por board
    ↓
-Fase 13: Stage Gates + Approval (gatekeepers nativos, reemplaza Make)
+Fase 13: Formula Columns
    ↓
-Fase 14: Cross-board Automations (trigger → acción, reemplaza Make)
+Fase 14: Rollup Columns
    ↓
-Fase 15: Quote Engine (templates PDF, cotizaciones desde items)
+Fase 15: Column Validations + Stage Gates
    ↓
-Fase 16: WhatsApp Integration (Claude AI + Twilio + Edge Functions)
+Fase 16: Herencia de Permisos de Columna (snapshot + sub-items + RelationCell)
+   ↓
+Fase 17: Quote Engine (templates PDF, cotizaciones desde items)
+   ↓
+Fase 18: Tratto AI Agent + Sidebar Chat (engine compartido — sidebar, WA, móvil)
+   ↓
+Fase 19: WhatsApp Integration (adapter sobre el mismo engine)
 ```
 
 ---
@@ -1121,184 +1127,709 @@ En rutas API que ya validaron autorización con `requireAuthApi()` + check de `w
 - [ ] Botón con `target_stage_id` → bloquea si gates del stage destino no se cumplen; avanza si ok
 - [ ] Default value en columna select → nuevo item ya trae la opción preseleccionada
 
+### Fixes pendientes (antes de Fase 16)
+- [ ] **fix-sv-1** Permitir eliminar TODAS las vistas de sub-items, incluyendo la vista "Sub-items" default (actualmente deshabilitado en `SubItemsView`). Si se elimina la última vista → estado vacío con botón "Agregar vista". Sin protección obligatoria sobre la primera vista.
+
 ---
 
-## Fase 16 — Cross-board Automations
+## Fase 16 — Herencia de Permisos de Columna
 
-**Goal:** Trigger → Acción. Reemplazar los scenarios de Make que conectan boards.
+**Goal:** Los permisos de columna viajan con los datos. Si una columna es privada para Compras en el catálogo, Ventas no la ve nunca — ni en el board, ni en sub-items, ni en un snapshot de cotización. Pre-requisito obligatorio antes de Fase 17 (Quotes).
 
-### Schema
+### El problema sin esta fase
 
-```sql
-automations (
-  id uuid PK,
-  workspace_id uuid,
-  board_id uuid,          -- board donde vive la automation
-  name text,
-  is_active boolean DEFAULT true,
-  trigger_type text,      -- ver tipos abajo
-  trigger_config jsonb,   -- parámetros del trigger
-  actions jsonb[],        -- array de acciones a ejecutar en orden
-  created_at timestamptz
-)
+```
+Board "Catálogo"
+  └── col 'costo_interno' → column_permission: solo equipo Compras (edit/view)
+                            Ventas no tiene acceso
+
+Sin herencia de permisos:
+  Vendedor genera cotización → snapshot copia sub-items al board 'quotes'
+  → sub-item tiene campo 'costo_interno' con el valor copiado
+  → Ventas abre el quote item → ve 'costo_interno' ← BRECHA
 ```
 
-### Triggers
+### Solución: enforcement en tres capas
 
-| type | config | Descripción |
-|---|---|---|
-| `stage_changed` | `{ to_stage_id, from_stage_id? }` | Item cambia a/desde etapa |
-| `item_created` | `{}` | Nuevo item en el board |
-| `column_changed` | `{ column_id, to_value? }` | Columna cambia (opcionalmente a valor específico) |
-| `button_clicked` | `{ button_column_id }` | Click en ButtonCell (Fase 11) |
+#### Capa 1 — Snapshot engine respeta permisos de la fuente
 
-### Acciones
-
-| type | params | Descripción |
-|---|---|---|
-| `change_stage` | `{ stage_id }` | Cambiar etapa del item |
-| `set_column_value` | `{ column_id, value }` | Fijar valor de columna |
-| `assign_owner` | `{ user_id \| 'trigger_user' }` | Asignar dueño |
-| `notify_user` | `{ user_field \| user_id, message_template }` | Mensaje en canal Sistema |
-| `create_quote` | `{ template_id }` | Genera cotización PDF |
-| `cross_board_copy` | `{ target_board_id, field_mapping, copy_subitems, expand_variants }` | Crea item en otro board |
-| `call_webhook` | `{ url, method, headers, body_template }` | HTTP request externo |
-
-### cross_board_copy — el caso Oportunidad → Proyecto
+Al copiar sub-items (snapshot), el engine verifica si el usuario que genera tiene VIEW access a cada columna de origen. Si no tiene acceso → el valor NO se copia, el campo queda vacío en el destino.
 
 ```typescript
-{
-  type: 'cross_board_copy',
-  params: {
-    target_board_id: 'proyectos_board_id',
-    field_mapping: [
-      { from_column: 'nombre', to_column: 'nombre' },
-      { from_column: 'contacto', to_column: 'cliente' },
-    ],
-    copy_subitems: true,     // copiar L1 sub-items
-    expand_variants: true,   // explotar L2 desde multiselect tallas
-    link_column: 'oportunidad_relation_col'  // columna relation en Proyectos que apunta al item original
-  }
+// lib/snapshot-engine.ts — lógica extendida
+for (const col of sourceColumns) {
+  const canView = await userCanViewColumn(col.id, ctx.userId, ctx.workspaceId)
+  if (!canView) continue   // omite silenciosamente — sin error, sin valor
+  values[col.col_key] = sourceItem.values[col.col_key]
 }
 ```
 
-### Motor de automations
+#### Capa 2 — `permission_mode` en sub_item_columns
+
+```sql
+-- sin migration nueva: agrega campo a sub_item_columns
+sub_item_columns.permission_mode text DEFAULT 'public'
+  -- 'public'  : visible para todos los miembros del board (comportamiento actual)
+  -- 'inherit' : hereda los column_permissions de la columna fuente (source_col_key)
+  -- 'custom'  : usa column_permissions propios en la tabla column_permissions
+```
+
+Cuando `permission_mode = 'inherit'` y `source_col_key` está configurado:
+- El sistema busca los `column_permissions` de la columna fuente en el board de origen
+- Aplica exactamente los mismos grupos/usuarios al renderizar la columna destino
+- Si el usuario no tiene VIEW en la fuente → celda vacía y no editable en destino
+
+#### Capa 3 — RelationCell no muestra columnas prohibidas
+
+Al mostrar datos de un board relacionado en una RelationCell (preview del item relacionado), el renderer consulta `column_permissions` del board destino para el usuario actual y oculta las columnas sin acceso. El valor del campo `value_text` (item_id) sigue guardándose — solo cambia lo que se muestra.
+
+### UI en ColumnSettingsPanel (sub_item_columns)
+
+Tab "Permisos" cuando `source_col_key` está configurado:
+```
+Modo de permisos:
+  ○ Público (todos los miembros del board)
+  ● Heredar del origen  ← si se elige: muestra "heredando de [col_name] en [board_name]"
+  ○ Personalizado (configurar manualmente)
+```
+
+### Capa 4 — Row-level constraints (restrict_to_own completo)
+
+`restrict_to_own` ya existe en `board_members` (Fase 9) y se aplica en `GET /api/items`. Esta fase audita y extiende el enforcement a todos los puntos donde un vendedor podría ver items que no son suyos.
+
+**Puntos de enforcement que faltan:**
+
+| Punto | Riesgo sin enforcement | Fix |
+|-------|----------------------|-----|
+| `GET /api/sub-items?itemId=X` | Vendedor A puede pedir sub-items de un item de Vendedor B si sabe el `item_id` | Verificar que el item padre es accesible antes de devolver sub-items |
+| Snapshot engine | Al generar quote, si `source_item_id` apunta a item de otro usuario | Validar acceso al item fuente antes de copiar |
+| `RelationCell` picker | El picker de items relacionados muestra todos los items del board, no solo los del vendedor | Picker respeta `restrict_to_own` al listar opciones |
+| `GET /api/items` con `boardId` directo | Si alguien llama la API con un `boardId` sabiendo IDs | Ya cubierto en Fase 9, pero auditar service client leaks |
+| `GET /api/boards/[id]/sub-item-views/[viewId]/data` | Data endpoint del NativeRenderer podría no aplicar `restrict_to_own` en el join con items | Verificar filtro en el data endpoint |
 
 ```typescript
-// lib/automation-engine.ts
-export async function runAutomations(event: AutomationEvent, supabase: SupabaseClient)
-
-// AutomationEvent:
-{ type: 'stage_changed' | 'item_created' | ..., item_id, board_id, workspace_id, payload }
+// lib/permissions.ts — función nueva
+export async function userCanAccessItem(itemId: string, userId: string, workspaceId: string): Promise<boolean> {
+  // 1. Item existe y pertenece al workspace
+  // 2. Usuario tiene acceso al board (board_members o público)
+  // 3. Si restrict_to_own=true en board_members → item.owner_id === userId
+}
 ```
 
-Llamado desde API routes después de cada mutación relevante. No DB triggers — lógica en TypeScript, más fácil de debuggear.
-
-**Anti-loop:** `automation_runs` table guarda `(automation_id, item_id, triggered_at)` — si la misma automation corrió para el mismo item en los últimos 5s, skip.
-
-### UI — Lista de recetas por board
-
-Settings → Boards → tab "Automations":
-
-```
-┌──────────────────────────────────────────────────────┐
-│  Cuando [etapa cambia a Ganado]                      │
-│  Hacer  [crear item en Proyectos] + [generar PDF]    │
-│                                          ✏️  🗑️      │
-├──────────────────────────────────────────────────────┤
-│  + Nueva automation                                  │
-└──────────────────────────────────────────────────────┘
-```
-
-No canvas. Lista simple. Cada fila = 1 trigger + N acciones.
+Esta función se llama en: `GET /api/sub-items`, snapshot engine, `POST /api/sub-items/[id]/refresh`, `POST /api/sub-items/[id]/expand`.
 
 ### Tareas
-- [ ] **16.1** Migration: `automations` + `automation_runs`
-- [ ] **16.2** `lib/automation-engine.ts` — evaluador de triggers + ejecutor de acciones
-- [ ] **16.3** Integrar `runAutomations()` en `PATCH /api/items/[id]` + `POST /api/items`
-- [ ] **16.4** Implementar acción `cross_board_copy` (con copy_subitems + expand_variants)
-- [ ] **16.5** UI: Settings → Boards → tab "Automations" (lista de recetas + editor)
-- [ ] **16.6** ButtonCell con `action: 'run_automation'` (completar Fase 11.2)
+
+#### 16.A — Column permissions
+- [ ] **16.1** Migration: agregar `permission_mode text DEFAULT 'public'` a `sub_item_columns`
+- [ ] **16.2** `lib/permissions.ts`: `userCanViewColumn(columnId, userId, workspaceId)` — consulta `column_permissions`; si no hay registros → true (público); acepta tanto `column_id` como `sub_item_column_id`
+- [ ] **16.3** `lib/permissions.ts`: `resolveInheritedPermissions(subItemColId)` — si `permission_mode='inherit'`, resuelve los permisos de la columna fuente y los aplica
+- [ ] **16.4** Snapshot engine: antes de copiar cada valor, llama `userCanViewColumn` sobre la columna fuente; si false → omite el valor silenciosamente
+- [ ] **16.5** `ColumnCell` + `NativeRow`: antes de renderizar, verifica permisos de la columna; si sin VIEW → celda vacía, no editable, sin tooltip de valor
+- [ ] **16.6** `RelationCell` preview: al mostrar campos del item relacionado, filtra columnas que el usuario no puede ver en el board destino
+- [ ] **16.7** `ColumnSettingsPanel` tab Permisos en sub_item_columns: radio `permission_mode` (Público / Heredar del origen / Personalizado); si Heredar → muestra de dónde hereda
+
+#### 16.B — Row-level constraints (restrict_to_own audit)
+- [ ] **16.8** `lib/permissions.ts`: `userCanAccessItem(itemId, userId, workspaceId)` — valida board membership + restrict_to_own en un solo helper reutilizable
+- [ ] **16.9** `GET /api/sub-items`: antes de devolver, verifica `userCanAccessItem` sobre el item padre; 403 si no tiene acceso
+- [ ] **16.10** `POST /api/sub-items/[id]/refresh` + `/expand`: verificar acceso al item padre y al source_item_id antes de ejecutar
+- [ ] **16.11** `GET /api/boards/[id]/sub-item-views/[viewId]/data` (NativeRenderer data endpoint): aplicar join con items y filtrar por `restrict_to_own` si aplica al board
+- [ ] **16.12** `RelationCell` picker: al listar opciones del board relacionado, aplicar `restrict_to_own` del usuario en ese board (vendedor solo puede relacionar items que ve)
+- [ ] **16.13** Audit de rutas con `createServiceClient()`: revisar que todas las rutas que usan service client aplican manualmente `workspace_id` + `restrict_to_own` donde corresponde (no delegan seguridad a RLS)
 
 ### Verificación
-- [ ] Oportunidad gana → se crea item en Proyectos con sub-items y tallas auto-expandidas
-- [ ] Botón "Aprobar" cambia stage + genera PDF en 1 click
-- [ ] Anti-loop: automation no corre dos veces por el mismo evento
+- [ ] `costo_interno` en catálogo (solo Compras) → snapshot → Ventas abre quote → celda vacía y no editable
+- [ ] Compras abre mismo quote → ve y edita `costo_interno`
+- [ ] `permission_mode='inherit'` → cambiar permisos en fuente → refleja en todos los boards que heredan
+- [ ] RelationCell en oportunidades → Ventas no ve `costo_interno` en preview de producto
+- [ ] Vendedor A no puede obtener sub-items de item de Vendedor B aunque conozca el `item_id`
+- [ ] RelationCell picker solo muestra items a los que el usuario tiene acceso (respeta `restrict_to_own`)
 
 ---
 
 ## Fase 17 — Quote Engine
 
-**Goal:** Generación de cotizaciones PDF desde items del pipeline. Templates configurables por board, líneas = sub-items. Firma digital integrada.
+**Goal:** Generación de cotizaciones PDF desde items del pipeline. Los datos viven en el item (oportunidad) + sus sub-items (productos). El board `quotes` es tracking e historial, no fuente de datos.
 
 ### Arquitectura
 
 ```
-quote_templates (id, workspace_id, board_id, name, stage_id, template_html,
-                 header_fields, line_columns, footer_fields, show_prices, created_at)
-quotes          (id, workspace_id, item_id, template_id, generated_by,
-                 pdf_url, status, created_at)
+Generación (N veces por oportunidad — v1, v2... v8):
+  Oportunidad (item)
+    └── Sub-items en vista "Catálogo" — costeados y validados por compras
+    └── Botón "Generar cotización" (ButtonCell, action: 'generate_quote')
+          ↓
+       validatePreConditions()   ← bloquea si faltan datos
+          ↓
+       SNAPSHOT: copia sub-items de la vista fuente (sub_item_view_id)
+       al nuevo quote item — mismo engine que Fase 5 (source_item_id)
+          ↓
+       Item creado en board 'quotes'
+            - Relation → esta oportunidad
+            - Relation → contacto
+            - Sub-items propios = snapshot de los sub-items copiados
+              (editables independientemente: markup, descuentos, ajustes)
+            - Columna firma (signature, vacía)
+            - Stage: Borrador
+            - version = count previos + 1
+          ↓
+       Edge Function generate-quote
+       lee sub-items DEL QUOTE ITEM (no de la oportunidad)
+          ↓
+       PDF sin firma → Supabase Storage → columna file del quote item
+
+Firma electrónica (después de generar):
+  Quote item (en board 'quotes')
+    └── Columna 'firma' (kind='signature')
+    └── settings.on_sign: { regenerate_pdf: true, change_stage_to: 'Aceptada' }
+          ↓
+       Cliente/vendedor hace click en "Firmar"
+          ↓
+       OTP captura firma → guarda en columna signature
+          ↓
+       Trigger automático: regenera PDF con firma embebida (watermark)
+          ↓
+       Columna 'pdf' del quote item actualizada con nuevo PDF firmado
+          ↓
+       Stage avanza automáticamente a 'Aceptada'
+
+Tracking (board 'quotes', system_key='quotes'):
+  stages:  Borrador → Enviada → Aceptada → Rechazada → Facturada
+  columns: oportunidad (relation), contacto (relation), monto (number),
+           pdf (file), firma (signature), fecha (date),
+           generado_por (people), version (number)
+  sub-items: snapshot de las líneas copiadas — precios BLOQUEADOS para vendedor
+             columns:
+               producto    (relation→catalog) — view only para todos
+               qty         (number)           — vendedor puede editar
+               precio_unit (number)           — solo equipo Compras puede editar
+               descuento   (number)           — solo admin/Compras
+               subtotal    (formula: qty * precio_unit * (1 - descuento/100)) — read-only
+
+  column_permissions en sub_item_columns del board 'quotes' (seed default):
+    precio_unit → equipo 'compras': edit | vendedor: view
+    descuento   → equipo 'compras': edit | vendedor: view
+    producto    → todos: view (inmutable post-snapshot)
+    qty         → todos: edit
 ```
 
-- `header_fields`: qué columnas del item van en el encabezado (cliente, fecha, folio)
-- `line_columns`: qué sub_item_columns van como líneas de la cotización
-- `footer_fields`: subtotal, impuestos, total — derivados de fórmulas de sub-items
-- `template_html`: HTML Handlebars con vars `{{item.name}}`, `{{lines}}`, etc.
-- PDF generado via Edge Function (Puppeteer), guardado en Supabase Storage
+**Flujo correcto de precios:**
+- Compras valida y captura `precio_unit` en la vista fuente (catálogo/cotización de la oportunidad)
+- El vendedor genera el quote → snapshot copia sub-items con precios congelados
+- El vendedor solo puede cambiar `qty` (cantidades) — no precios ni descuentos
+- Si el cliente pide descuento → el vendedor lo solicita a compras/admin
+- Compras edita `precio_unit` o `descuento` en el quote item → vendedor regenera el PDF (nueva versión)
+- v1 a v8: cada versión refleja negociaciones reales (precio inicial, precio con descuento, etc.)
+- El PDF siempre se genera desde los sub-items del QUOTE con los permisos ya aplicados
+
+**No hay tabla `quotes` separada** — reemplazada por el board de sistema `quotes`. Cada PDF generado = un item en ese board. Las relaciones a contactos, cuentas y productos son columnas `relation` estándar.
+
+```sql
+-- Solo queda una tabla nueva:
+quote_templates (id, workspace_id, board_id, name,
+                 sub_item_view_id uuid REFERENCES sub_item_views(id),
+                                        -- ← CUÁL vista usamos como fuente de líneas
+                 header_fields jsonb,   -- col_keys del item → encabezado PDF
+                 line_columns jsonb,    -- col_keys de ESA vista → filas PDF
+                 footer_fields jsonb,   -- col_keys del item → pie (totales, impuestos)
+                 show_prices boolean DEFAULT true,
+                 pre_conditions jsonb DEFAULT '[]',
+                 created_at timestamptz)
+```
+
+- **`sub_item_view_id`**: FK a `sub_item_views` de la oportunidad — la vista FUENTE cuyos sub-items se copian (snapshot) al nuevo quote item. Obligatorio. Ej: vista "Catálogo" (costeada por compras). No es la vista del quote — es de dónde se copia.
+- `line_columns`: col_keys de los sub-items del QUOTE (destino del snapshot) que aparecen como columnas en el PDF. El board `quotes` tiene sus propias sub_item_columns estándar (producto, qty, precio_unit, descuento, subtotal).
+- `header_fields`: col_keys del item que van en encabezado (cliente, fecha, folio)
+- `footer_fields`: col_keys del item para pie (rollups de totales, impuestos, descuento global)
+- **`signature_col_key`**: col_key de la columna `kind='signature'` en el board `quotes`. Si está configurado, el PDF generado inicialmente va sin firma; cuando esa columna se firma → PDF se regenera con la firma embebida.
+- PDF generado con `@react-pdf/renderer` en Edge Function, guardado en Supabase Storage
+
+**Configuración de firma en `board_columns.settings` (columna `kind='signature'` en board quotes):**
+```typescript
+{
+  on_sign: {
+    regenerate_pdf: true,           // regenera el PDF del quote con la firma embebida
+    pdf_col_key: 'pdf',             // col_key de la columna file donde actualizar el PDF
+    change_stage_to: 'stage_uuid'   // avanza etapa automáticamente al firmar (ej: Aceptada)
+  }
+}
+```
+
+**En la UI del template editor:** el selector de `line_columns` solo muestra columnas de la vista elegida en `sub_item_view_id`. Si cambia la vista → se limpia `line_columns` para forzar reconfiguración.
+
+**Vista "Cotización" es una `sub_item_view` normal** — no hay tipo especial. El `quote_template.sub_item_view_id` simplemente apunta a ella. El vendedor edita los sub-items en esa vista igual que en cualquier otra. Si al configurar el primer template el board aún no tiene vistas de sub-items, la UI ofrece crear una vista "Cotización" con columnas default (producto relation, qty number, precio_unit number, descuento number, subtotal formula); si ya tiene vistas, solo elige cuál usar.
 - Si item tiene columna `kind='signature'` firmada → watermark en footer del PDF
 
+### Pre-condiciones para generar cotización (validaciones cruzadas)
+
+Antes de permitir generar el PDF, el template puede requerir que ciertas columnas estén en estado específico. Estas condiciones van en `quote_templates.pre_conditions` (jsonb array):
+
+```typescript
+// quote_templates.pre_conditions
+[
+  // Condición sobre columna del item
+  { level: 'item', col_key: 'estado_aprobacion', operator: '=', value: 'Aprobado',
+    message: 'La oportunidad debe estar aprobada antes de cotizar' },
+
+  // Condición sobre columna de status del sub-item (requiere que TODOS o AL MENOS UNO cumplan)
+  { level: 'subitem', col_key: 'status', operator: '!=', value: 'Sin precio',
+    match: 'all',   // 'all' | 'any'
+    message: 'Todos los productos deben tener precio asignado' },
+
+  // Condición sobre columna de sub-item (ej: rollup suma > 0)
+  { level: 'item', col_key: 'total_cotizacion', operator: '>', value: 0,
+    message: 'La cotización no puede ser de $0' },
+]
+```
+
+**Flujo al clickear "Generar cotización":**
+1. Evalúa cada `pre_condition` contra el item + sus sub-items actuales
+2. Si alguna falla → lista de mensajes bloqueantes, sin generar PDF (igual que stage gates)
+3. Si todas pasan → genera PDF
+
+**Columnas disponibles para condiciones:**
+- Cualquier `col_key` del item (incluyendo fórmulas y rollups)
+- Cualquier `col_key` de sub_item_columns del board (para condiciones a nivel sub-item)
+- El operador `level: 'subitem'` con `match: 'all'` exige que todos los sub-items cumplan; `match: 'any'` basta con uno
+
+### Campos adicionales del board `quotes` y del PDF
+
+```
+board 'quotes' — columnas extra:
+  folio        (autonumber) ← COT-2024-001, requerido B2G
+  vigencia     (date)       ← fecha de expiración de la cotización
+  iva_pct      (number)     ← % IVA, default 16; configurable por workspace/template
+  moneda       (select)     ← MXN por defecto; USD si aplica
+  notas        (text)       ← condiciones generales, tiempo de entrega, etc.
+
+PDF — secciones:
+  Header:  logo del workspace + datos fiscales + folio + fecha + vigencia
+  Datos:   cliente, institución, vendedor, referencia (oportunidad)
+  Tabla:   líneas (producto, qty, precio_unit, descuento%, subtotal)
+  Footer:  subtotal sin IVA | IVA (16%) | TOTAL | vigencia | notas
+           [firma digital si existe]
+```
+
+**Folio:** columna `autonumber` en el board `quotes` — usa el engine de autonumber que ya existe. Formato configurable en `workspaces.settings.quote_folio_prefix` (ej: `"COT-{YYYY}-{N}"` → `COT-2024-001`).
+
 ### Tareas
-- [ ] **17.1** Migration: `quote_templates` + `quotes` (verificar si ya existe en schema 001)
-- [ ] **17.2** Settings → Boards → tab "Cotizaciones": CRUD de templates
-  - Editor: elegir header_fields, line_columns, footer_fields
-  - Preview en tiempo real
-- [ ] **17.3** Edge Function `generate-quote`:
-  - Fetch item + sub-items + values + firma si existe
-  - Render HTML con Handlebars
-  - PDF con Puppeteer → upload Storage → retorna URL
-- [ ] **17.4** API: `POST /api/quotes` → llama Edge Function → guarda en `quotes`
-- [ ] **17.5** Tab "Cotización" en ItemDetailView:
-  - Lista de cotizaciones previas
-  - Botón "Generar cotización" → elige template → genera → muestra PDF
-  - Descarga + link compartible
+- [ ] **17.1** Migration: `quote_templates`; agregar `system_key='quotes'` a `seed_system_boards` con:
+  - stages: Borrador/Enviada/Aceptada/Rechazada/Facturada
+  - board_columns: oportunidad(relation), contacto(relation), monto(number), pdf(file), firma(signature), folio(autonumber), vigencia(date), iva_pct(number, default 16), moneda(select: MXN/USD), notas(text), generado_por(people), version(number)
+  - sub_item_columns: producto(relation→catalog), qty(number), precio_unit(number), descuento(number), subtotal(formula)
+  - column_permissions seed: precio_unit/descuento → solo equipo `compras` edita; qty → todos editan; producto → view only
+- [ ] **17.2** `workspaces.settings.quote_folio_prefix` — campo en Settings → Workspace para configurar el formato del folio (ej: `COT-{YYYY}-{N}`)
+- [ ] **17.3** Settings → Boards → tab "Cotizaciones": CRUD de templates
+  - **Paso 1 — Vista fuente**: dropdown de `sub_item_views` del board (vista de donde se copian los sub-items); cambiar vista limpia `line_columns`
+  - **Paso 2 — Columnas PDF**: header_fields (col_keys del item), line_columns (col_keys de la vista fuente), footer_fields (col_keys del item: subtotales, IVA, total)
+  - **Paso 3 — Condiciones**: pre_conditions con level picker, col_key, operator, value, match, mensaje
+  - Preview con datos ficticios + logo del workspace
+- [ ] **17.4** `lib/quote-validator.ts`: `validatePreConditions(template, item, subItems)` → `{ ok, errors[] }`; reutiliza `evaluateCondition` de formula-engine
+- [ ] **17.5** Edge Function `generate-quote`:
+  - Input: `{ item_id, template_id, user_id, signature_data_url? }`
+  - Fetch item + sub-items de la vista fuente (`sub_item_view_id`) + valores + logo del workspace
+  - Snapshot: copia sub-items al nuevo quote item (respeta Fase 16 column permissions)
+  - Calcula `subtotal`, `iva`, `total` en servidor antes de pasar al PDF
+  - Render PDF con `@react-pdf/renderer` incluyendo logo, folio, vigencia, IVA, firma si viene
+  - Upload → Supabase Storage → URL
+  - Crea item en board `quotes`: folio auto, relations, version++, pdf en columna file
+  - Retorna `{ pdf_url, quote_item_sid, folio }`
+- [ ] **17.6** `ButtonCell` `action: 'generate_quote'`: corre `validatePreConditions`; si falla → errores inline; si ok → llama `POST /api/generate-quote`
+- [ ] **17.7** `POST /api/generate-quote`: `requireAuthApi()` → `validatePreConditions` → Edge Function → retorna `{ pdf_url, folio, quote_item_sid }`
+- [ ] **17.8** `SignatureCell` `settings.on_sign`: al firmar, llama `POST /api/generate-quote/[quoteItemId]/sign` → regenera PDF con firma embebida → actualiza columna `pdf` del quote → avanza stage si `change_stage_to` configurado
+- [ ] **17.9** Tab "Cotizaciones" en ItemDetailView:
+  - Lista: folio, fecha, vigencia, versión, stage badge, ✍️ si firmada, monto total
+  - Botón "Nueva cotización" (genera nueva versión sin pisar las anteriores)
+  - Click en quote → preview PDF en modal + descarga + link compartible
+  - Botón "Firmar" si `signature_col_key` configurado y aún no firmada
+  - Indicador visual si la vigencia ya expiró (fecha pasada → badge rojo "Expirada")
 
 ### Verificación
-- [ ] Cotización desde oportunidad con L1+L2 → PDF con tallas desglosadas
-- [ ] Firma en PDF si item tiene signature column firmada
-- [ ] Historial de cotizaciones por item
+- [ ] Cotización bloqueada si sub-item tiene `status = 'Sin precio'` y `match: 'all'`
+- [ ] Cotización bloqueada si `total_cotizacion = 0` (rollup)
+- [ ] PDF generado desde oportunidad con sub-items (L1+L2) → filas desglosadas por talla
+- [ ] Al generar → item aparece automáticamente en board `quotes` con relation a la oportunidad y al contacto
+- [ ] Versiones: generar 3 veces desde la misma oportunidad → v1, v2, v3 independientes en el historial
+- [ ] Firmar quote → PDF se regenera con firma embebida; stage avanza a Aceptada automáticamente
+- [ ] PDF sin firma ≠ PDF con firma — el link del PDF en el quote item apunta siempre a la versión más reciente
+- [ ] Stage del quote actualizable manualmente desde el board `quotes` (Borrador → Enviada → etc.)
 
 ---
 
-## Fase 18 — WhatsApp Integration
+## Fase 18 — Tratto AI Agent + Sidebar Chat
 
-**Goal:** Usuarios en campo operan Tratto desde WhatsApp. Claude AI parsea intención y ejecuta acciones.
+**Goal:** Engine de IA compartido que corre idéntico en sidebar web, WhatsApp, y futura app móvil. El transporte cambia; el agente no.
+
+### Arquitectura: un engine, múltiples transportes
+
+```
+┌─────────────┐   ┌──────────────┐   ┌─────────────────┐
+│ Sidebar Web │   │  WhatsApp    │   │   App Móvil     │
+│ (streaming) │   │  (Twilio)    │   │  (texto plano)  │
+└──────┬──────┘   └──────┬───────┘   └────────┬────────┘
+       │                 │                    │
+       ▼                 ▼                    ▼
+┌──────────────────────────────────────────────────────┐
+│              POST /api/chat  (transport adapter)      │
+│         supabase/functions/twilio-webhook             │
+└──────────────────────────┬───────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────┐
+│           lib/tratto-agent/agent.ts                   │
+│   Claude API · tool_use · agentic loop               │
+│   Input: { userId, workspaceId, message, history }   │
+│   Output: { text, toolCalls[] }  (streaming o batch) │
+└──────────────────────────┬───────────────────────────┘
+                           │
+              ┌────────────┴────────────┐
+              ▼                         ▼
+   lib/tratto-agent/tools/      lib/tratto-agent/context.ts
+   (cada tool = 1 archivo)      (system prompt + snapshot)
+```
+
+**Principio clave:** `agent.ts` no sabe si está en sidebar o WA. Solo recibe `{ userId, message, history[] }` y devuelve `{ text, toolCalls[] }`. El adapter de cada transporte decide cómo entregar la respuesta.
+
+---
+
+### lib/tratto-agent/ — estructura
+
+```
+lib/tratto-agent/
+  agent.ts          → loop principal: Claude API → herramientas → respuesta
+  types.ts          → AgentInput, AgentOutput, TrattoTool, ToolResult, ChatMessage
+  context.ts        → buildSystemPrompt(user, workspace, currentBoard?)
+  session.ts        → loadHistory(sessionId) / appendMessage(sessionId, msg)
+  tools/
+    index.ts        → TRATTO_TOOLS: Tool[] — registro de todas las tools
+    search-items.ts
+    get-item.ts
+    create-item.ts
+    update-item.ts
+    change-stage.ts
+    add-message.ts
+    list-boards.ts
+    get-board-summary.ts
+```
+
+---
+
+### Tools del agente
+
+| Tool | Input | Qué hace |
+|------|-------|----------|
+| `search_items` | `{ query?, board_key?, stage?, owner_me?, overdue?, limit }` | Busca items; responde con sid, nombre, etapa, owner |
+| `get_item` | `{ item_sid }` | Detalle completo: columnas + valores + sub-items count |
+| `create_item` | `{ board_key, name, stage_name?, owner_sid?, values? }` | Crea item; retorna sid |
+| `update_item` | `{ item_sid, values: Record<col_key, value> }` | Actualiza columnas custom |
+| `change_stage` | `{ item_sid, stage_name }` | Mueve etapa; respeta stage gates |
+| `add_message` | `{ item_sid, text }` | Postea en canal "General" del item |
+| `list_boards` | `{}` | Lista boards del workspace con system_key y tipo |
+| `get_board_summary` | `{ board_key, group_by?: 'stage', sum_col?: col_key }` | Conteo por etapa + suma de columna numérica (ej: valor, monto); respeta restrict_to_own automáticamente |
+
+**Reglas de tools:**
+- Todas usan `createServiceClient()` pero validan `workspace_id` del usuario — nunca escapan del tenant
+- Errores descriptivos en español: el agente los incluye en la respuesta
+- `change_stage` evalúa stage gates igual que `ButtonCell` — si hay validaciones bloqueantes, retorna error con lista de columnas fallidas
+
+---
+
+### Schema DB — sesiones de chat
+
+```sql
+-- Migration nueva (sin afectar tablas existentes)
+chat_sessions (
+  id uuid PK DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id),
+  user_id uuid NOT NULL REFERENCES users(id),
+  transport text NOT NULL,   -- 'sidebar' | 'whatsapp' | 'mobile'
+  created_at timestamptz DEFAULT now(),
+  last_message_at timestamptz DEFAULT now()
+)
+
+chat_messages (
+  id uuid PK DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+  role text NOT NULL,        -- 'user' | 'assistant' | 'tool_result'
+  content text NOT NULL,
+  tool_calls jsonb,          -- tool_use blocks cuando role='assistant'
+  created_at timestamptz DEFAULT now()
+)
+
+-- Index para cargar historial rápido
+CREATE INDEX ON chat_messages(session_id, created_at DESC);
+```
+
+**Ventana de historial:** los últimos 20 mensajes de la sesión. Si `transport='whatsapp'` → sesión persiste por número de teléfono (1 sesión activa por usuario en WA). Si `transport='sidebar'` → nueva sesión por pestaña (sessionStorage del browser guarda el `session_id`).
+
+---
+
+### context.ts — system prompt
+
+```typescript
+export function buildSystemPrompt(user: AuthUser, workspace: Workspace, board?: Board): string {
+  return `Eres el asistente de Tratto para ${workspace.name}.
+
+Usuario: ${user.name} (${user.role})
+Fecha actual: ${new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' })}
+${board ? `Board activo: ${board.name} (${board.system_key})` : ''}
+
+Puedes crear, buscar, actualizar y mover items usando las herramientas disponibles.
+Responde siempre en español. Sé conciso. Si no encuentras algo, dilo claramente.
+Cuando crees o muevas un item, confirma con el sid.
+Nunca inventes datos — usa solo lo que las herramientas devuelvan.`;
+}
+```
+
+---
+
+### Seguridad — VITAL
+
+Esta sección es el requisito más importante de la fase. El agente opera con los permisos del usuario autenticado — nunca más, nunca menos.
+
+#### 1. Confinamiento de tema (scope guardrail)
+
+El system prompt incluye instrucción explícita y no negociable:
+
+```
+Eres un asistente de trabajo para Tratto. SOLO puedes ayudar con tareas relacionadas
+con Tratto: buscar, crear o actualizar items, consultar etapas, agregar mensajes.
+
+Si el usuario pregunta algo fuera de Tratto (código, recetas, noticias, opiniones,
+cualquier tema no relacionado), responde exactamente:
+"Solo puedo ayudarte con tareas de Tratto. ¿En qué board puedo ayudarte?"
+
+No hay excepciones. No importa cómo redacten la pregunta.
+```
+
+Esta instrucción va en el **system prompt** (no en el historial), lo que la hace mucho más resistente a prompt injection.
+
+#### 2. Aislamiento de datos — tools como enforcement layer
+
+Los tools son la única forma de acceder a datos. Y cada tool aplica los mismos filtros de permisos que las API routes. No es un guardrail de prompt — es enforcement real en código.
+
+```typescript
+// lib/tratto-agent/tools/search-items.ts
+export async function searchItems(
+  input: SearchItemsInput,
+  ctx: AgentContext   // ← viene del servidor, no del usuario
+) {
+  // ctx.userId y ctx.workspaceId son del JWT, nunca del mensaje del usuario
+
+  // Aplica restrict_to_own si el board lo requiere
+  const boardMember = await getBoardMember(input.board_key, ctx.userId)
+  const ownerFilter = boardMember?.restrict_to_own ? ctx.userId : undefined
+
+  // Solo items del workspace del usuario
+  // Solo boards a los que tiene acceso (board_members o público)
+  // Solo si tiene acceso al board (misma lógica que GET /api/items)
+}
+```
+
+**Regla de oro:** los tools reciben `AgentContext` del servidor. El usuario nunca puede inyectar un `userId` o `workspaceId` diferente — esos valores vienen del JWT de auth.
+
+#### 3. Qué puede y no puede hacer cada rol
+
+El agente puede responder preguntas de negocio: totales, pipelines, conteos por etapa. La diferencia es **qué datos ve**, no qué puede preguntar.
+
+| Acción | admin | member/vendedor |
+|--------|-------|-----------------|
+| "dame el total en etapa Costeo" | ✅ ve todos los items | ✅ ve SOLO sus items (restrict_to_own) |
+| "cuánto hay en el pipeline" | ✅ suma global | ✅ suma de sus oportunidades |
+| Buscar items por texto | ✅ todo el board | ✅ solo los suyos si restrict_to_own |
+| Ver detalle de item | ✅ | ✅ solo si tiene acceso al board |
+| Crear item | ✅ | ✅ |
+| Actualizar columnas | ✅ | ✅ si tiene edit en column_permissions |
+| Cambiar etapa | ✅ | ✅ respeta stage gates |
+| Agregar mensaje a canal | ✅ | ✅ |
+
+**El filtrado es transparente:** un vendedor que pregunta "cuánto hay en el pipeline" recibe el total de SU pipeline, sin saber que hay más. No se le dice "no puedes ver el total global" — simplemente el tool aplica `owner_id = ctx.userId` si `restrict_to_own=true`. El dato es correcto para él.
+
+**Admin puede preguntar el panorama completo:**
+```
+Admin: "dame el total de oportunidades en etapa Costeo"
+→ tool get_board_summary({ board_key: 'opportunities', group_by: 'stage' })
+→ { 'Costeo': { count: 12, total_value: 840000 } }
+→ "Hay 12 oportunidades en Costeo por un total de $840,000"
+
+Vendedor (restrict_to_own): misma pregunta
+→ mismo tool, pero owner_id = userId del vendedor
+→ { 'Costeo': { count: 3, total_value: 210000 } }
+→ "Tienes 3 oportunidades en Costeo por $210,000"
+```
+
+Los tools no explican el motivo del filtro al usuario — simplemente aplican los permisos en silencio.
+
+#### 4. Validación de inputs con Zod
+
+Todos los tool inputs se validan con Zod antes de ejecutarse:
+
+```typescript
+const SearchItemsSchema = z.object({
+  query: z.string().max(200).optional(),
+  board_key: z.string().max(50).optional(),
+  stage: z.string().max(100).optional(),
+  owner_me: z.boolean().optional(),
+  overdue: z.boolean().optional(),
+  limit: z.number().int().min(1).max(20).default(10),
+})
+```
+
+Si Claude genera un tool input que no pasa Zod → el tool retorna error de validación → Claude lo incluye en su respuesta sin ejecutar nada.
+
+#### 5. Límites de input
+
+```typescript
+// Antes de llamar runAgent():
+if (message.length > 500) {
+  return { error: 'Mensaje muy largo. Máximo 500 caracteres.' }
+}
+// Previene context stuffing y prompt injection extenso
+```
+
+#### 6. Audit trail completo
+
+Cada tool call queda en `chat_messages.tool_calls` (jsonb):
+
+```json
+{
+  "tool": "create_item",
+  "input": { "board_key": "opportunities", "name": "Empresa XYZ" },
+  "output": { "sid": 10000290 },
+  "executed_at": "2026-04-14T10:23:00Z"
+}
+```
+
+Admins pueden ver qué hizo el agente en nombre de cada usuario en Settings → Workspace → tab "Asistente IA".
+
+---
+
+### API route — POST /api/chat (sidebar, streaming)
+
+```typescript
+// app/api/chat/route.ts
+// Input:  { message: string, sessionId?: string, boardSid?: string }
+// Output: SSE stream — eventos: { type: 'text' | 'tool_call' | 'done', payload }
+
+// Flujo:
+// 1. requireAuthApi() → user + workspaceId
+// 2. loadOrCreateSession(userId, workspaceId, 'sidebar', sessionId)
+// 3. appendMessage(sessionId, { role: 'user', content: message })
+// 4. runAgent({ userId, workspaceId, message, history, boardSid }) → stream
+// 5. Por cada chunk del stream → envía SSE event al cliente
+// 6. Al finalizar → appendMessage(sessionId, { role: 'assistant', content, toolCalls })
+
+// Streaming via ReadableStream + TransformStream
+// El cliente recibe eventos SSE: text delta, tool_call indicators, done
+```
+
+---
+
+### Sidebar UI
+
+```
+Header de Tratto:
+  [logo] [boards...] [···]  [💬 Asistente]  ← botón toggle
+
+Panel (drawer derecho, 400px, z-50, blur backdrop):
+  ┌─────────────────────────────────────┐
+  │ Asistente Tratto        [×]         │
+  ├─────────────────────────────────────┤
+  │                                     │
+  │  [burbujas de conversación]         │
+  │                                     │
+  │  🔧 Buscando items...  ← tool indicator
+  │                                     │
+  ├─────────────────────────────────────┤
+  │ [textarea      ] [↑ Enviar]         │
+  └─────────────────────────────────────┘
+
+Comportamiento:
+  - Enter envía, Shift+Enter = newline
+  - Tool calls muestran spinner + nombre del tool ("Creando item...")
+  - Respuestas streameadas carácter a carácter
+  - Board actual inyectado automáticamente en contexto
+  - Scroll to bottom automático en mensajes nuevos
+  - Historial persiste en la sesión (sessionStorage para session_id)
+```
+
+---
+
+### Tareas
+
+#### 17.A — Engine core
+- [ ] **17.1** Migration: `chat_sessions` + `chat_messages` + índice
+- [ ] **17.2** `lib/tratto-agent/types.ts`: `AgentInput`, `AgentOutput`, `ChatMessage`, `TrattoTool`, `ToolResult`, tipos para cada tool input/output
+- [ ] **17.3** `lib/tratto-agent/context.ts`: `buildSystemPrompt(user, workspace, board?)` — inyecta fecha MX, usuario, board activo
+- [ ] **17.4** `lib/tratto-agent/session.ts`: `loadOrCreateSession()`, `loadHistory(sessionId, limit=20)`, `appendMessage()` — usa serviceClient
+- [ ] **17.5** `lib/tratto-agent/tools/search-items.ts`: tool `search_items` — query full-text + filtros (board_key, stage, owner_me, overdue); retorna array con sid, name, stage, owner, deadline
+- [ ] **17.6** `lib/tratto-agent/tools/get-item.ts`: tool `get_item` — fetch item por sid + valores de columnas + count sub-items
+- [ ] **17.7** `lib/tratto-agent/tools/create-item.ts`: tool `create_item` — `POST /api/items` internamente; resuelve board_key→board_id, stage_name→stage_id
+- [ ] **17.8** `lib/tratto-agent/tools/update-item.ts`: tool `update_item` — `PUT /api/items/[id]/values`; acepta `Record<col_key, value>`
+- [ ] **17.9** `lib/tratto-agent/tools/change-stage.ts`: tool `change_stage` — evalúa stage gates antes de ejecutar; retorna error descriptivo si bloquea
+- [ ] **17.10** `lib/tratto-agent/tools/add-message.ts`: tool `add_message` — postea en canal General del item
+- [ ] **17.11** `lib/tratto-agent/tools/list-boards.ts` + `get-board-summary.ts`: tools de consulta de boards
+- [ ] **17.12** `lib/tratto-agent/tools/index.ts`: `TRATTO_TOOLS` — array con `name`, `description`, `input_schema` para cada tool (formato Anthropic tool_use)
+- [ ] **17.13** `lib/tratto-agent/agent.ts`: loop principal — `runAgent(input: AgentInput)` → llama Claude API con `tool_use`, ejecuta tools en loop hasta `stop_reason='end_turn'`, retorna `AgentOutput`; soporta modo streaming y batch
+
+#### 17.B — Transport sidebar (web)
+- [ ] **17.14** `app/api/chat/route.ts`: endpoint POST, SSE streaming — `requireAuthApi()`, carga sesión, llama `runAgent()` en modo stream, envía eventos `{ type: 'text_delta' | 'tool_start' | 'tool_end' | 'done' }`
+- [ ] **17.15** `components/ChatPanel.tsx`: drawer derecho 400px, toggle desde header, burbujas user/assistant, streaming render, indicadores de tool calls, scroll automático
+- [ ] **17.16** `hooks/useChat.ts`: maneja SSE stream, estado de mensajes, `sessionId` en sessionStorage, función `sendMessage(text)`
+- [ ] **17.17** Integrar `<ChatPanel>` en layout principal — botón en header, contexto del board activo pasado como prop
+
+#### 17.C — Verificación
+- [ ] "busca oportunidades de Juan que estén en propuesta" → lista correcta
+- [ ] "crea un contacto llamado María García, teléfono 5512345678" → item creado, responde con sid
+- [ ] "mueve la oportunidad 10000150 a Ganado" → respeta stage gates; si falla, explica qué columnas bloquean
+- [ ] Tool indicators visibles durante ejecución ("Buscando items en Oportunidades...")
+- [ ] Historial persiste al navegar entre boards (sessionStorage)
+- [ ] Mismo `runAgent()` funciona en modo batch (sin stream) para WhatsApp adapter
+
+---
+
+## Fase 19 — WhatsApp Integration
+
+**Goal:** WhatsApp como transporte adicional del mismo engine de Fase 17. Zero código de IA nuevo — solo adapter Twilio → `runAgent()`.
+
+### Arquitectura
+
+```
+Twilio WA → Edge Function twilio-webhook
+              ↓
+           Identifica usuario por phone
+           Carga/crea chat_session (transport='whatsapp')
+           Llama runAgent() en modo BATCH (sin stream)
+              ↓
+           Respuesta texto → sendWhatsApp(phone, text)
+```
 
 ### Flujos principales
 
 ```
 1. Vendedor crea item desde WA:
    "agregar oportunidad: Empresa XYZ, $50k, etapa propuesta"
-   → Claude AI → POST /api/items → responde con sid
+   → runAgent() → tool create_item → "Listo. Oportunidad creada: sid 10000290"
 
 2. Vendedor consulta desde WA:
    "qué tengo pendiente hoy"
-   → Claude AI → GET /api/items?owner=me&deadline=today → lista
+   → runAgent() → tool search_items(owner_me, overdue) → lista formateada
 
 3. Respuesta a mención:
    Canal: "@Juan revisa el contrato"
-   → Juan recibe WA → responde desde WA → mensaje vuelve al canal
+   → Juan recibe WA → responde desde WA → tool add_message → mensaje en canal
 
 4. Digest diario (8:30 AM MX):
-   Items vencidos + menciones pendientes + actividad reciente
+   Items vencidos + menciones pendientes (query directa, sin agente)
 ```
 
 ### Tareas
 - [ ] **18.1** Edge Function `twilio-webhook`:
-  - Recibe mensaje WA entrante
-  - Llama Claude API con contexto del usuario (boards, items recientes)
-  - Claude decide acción: create_item | query_items | reply_mention | unknown
-  - Ejecuta acción vía API interna
-  - Responde al usuario por WA
+  - Recibe mensaje WA entrante (Twilio signature verify)
+  - Lookup usuario por `phone` en `users` (E.164)
+  - Llama `runAgent({ userId, workspaceId, message, transport: 'whatsapp' })` en modo batch
+  - Formatea respuesta para WA (sin markdown, máx 1600 chars)
+  - `sendWhatsApp(phone, text)` vía `whatsapp-outbound`
 - [ ] **18.2** Edge Function `mentions-trigger`:
   - Cron cada 2 min
   - Busca `mentions WHERE notified=false`
@@ -1306,14 +1837,14 @@ quotes          (id, workspace_id, item_id, template_id, generated_by,
   - Marca `notified=true`
 - [ ] **18.3** Edge Function `daily-digest`:
   - Cron 8:30 AM America/Mexico_City
-  - Por usuario activo: items overdue + items due today + menciones sin responder
+  - Query directa (sin agente): items overdue + items due today + menciones sin responder por usuario
   - Mensaje WA formateado
 - [ ] **18.4** Edge Function `whatsapp-outbound`:
-  - Sender genérico: `sendWhatsApp(phone, message)`
+  - Sender genérico: `sendWhatsApp(phone, message)` via Twilio REST API
 - [ ] **18.5** UI: Settings → Workspace → tab "WhatsApp"
-  - Conectar número Twilio
-  - Test de envío
-  - Log de mensajes recientes
+  - Conectar número Twilio (webhook URL + auth token)
+  - Test de envío manual
+  - Log de `chat_messages` donde `session.transport='whatsapp'`
 
 ---
 
@@ -1357,3 +1888,104 @@ quotes          (id, workspace_id, item_id, template_id, generated_by,
 3. ✅ Commit limpio en main
 4. ✅ Leer la fase completa antes de escribir código
 5. ✅ Identificar si necesita migration nueva
+
+---
+
+## LATER — Ideas diferidas (no necesarias por ahora)
+
+### Cross-board Automations
+
+**Goal:** Trigger → Acción. Reemplazar los scenarios de Make que conectan boards.
+
+#### Schema
+
+```sql
+automations (
+  id uuid PK,
+  workspace_id uuid,
+  board_id uuid,          -- board donde vive la automation
+  name text,
+  is_active boolean DEFAULT true,
+  trigger_type text,      -- ver tipos abajo
+  trigger_config jsonb,   -- parámetros del trigger
+  actions jsonb[],        -- array de acciones a ejecutar en orden
+  created_at timestamptz
+)
+```
+
+#### Triggers
+
+| type | config | Descripción |
+|---|---|---|
+| `stage_changed` | `{ to_stage_id, from_stage_id? }` | Item cambia a/desde etapa |
+| `item_created` | `{}` | Nuevo item en el board |
+| `column_changed` | `{ column_id, to_value? }` | Columna cambia (opcionalmente a valor específico) |
+| `button_clicked` | `{ button_column_id }` | Click en ButtonCell (Fase 11) |
+
+#### Acciones
+
+| type | params | Descripción |
+|---|---|---|
+| `change_stage` | `{ stage_id }` | Cambiar etapa del item |
+| `set_column_value` | `{ column_id, value }` | Fijar valor de columna |
+| `assign_owner` | `{ user_id \| 'trigger_user' }` | Asignar dueño |
+| `notify_user` | `{ user_field \| user_id, message_template }` | Mensaje en canal Sistema |
+| `create_quote` | `{ template_id }` | Genera cotización PDF |
+| `cross_board_copy` | `{ target_board_id, field_mapping, copy_subitems, expand_variants }` | Crea item en otro board |
+| `call_webhook` | `{ url, method, headers, body_template }` | HTTP request externo |
+
+#### cross_board_copy — el caso Oportunidad → Proyecto
+
+```typescript
+{
+  type: 'cross_board_copy',
+  params: {
+    target_board_id: 'proyectos_board_id',
+    field_mapping: [
+      { from_column: 'nombre', to_column: 'nombre' },
+      { from_column: 'contacto', to_column: 'cliente' },
+    ],
+    copy_subitems: true,     // copiar L1 sub-items
+    expand_variants: true,   // explotar L2 desde multiselect tallas
+    link_column: 'oportunidad_relation_col'  // columna relation en Proyectos que apunta al item original
+  }
+}
+```
+
+#### Motor de automations
+
+```typescript
+// lib/automation-engine.ts
+export async function runAutomations(event: AutomationEvent, supabase: SupabaseClient)
+
+// AutomationEvent:
+{ type: 'stage_changed' | 'item_created' | ..., item_id, board_id, workspace_id, payload }
+```
+
+Llamado desde API routes después de cada mutación relevante. No DB triggers — lógica en TypeScript, más fácil de debuggear.
+
+**Anti-loop:** `automation_runs` table guarda `(automation_id, item_id, triggered_at)` — si la misma automation corrió para el mismo item en los últimos 5s, skip.
+
+#### UI — Lista de recetas por board
+
+Settings → Boards → tab "Automations":
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Cuando [etapa cambia a Ganado]                      │
+│  Hacer  [crear item en Proyectos] + [generar PDF]    │
+│                                          ✏️  🗑️      │
+├──────────────────────────────────────────────────────┤
+│  + Nueva automation                                  │
+└──────────────────────────────────────────────────────┘
+```
+
+No canvas. Lista simple. Cada fila = 1 trigger + N acciones.
+
+#### Tareas
+- [ ] **A.1** Migration: `automations` + `automation_runs`
+- [ ] **A.2** `lib/automation-engine.ts` — evaluador de triggers + ejecutor de acciones
+- [ ] **A.3** Integrar `runAutomations()` en `PATCH /api/items/[id]` + `POST /api/items`
+- [ ] **A.4** Implementar acción `cross_board_copy` (con copy_subitems + expand_variants)
+- [ ] **A.5** UI: Settings → Boards → tab "Automations" (lista de recetas + editor)
+- [ ] **A.6** ButtonCell con `action: 'run_automation'` (completar Fase 11.2)
