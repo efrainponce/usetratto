@@ -1191,9 +1191,22 @@ function NativeRow({
       {/* Formula columns (read-only) */}
       {formulaCols.map(col => {
         const result = computeFormula(col, row)
+        const colValidation = (col.settings as Record<string, unknown>)?.validation as { condition: { col?: string; operator: string; value?: unknown }; message: string } | undefined
+        const isInvalid = (() => {
+          if (!colValidation?.condition) return false
+          const condCol = colValidation.condition.col || col.col_key
+          const evalRow: Record<string, unknown> = { [col.col_key]: result }
+          for (const v of row.values) evalRow[v.col_key ?? ''] = v.value_number ?? v.value_text ?? null
+          try { return !evaluateCondition({ ...colValidation.condition as FormulaCondition, col: condCol }, evalRow) } catch { return false }
+        })()
         return (
-          <div key={col.id} className="flex-none text-right text-[13px] text-indigo-700 font-medium" style={{ width: w(col.id, 96) }}>
+          <div key={col.id} className="relative flex-none text-right text-[13px] text-indigo-700 font-medium" style={{ width: w(col.id, 96) }}>
             {result != null ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+            {isInvalid && (
+              <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
+                <span className="absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>
+              </div>
+            )}
           </div>
         )
       })}
@@ -1202,9 +1215,22 @@ function NativeRow({
       {rollupCols.map(col => {
         const cfg = col.settings.rollup_config as RollupConfig | undefined
         const result = cfg ? computeRollup(cfg, row) : null
+        const colValidation = (col.settings as Record<string, unknown>)?.validation as { condition: { col?: string; operator: string; value?: unknown }; message: string } | undefined
+        const isInvalid = (() => {
+          if (!colValidation?.condition) return false
+          const condCol = colValidation.condition.col || col.col_key
+          const evalRow: Record<string, unknown> = { [col.col_key]: result }
+          for (const v of row.values) evalRow[v.col_key ?? ''] = v.value_number ?? v.value_text ?? null
+          try { return !evaluateCondition({ ...colValidation.condition as FormulaCondition, col: condCol }, evalRow) } catch { return false }
+        })()
         return (
-          <div key={col.id} className="flex-none text-right text-[13px] text-teal-700 font-medium" style={{ width: w(col.id, 96) }}>
+          <div key={col.id} className="relative flex-none text-right text-[13px] text-teal-700 font-medium" style={{ width: w(col.id, 96) }}>
             {result != null ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+            {isInvalid && (
+              <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
+                <span className="absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>
+              </div>
+            )}
           </div>
         )
       })}

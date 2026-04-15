@@ -172,43 +172,42 @@ export function evaluateCondition(condition: FormulaCondition, row: Record<strin
 }
 
 /**
- * Helper: Check if a value matches a comparison condition
+ * Helper: Check if a value matches a comparison condition.
+ * null/undefined values: only satisfy = null or != non-null; fail all ordering operators.
  */
 function conditionMatches(value: unknown, operator: '>' | '<' | '=' | '!=', compareValue: unknown): boolean {
-  // Try numeric comparison if both are numbers
+  // null/undefined: only equality checks make sense
+  if (value === null || value === undefined) {
+    const compareIsNull = compareValue === null || compareValue === undefined
+    if (operator === '=')  return compareIsNull
+    if (operator === '!=') return !compareIsNull
+    return false  // null fails > and < (e.g. null > 0 should be false — item has no value)
+  }
+
+  // Try numeric comparison if both parse as numbers
   const numValue = toNumber(value)
   const numCompare = toNumber(compareValue)
 
   if (numValue !== null && numCompare !== null) {
     switch (operator) {
-      case '=':
-        return numValue === numCompare
-      case '!=':
-        return numValue !== numCompare
-      case '<':
-        return numValue < numCompare
-      case '>':
-        return numValue > numCompare
-      default:
-        return false
+      case '=':  return numValue === numCompare
+      case '!=': return numValue !== numCompare
+      case '<':  return numValue < numCompare
+      case '>':  return numValue > numCompare
+      default:   return false
     }
   }
 
-  // Fall back to string comparison
-  const strValue = String(value)
+  // String comparison fallback (only when both are non-null strings)
+  const strValue   = String(value)
   const strCompare = String(compareValue)
 
   switch (operator) {
-    case '=':
-      return strValue === strCompare
-    case '!=':
-      return strValue !== strCompare
-    case '<':
-      return strValue < strCompare
-    case '>':
-      return strValue > strCompare
-    default:
-      return false
+    case '=':  return strValue === strCompare
+    case '!=': return strValue !== strCompare
+    case '<':  return strValue < strCompare
+    case '>':  return strValue > strCompare
+    default:   return false
   }
 }
 
