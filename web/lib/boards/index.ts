@@ -184,7 +184,7 @@ export const getCatalogBoard = unstable_cache(
 
 // ─── Column role helpers (re-exported from client-safe module) ───────────────
 
-export { getPrimaryStageColKey, getOwnerColKey, getEndDateColKey } from './helpers'
+export { getPrimaryStageColKey, getOwnerColKey, getEndDateColKey, isRefCol } from './helpers'
 
 // ─── Sub-item columns (cached 60s — changes rarely) ─────────────────────────
 

@@ -45,6 +45,8 @@ export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
   // Disable edit if canEdit is false or if column is system read-only
   const safeOnStartEdit = (canEdit && !isSystemReadOnly) ? cellProps.onStartEdit : () => {}
 
+  const isRef = !!(cellProps.column.settings as any)?.ref_source_col_key && !!(cellProps.column.settings as any)?.ref_field_col_key
+
   const cell = (() => {
     const cellPropsAdjusted = { ...cellProps, onStartEdit: safeOnStartEdit }
     switch (cellProps.column.kind) {
@@ -71,6 +73,14 @@ export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
       )
     }
   })()
+
+  if (isRef) {
+    return (
+      <div className="relative w-full h-full bg-amber-50/30 ring-1 ring-inset ring-amber-200/60" title="Reflejo: el valor vive en otro board">
+        {cell}
+      </div>
+    )
+  }
 
   if (!isInvalid) return cell
 

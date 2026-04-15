@@ -199,7 +199,14 @@ export function GenericDataTable({
     const dataCols = columns.map(col =>
       helper.accessor(row => row.cells[col.key] ?? null, {
         id:            col.key,
-        header:        col.label,
+        header: () => (
+          <div className="flex items-center gap-0.5">
+            <span>{col.label}</span>
+            {(col.settings as any)?.ref_source_col_key && (
+              <span className="text-amber-500" title={`Reflejo de ${(col.settings as any).ref_source_col_key} → ${(col.settings as any).ref_field_col_key}`}>↪</span>
+            )}
+          </div>
+        ),
         size:          col.width ?? DEFAULT_WIDTHS[col.kind],
         enableSorting: col.sortable !== false,
         cell: ({ row }) => (

@@ -252,6 +252,17 @@ const [savingButton,    setSavingButton]    = useState(false)
   )
   const [savingRole,     setSavingRole]     = useState(false)
 
+  // ── Ref/Mirror column state (Fase 16.6.7) ─────────────────────────────────
+  const [refTargetCols, setRefTargetCols] = useState<Array<{ id: string; col_key: string; name: string; kind: string }>>([])
+  const [refSourceCol, setRefSourceCol] = useState<string>(
+    (column.settings as any)?.ref_source_col_key ?? ''
+  )
+  const [refFieldCol, setRefFieldCol] = useState<string>(
+    (column.settings as any)?.ref_field_col_key ?? ''
+  )
+  const [refError, setRefError] = useState<string | null>(null)
+  const [refSaving, setRefSaving] = useState(false)
+
   // ── Active tab ────────────────────────────────────────────────────────────
   const isSelect    = kind === 'select' || kind === 'multiselect'
   const isNumber    = kind === 'number'
@@ -260,8 +271,9 @@ const [savingButton,    setSavingButton]    = useState(false)
   const isFormula   = kind === 'formula'
   const isRollup    = kind === 'rollup'
   const hasDefault  = !['formula', 'rollup', 'signature', 'file', 'button', 'autonumber'].includes(kind)
+  const canBeRef    = !['formula', 'rollup', 'button', 'signature', 'file', 'autonumber', 'relation'].includes(kind) && !column.is_system
 
-  type TabId = 'general' | 'opciones' | 'formula' | 'rollup' | 'validacion' | 'permisos'
+  type TabId = 'general' | 'opciones' | 'formula' | 'rollup' | 'validacion' | 'reflejo' | 'permisos'
   const [tab, setTab] = useState<TabId>('general')
 
   // ── Detect sub-item column type ────────────────────────────────────────────
@@ -303,6 +315,30 @@ const [savingButton,    setSavingButton]    = useState(false)
       .then(r => r.ok ? r.json() : [])
       .then((data: SubItemCol[]) => setSubItemCols(data.filter(c => c.kind === 'number' || c.kind === 'formula')))
   }, [isRollup, boardId])
+
+  // ── Load target columns for ref/mirror ──────────────────────────────────
+  useEffect(() => {
+    if (!canBeRef || !refSourceCol) {
+      setRefTargetCols([])
+      return
+    }
+    const relationCols = (allColumns ?? []).filter(c => c.kind === 'relation')
+    const relCol = relationCols.find(c => c.col_key === refSourceCol)
+    const targetBoardId = (relCol?.settings as any)?.target_board_id
+    if (!targetBoardId) {
+      setRefTargetCols([])
+      return
+    }
+    fetch(`/api/boards/${targetBoardId}/columns`)
+      .then(r => (r.ok ? r.json() : []))
+      .then((cols: Array<{ id: string; col_key: string; name: string; kind: string }>) => {
+        const allowed = cols.filter(
+          c => !['formula', 'rollup', 'button', 'signature', 'file', 'autonumber', 'relation'].includes(c.kind)
+        )
+        setRefTargetCols(allowed)
+      })
+      .catch(() => setRefTargetCols([]))
+  }, [refSourceCol, canBeRef, allColumns])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -570,6 +606,48 @@ const [savingButton,    setSavingButton]    = useState(false)
     }
   }
 
+  async function handleSaveRef() {
+    if (!refSourceCol || !refFieldCol) return
+    setRefSaving(true)
+    setRefError(null)
+    try {
+      const targetKind = refTargetCols.find(c => c.col_key === refFieldCol)?.kind ?? 'text'
+      const nextSettings = {
+        ...column.settings,
+        ref_source_col_key: refSourceCol,
+        ref_field_col_key: refFieldCol,
+        ref_field_kind: targetKind,
+      }
+      const updated = await patchColumn({ settings: nextSettings })
+      if (updated) {
+        onUpdated(updated)
+        onClose()
+      }
+    } catch (err) {
+      setRefError('Error al guardar')
+    } finally {
+      setRefSaving(false)
+    }
+  }
+
+  async function handleClearRef() {
+    setRefSaving(true)
+    setRefError(null)
+    try {
+      const { ref_source_col_key, ref_field_col_key, ref_field_kind, ...rest } =
+        (column.settings as any) ?? {}
+      const updated = await patchColumn({ settings: rest })
+      if (updated) {
+        onUpdated(updated)
+        onClose()
+      }
+    } catch (err) {
+      setRefError('Error al limpiar')
+    } finally {
+      setRefSaving(false)
+    }
+  }
+
   async function handleAddPermission() {
     if (!newPermId || !permissionsEndpoint) return
     const isTeam = newPermId.startsWith('t:')
@@ -675,6 +753,7 @@ const [savingButton,    setSavingButton]    = useState(false)
     ...(isSelect  ? [{ id: 'opciones'   as TabId, label: 'Opciones'  }] : []),
     ...(isFormula ? [{ id: 'formula'    as TabId, label: 'Fórmula'   }] : []),
     ...(isRollup  ? [{ id: 'rollup'     as TabId, label: 'Rollup'    }] : []),
+    ...(canBeRef  ? [{ id: 'reflejo'    as TabId, label: 'Reflejo'   }] : []),
     { id: 'validacion', label: 'Validación' },
     ...(permissionsEndpoint ? [{ id: 'permisos' as TabId, label: 'Permisos' }] : []),
   ]
@@ -1268,6 +1347,81 @@ const [savingButton,    setSavingButton]    = useState(false)
               >
                 {savingRollup ? 'Guardando…' : 'Guardar rollup'}
               </button>
+            </div>
+          )}
+
+          {/* ── Reflejo ─────────────────────────────────────────────────── */}
+          {tab === 'reflejo' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Columna de relación (este board)</label>
+                <select
+                  value={refSourceCol}
+                  onChange={(e) => {
+                    setRefSourceCol(e.target.value)
+                    setRefFieldCol('')
+                    setRefError(null)
+                  }}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                >
+                  <option value="">— Ninguna —</option>
+                  {(allColumns ?? [])
+                    .filter(c => c.kind === 'relation')
+                    .map(c => (
+                      <option key={c.col_key} value={c.col_key}>
+                        {c.name}
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Elige una columna relation existente. El reflejo leerá del item relacionado.</p>
+              </div>
+
+              {refSourceCol && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Campo a reflejar (board destino)</label>
+                  <select
+                    value={refFieldCol}
+                    onChange={(e) => {
+                      setRefFieldCol(e.target.value)
+                      setRefError(null)
+                    }}
+                    className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                  >
+                    <option value="">— Elegir campo —</option>
+                    {refTargetCols.map(c => (
+                      <option key={c.id} value={c.col_key}>
+                        {c.name} · {c.kind}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Este valor se mostrará en la celda. Al editarlo se escribirá en el item fuente.</p>
+                </div>
+              )}
+
+              {refError && <p className="text-xs text-red-600">{refError}</p>}
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  onClick={handleSaveRef}
+                  disabled={refSaving || !refSourceCol || !refFieldCol}
+                  className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {refSaving ? 'Guardando…' : 'Guardar reflejo'}
+                </button>
+                {((column.settings as any)?.ref_source_col_key || (column.settings as any)?.ref_field_col_key) && (
+                  <button
+                    onClick={handleClearRef}
+                    disabled={refSaving}
+                    className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                  >
+                    No reflejar
+                  </button>
+                )}
+              </div>
+
+              <div className="text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded p-2">
+                Las celdas reflejo se muestran con tinte ámbar e icono <b>↪</b>. El valor real vive en el item relacionado.
+              </div>
             </div>
           )}
 

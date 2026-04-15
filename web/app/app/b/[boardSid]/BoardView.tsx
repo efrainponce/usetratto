@@ -93,6 +93,27 @@ export function BoardView({
 
   // Dynamic ITEMS_FIELD map
   const ITEMS_FIELD = useMemo(() => getItemsFieldMap(stageColKey, ownerColKey), [stageColKey, ownerColKey])
+
+  // Compute ref columns metadata
+  const refColsMeta = useMemo<RefColMeta[]>(() => {
+    const metas: RefColMeta[] = []
+    for (const col of rawCols) {
+      const s = col.settings as any
+      if (!s?.ref_source_col_key || !s?.ref_field_col_key) continue
+      const relCol = rawCols.find(c => c.col_key === s.ref_source_col_key && c.kind === 'relation')
+      const targetBoardId = (relCol?.settings as any)?.target_board_id
+      if (!relCol || !targetBoardId) continue
+      metas.push({
+        col_key: col.col_key,
+        relation_col_key: relCol.col_key,
+        relation_col_id: relCol.id,
+        target_board_id: targetBoardId,
+        ref_field_col_key: s.ref_field_col_key,
+      })
+    }
+    return metas
+  }, [rawCols])
+
   const [stages,   setStages]   = useState<BoardStage[]>(initialStages)
   const [users,    setUsers]    = useState<WorkspaceUser[]>(initialUsers)
   const [rawItems, setRawItems] = useState<BoardItem[]>(initialItems)
@@ -126,6 +147,17 @@ export function BoardView({
   const colPickerRef       = useRef<HTMLDivElement>(null)
   const viewMembersPanelRef = useRef<HTMLDivElement>(null)
   const viewSubmittingRef  = useRef(false)
+
+  // ─── Ref columns: mirror/lookup support ────────────────────────────────────
+  type RefColMeta = {
+    col_key: string            // THIS board's ref col key
+    relation_col_key: string    // col_key of the relation col in THIS board
+    relation_col_id: string     // column_id of relation col (for item_values lookup)
+    target_board_id: string     // board_id of the target board
+    ref_field_col_key: string   // col_key in the target board to mirror
+  }
+  const [refMap, setRefMap] = useState<Record<string, Record<string, unknown>>>({})  // source_item_id → col_key → value
+  const [refTargetCols, setRefTargetCols] = useState<Record<string, Record<string, string>>>({})  // target_board_id → col_key → column_id
 
   // col_key → column UUID  (for item_values lookups)
   const colIdMap = useMemo(() => {
@@ -161,12 +193,49 @@ export function BoardView({
 
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
-    return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD))
-  }, [rawItems, colIdMap, columns, ITEMS_FIELD])
+    return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap))
+  }, [rawItems, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
     if (colKey === '__sid') return
+
+    // Ref column: write to source item instead of this item
+    const refMeta = refColsMeta.find(m => m.col_key === colKey)
+    if (refMeta) {
+      const row = rows.find(r => r.id === rowId)
+      const relVal = row?.cells[refMeta.relation_col_key]
+      if (typeof relVal !== 'string') {
+        console.warn('[ref edit] no source item, skipping')
+        return
+      }
+      const targetColId = refTargetCols[refMeta.target_board_id]?.[refMeta.ref_field_col_key]
+      if (!targetColId) {
+        console.warn('[ref edit] no target col id')
+        return
+      }
+      // Optimistic update local refMap
+      setRefMap(prev => ({
+        ...prev,
+        [relVal]: { ...(prev[relVal] ?? {}), [refMeta.ref_field_col_key]: value }
+      }))
+      // PUT to source item
+      const res = await fetch(`/api/items/${relVal}/values`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [targetColId]: value }),
+      })
+      if (!res.ok) {
+        console.error('[ref edit] PUT failed')
+        // Revert optimistic
+        setRefMap(prev => {
+          const prev2 = { ...(prev[relVal] ?? {}) }
+          delete prev2[refMeta.ref_field_col_key]
+          return { ...prev, [relVal]: prev2 }
+        })
+      }
+      return
+    }
 
     // Optimistic update
     setRawItems(prev => prev.map(item => {
@@ -209,7 +278,7 @@ export function BoardView({
         body:    JSON.stringify({ column_id: colId, value }),
       })
     }
-  }, [colIdMap])
+  }, [colIdMap, refColsMeta, refTargetCols, rows])
 
   // ── Create ─────────────────────────────────────────────────────────────────
   const handleAddColumn = useCallback(async (name: string, kind: string) => {
@@ -267,6 +336,50 @@ export function BoardView({
     if (!item?.sid) return
     router.push(`/app/b/${boardSid}/${item.sid}`)
   }, [rawItems, boardSid, router])
+
+  // Fetch source items for ref columns
+  useEffect(() => {
+    if (refColsMeta.length === 0) return
+    // Group source ids by target board
+    const idsByBoard: Record<string, Set<string>> = {}
+    for (const meta of refColsMeta) {
+      for (const item of rawItems) {
+        const relVal = item.item_values?.find(iv => iv.column_id === meta.relation_col_id)?.value_text
+        if (relVal) {
+          if (!idsByBoard[meta.target_board_id]) idsByBoard[meta.target_board_id] = new Set()
+          idsByBoard[meta.target_board_id].add(relVal)
+        }
+      }
+    }
+
+    // Fetch per target board
+    const fetches = Object.entries(idsByBoard).map(async ([bid, idsSet]) => {
+      const ids = [...idsSet]
+      if (ids.length === 0) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string> }
+      const res = await fetch(`/api/items?boardId=${bid}&ids=${ids.join(',')}&format=col_keys`)
+      if (!res.ok) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string> }
+      const items = await res.json()
+      // Also fetch board columns for col_key → column_id map (for PUT on edit)
+      const colsRes = await fetch(`/api/boards/${bid}/columns`)
+      const cols = colsRes.ok ? await colsRes.json() : []
+      const colMap: Record<string, string> = {}
+      for (const c of cols) colMap[c.col_key] = c.id
+      return { boardId: bid, items, cols: colMap }
+    })
+
+    Promise.all(fetches).then(results => {
+      const map: Record<string, Record<string, unknown>> = {}
+      const targetColsByBoard: Record<string, Record<string, string>> = {}
+      for (const { boardId: bid, items, cols } of results) {
+        targetColsByBoard[bid] = cols
+        for (const item of items) {
+          map[item.id] = item.col_values ?? {}
+        }
+      }
+      setRefMap(map)
+      setRefTargetCols(targetColsByBoard)
+    }).catch(err => console.error('[ref fetch]', err))
+  }, [rawItems, refColsMeta])
 
   // ── Refresh items + columns after import (new columns may have been created) ─
   const refreshAll = useCallback(async () => {
@@ -894,19 +1007,36 @@ function augmentSettings(col: BoardColumn, stageColKey: string, ownerColKey: str
   return base
 }
 
-function toRow(item: BoardItem, colIdMap: Record<string, string>, cols: ColumnDef[], itemsField: Record<string, keyof BoardItem>): Row {
+function toRow(
+  item: BoardItem,
+  colIdMap: Record<string, string>,
+  cols: ColumnDef[],
+  itemsField: Record<string, keyof BoardItem>,
+  refColsMeta: any[],
+  refMap: Record<string, Record<string, unknown>>
+): Row {
   const cells: Record<string, CellValue> = {}
   for (const col of cols) {
     if (col.key === '__sid') {
       cells[col.key] = item.sid
-    } else if (col.key in itemsField) {
-      cells[col.key] = (item[itemsField[col.key]] ?? null) as CellValue
     } else {
-      const colId = colIdMap[col.key]
-      const v = item.item_values?.find(iv => iv.column_id === colId)
-      cells[col.key] = v
-        ? (v.value_text ?? v.value_number ?? v.value_date ?? (v.value_json !== null ? v.value_json as CellValue : null))
-        : null
+      // Ref column: read from refMap based on relation
+      const refMeta = refColsMeta.find(m => m.col_key === col.key)
+      if (refMeta) {
+        const relVal = item.item_values?.find(iv => iv.column_id === refMeta.relation_col_id)?.value_text
+        cells[col.key] = ((relVal && refMap[relVal]?.[refMeta.ref_field_col_key]) ?? null) as CellValue
+        continue
+      }
+
+      if (col.key in itemsField) {
+        cells[col.key] = (item[itemsField[col.key]] ?? null) as CellValue
+      } else {
+        const colId = colIdMap[col.key]
+        const v = item.item_values?.find(iv => iv.column_id === colId)
+        cells[col.key] = v
+          ? (v.value_text ?? v.value_number ?? v.value_date ?? (v.value_json !== null ? v.value_json as CellValue : null))
+          : null
+      }
     }
   }
 

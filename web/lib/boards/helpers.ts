@@ -18,3 +18,7 @@ export function getEndDateColKey(columns: Array<{ col_key: string; kind: string;
   const fallback = columns.find(c => c.col_key === 'deadline' && c.kind === 'date')
   return fallback?.col_key ?? null
 }
+
+export function isRefCol(col: { kind?: string; settings?: any }): boolean {
+  return !!col?.settings?.ref_source_col_key && !!col?.settings?.ref_field_col_key
+}

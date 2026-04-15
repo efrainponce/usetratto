@@ -459,6 +459,84 @@ User reporta que Activity del item no muestra eventos de sub-items. Requiere aud
 
 ---
 
+## Fase 16.6 — Ref Columns (Mirror / Lookup)
+
+**Goal:** Columna que *muestra* un campo de un item relacionado de otro board y al editarse escribe directamente en el item fuente. Visualmente distinta (tinte ámbar + icono ↪) con tooltip explicativo en el header.
+
+**Caso de uso**: en el board `opportunities` tener una columna `telefono_contacto` que es `ref` → va al contacto relacionado (columna `contacto`) y lee/escribe su columna `phone`. Editarla desde oportunidades actualiza el contact real.
+
+### Data model (sin migration — solo settings)
+
+```json
+// board_columns.settings para una ref col en opportunities
+{
+  "ref_source_col_key": "contacto",     // col_key de columna relation EN ESTE board
+  "ref_field_col_key":  "phone",         // col_key del campo en el board destino a reflejar
+  "ref_field_kind":     "phone"          // kind cacheado para dispatching (optional)
+}
+```
+
+La columna sigue teniendo su propio `kind` (igual al del campo destino). Detección: `isRefCol(col) = !!col.settings?.ref_source_col_key && !!col.settings?.ref_field_col_key`.
+
+### Flujo de render
+
+1. BoardView detecta ref cols
+2. Para cada ref col, resuelve: `relationCol` (por col_key en rawCols), `target_board_id` (de relationCol.settings), `ref_field_col_key`
+3. Colecta `source_item_ids` únicos de los valores de la relation col en rawItems
+4. Batch fetch: `GET /api/items?boardId=<target>&ids=<a,b,c>` (endpoint extendido)
+5. Construye `refMap: Record<source_item_id, Record<col_key, value>>` mapeando item_values a col_keys del target board
+6. `toRow()` populates ref col cells desde refMap[relationVal]?.[ref_field_col_key]
+
+### Flujo de edición
+
+- `handleCellChange(col, value)` detecta ref col
+- Deriva `sourceItemId` del valor actual de la relation col en la row
+- Deriva `targetColId` del refMap secondary index (col_key → column_id del target board)
+- `PUT /api/items/[sourceItemId]/values` con `{ [targetColId]: value }`
+- Actualiza `refMap` optimistamente
+
+### Visual
+
+- **Cell**: wrapping div `bg-amber-50/30 ring-1 ring-inset ring-amber-100/60`
+- **Column header**: icon `↪` (o emoji) al lado del label, tooltip al hover: "Reflejo de *Contacto* → *phone* · Se edita en board **Contactos**"
+- **Helper (?)**: el user pidió esto explícitamente — un tooltip/info icon que deje claro que el valor no vive ahí
+
+### ColumnSettingsPanel tab "Reflejo"
+
+- Visible cuando el kind del col NO es `formula/rollup/button/signature/file/autonumber`
+- Dropdown 1: "Columna de relación" → lista los cols de este board con `kind='relation'`
+- Dropdown 2: "Campo a reflejar" → al elegir relation, fetch `/api/boards/[target_board_id]/columns` y lista los cols compatibles del target
+- Guardar: persiste `ref_source_col_key` + `ref_field_col_key` + `ref_field_kind` en settings
+- Limpiar: botón "No reflejar" (borra los 3 settings)
+
+### Tareas
+
+- [ ] **16.6.1** `lib/boards/helpers.ts`: `isRefCol(col)` helper exportado
+- [ ] **16.6.2** `GET /api/items`: soportar query param `?ids=a,b,c` (filtra además de boardId); devolver items con `item_values` + un mapeo `col_keys` computado server-side para el response
+- [ ] **16.6.3** `BoardView.tsx`: detectar ref cols, useEffect para batch-fetch source items del target board, construir `refMap` + `refColMeta`, modificar `toRow()` para poblar cells ref
+- [ ] **16.6.4** `BoardView.tsx`: interceptar `handleCellChange` para ref cols → PUT al source item; update optimista de `refMap`
+- [ ] **16.6.5** `ColumnCell.tsx`: wrapper `bg-amber-50/30 ring-1 ring-inset ring-amber-100/60` cuando `isRefCol(col)`
+- [ ] **16.6.6** `GenericDataTable.tsx`: renderiza icon `↪` + tooltip en header de ref cols con texto "Reflejo de X → Y · edita en board Z"
+- [ ] **16.6.7** `ColumnSettingsPanel.tsx`: tab nuevo "Reflejo" con 2 dropdowns + botón "No reflejar"
+- [ ] **16.6.8** Seed opcional: agregar `telefono_contacto` como ref col en opportunities apuntando a `contacto` → `phone` (demo)
+
+### Verificación
+
+- [ ] Crear ref col en opportunities → se ve con tinte ámbar + icono ↪ en header
+- [ ] Hover en header muestra tooltip explicativo
+- [ ] Editar valor de ref cell → actualiza el item fuente en contacts
+- [ ] Refrescar → valor sigue ahí, leído del source
+- [ ] Si source_item no existe (relation vacía) → cell muestra —
+
+### Deferidos (fuera de MVP 16.6)
+
+- Sub-items support (solo board items por ahora)
+- Realtime sync (cambios en source no reflejan hasta refresh)
+- Multi-relation (si relation tiene array, solo usa el primer valor)
+- Permisos visuales (si user no puede editar source, ref cell debería ser read-only con tint diferente — depende de permisos de Fase 9 aplicados al target board)
+
+---
+
 ## Fase 17 — Invitations + Email Auth + Session Optimization
 
 **Goal:** Onboarding sin costo vía invitación por email, login por email como método primario, sesiones largas con trusted devices, y multi-identity (varios emails apuntando a un user). Meta: reducir costo OTP SMS de ~$1.50/mes a <$0.20/mes para CMP.

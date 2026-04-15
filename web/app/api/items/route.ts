@@ -10,6 +10,10 @@ export async function GET(req: Request) {
   const boardId = new URL(req.url).searchParams.get('boardId')
   if (!boardId) return NextResponse.json({ error: 'boardId required' }, { status: 400 })
 
+  const idsParam = new URL(req.url).searchParams.get('ids')
+  const format = new URL(req.url).searchParams.get('format')
+  const idList = idsParam ? idsParam.split(',').filter(Boolean) : null
+
   const supabase = await createClient()
 
   // Check if this user has restrict_to_own for this board (non-admin members only)
@@ -32,6 +36,10 @@ export async function GET(req: Request) {
     )
     .eq('board_id', boardId)
     .eq('workspace_id', auth.workspaceId)
+
+  if (idList && idList.length > 0) {
+    query = query.in('id', idList)
+  }
 
   if (restrictToOwn) {
     query = query.eq('owner_id', auth.userId)
@@ -106,6 +114,32 @@ export async function GET(req: Request) {
         rollup[rc.col_key] = computeRollup(effectiveCfg, { values: [], children })
       }
       item.sub_items_rollup = rollup
+    }
+  }
+
+  // Transform to col_values map if requested
+  if (format === 'col_keys' && items.length > 0) {
+    const { data: boardCols } = await supabase
+      .from('board_columns')
+      .select('id, col_key')
+      .eq('board_id', boardId)
+
+    const columnIdToKey: Record<string, string> = {}
+    for (const col of boardCols ?? []) {
+      columnIdToKey[col.id] = col.col_key
+    }
+
+    for (const item of items) {
+      const colValues: Record<string, unknown> = {}
+      for (const iv of item.item_values ?? []) {
+        const colKey = columnIdToKey[iv.column_id]
+        if (!colKey) continue
+        const value = iv.value_text ?? iv.value_number ?? iv.value_date ?? iv.value_json
+        if (value !== null && value !== undefined) {
+          colValues[colKey] = value
+        }
+      }
+      item.col_values = colValues
     }
   }
 
