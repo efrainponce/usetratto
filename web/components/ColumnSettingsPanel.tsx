@@ -40,6 +40,7 @@ type ColPermission = {
 }
 
 type RemoteBoard = { id: string; name: string }
+type RemoteStage = { id: string; name: string; position: number }
 type RemoteTeam  = { id: string; name: string }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -116,11 +117,19 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   const [savingFormat, setSavingFormat] = useState(false)
 
   // ── Relation state ────────────────────────────────────────────────────────
-  const [boards,         setBoards]         = useState<RemoteBoard[]>([])
-  const [targetBoardId,  setTargetBoardId]  = useState<string>(
+  const [boards,          setBoards]          = useState<RemoteBoard[]>([])
+  const [targetBoardId,   setTargetBoardId]   = useState<string>(
     (column.settings?.target_board_id as string) ?? ''
   )
   const [savingRelation, setSavingRelation] = useState(false)
+
+  // ── Button config state ───────────────────────────────────────────────────
+  const isButton = kind === 'button'
+  const [stages,          setStages]          = useState<RemoteStage[]>([])
+  const [targetStageId,   setTargetStageId]   = useState<string>(
+    (column.settings?.target_stage_id as string) ?? ''
+  )
+  const [savingButton,    setSavingButton]    = useState(false)
 
   // ── Permissions state ─────────────────────────────────────────────────────
   const [permissions,   setPermissions]   = useState<ColPermission[]>([])
@@ -242,6 +251,14 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
       .then((data: RemoteBoard[]) => setBoards(data))
   }, [isRelation])
 
+  // ── Load stages for button ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!isButton) return
+    fetch(`/api/boards/${boardId}/stages`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: RemoteStage[]) => setStages(Array.isArray(data) ? data.sort((a, b) => a.position - b.position) : []))
+  }, [isButton, boardId])
+
   // ── Load sub-item columns for rollup ─────────────────────────────────────
   useEffect(() => {
     if (!isRollup) return
@@ -347,6 +364,18 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
       if (updated) onUpdated(updated)
     } finally {
       setSavingRelation(false)
+    }
+  }
+
+  async function handleSaveButtonConfig() {
+    setSavingButton(true)
+    try {
+      const updated = await patchColumn({
+        settings: { ...column.settings, target_stage_id: targetStageId || null },
+      })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingButton(false)
     }
   }
 
@@ -658,6 +687,33 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
                       className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
                     >
                       {savingRelation ? '...' : 'Guardar'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Button config — target stage */}
+              {isButton && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Stage destino</label>
+                  <p className="text-[11px] text-gray-400 mb-2">Al hacer clic el item avanza a este stage (si pasan todas las validaciones).</p>
+                  <div className="flex gap-2">
+                    <select
+                      value={targetStageId}
+                      onChange={e => setTargetStageId(e.target.value)}
+                      className="flex-1 border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    >
+                      <option value="">Sin cambio de stage</option>
+                      {stages.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleSaveButtonConfig}
+                      disabled={savingButton}
+                      className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {savingButton ? '...' : 'Guardar'}
                     </button>
                   </div>
                 </div>
