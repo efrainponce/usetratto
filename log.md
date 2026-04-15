@@ -2,6 +2,13 @@
 
 ## 2026-04-14
 
+**~sesión 28**
+- Stage gates rediseñados: gates viven en columna Etapa (`settings.stage_gates`), checklist de validaciones por etapa expandido; botón solo necesita `target_stage_id`
+- `ColumnSettingsPanel` columna Botón: config completa (label, acción radio, stage destino, confirmación)
+- Fix `AddColumnButton` + `AddColumnInline`: popover se alinea al borde derecho, `<select>` nativo reemplazado por lista de botones portal, `z-20` en wrapper sub-items para no conflictar con resize handles
+- Fix `isStageCol` matchea `col_key==='stage'`; `GET /api/stages` usa serviceClient (RLS bloqueaba silenciosamente)
+- Plan.md actualizado con tareas 15.B completas
+
 **~sesión 27**
 - Fase 15 completa: validaciones por columna, IF formula UI, valores por defecto, botón change_stage con gate
 - Fix `conditionMatches`: null/undefined ya no pasa operadores `>` / `<` (String(null)>"0" era true lexicográfico)
