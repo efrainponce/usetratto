@@ -8,7 +8,7 @@ type Context = { params: Promise<{ id: string; colId: string }> }
 
 const VALID_KINDS = [
   'text','number','date','select','multiselect','people','boolean',
-  'relation','phone','email','autonumber','url','file','button','signature','formula',
+  'relation','phone','email','autonumber','url','file','button','signature','formula','reflejo',
 ]
 
 export async function PATCH(req: Request, { params }: Context) {
@@ -44,7 +44,7 @@ export async function PATCH(req: Request, { params }: Context) {
 
   const { data: column } = await svc
     .from('board_columns')
-    .select('id, is_system')
+    .select('id, is_system, kind')
     .eq('id', colId)
     .eq('board_id', id)
     .maybeSingle()
@@ -66,7 +66,10 @@ export async function PATCH(req: Request, { params }: Context) {
   if ('required'  in body && body.required  !== undefined) patch.required  = body.required
   if ('position'  in body && body.position  !== undefined) patch.position  = body.position
   if ('kind' in body && body.kind !== undefined) {
-    if (isSystem) return NextResponse.json({ error: 'No se puede cambiar el tipo de una columna de sistema' }, { status: 403 })
+    const isReflejoTransition = body.kind === 'reflejo' || column.kind === 'reflejo'
+    if (isSystem && !isReflejoTransition) {
+      return NextResponse.json({ error: 'No se puede cambiar el tipo de una columna de sistema' }, { status: 403 })
+    }
     if (!VALID_KINDS.includes(body.kind)) return NextResponse.json({ error: 'Invalid column kind' }, { status: 400 })
     patch.kind = body.kind
   }
@@ -129,7 +132,7 @@ export async function DELETE(req: Request, { params }: Context) {
 
   const { data: column } = await svc
     .from('board_columns')
-    .select('id, is_system')
+    .select('id, is_system, kind')
     .eq('id', colId)
     .eq('board_id', id)
     .maybeSingle()

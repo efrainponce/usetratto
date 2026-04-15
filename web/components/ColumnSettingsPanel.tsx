@@ -612,13 +612,15 @@ const [savingButton,    setSavingButton]    = useState(false)
     setRefError(null)
     try {
       const targetKind = refTargetCols.find(c => c.col_key === refFieldCol)?.kind ?? 'text'
+      const originalKind = column.kind === 'reflejo' ? (column.settings as any)?.original_kind : column.kind
       const nextSettings = {
         ...column.settings,
         ref_source_col_key: refSourceCol,
         ref_field_col_key: refFieldCol,
         ref_field_kind: targetKind,
+        original_kind: originalKind,
       }
-      const updated = await patchColumn({ settings: nextSettings })
+      const updated = await patchColumn({ settings: nextSettings, kind: 'reflejo' })
       if (updated) {
         onUpdated(updated)
         onClose()
@@ -634,9 +636,10 @@ const [savingButton,    setSavingButton]    = useState(false)
     setRefSaving(true)
     setRefError(null)
     try {
-      const { ref_source_col_key, ref_field_col_key, ref_field_kind, ...rest } =
+      const { ref_source_col_key, ref_field_col_key, ref_field_kind, original_kind, ...rest } =
         (column.settings as any) ?? {}
-      const updated = await patchColumn({ settings: rest })
+      const revertedKind = original_kind ?? 'text'
+      const updated = await patchColumn({ settings: rest, kind: revertedKind })
       if (updated) {
         onUpdated(updated)
         onClose()

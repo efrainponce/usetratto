@@ -73,6 +73,27 @@ export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
       case 'signature':   return <SignatureCell   {...cellPropsAdjusted} />
       case 'formula':     return <FormulaCell     {...cellPropsAdjusted} />
       case 'rollup':      return <RollupCell      {...cellPropsAdjusted} />
+      case 'reflejo': {
+        // Ref col: dispatch based on mirrored field's kind, always read-only
+        const refFieldKind = (cellProps.column.settings as any)?.ref_field_kind as string | undefined
+        const readOnlyProps = { ...cellProps, onStartEdit: () => {}, onCommit: () => {} }
+        switch (refFieldKind) {
+          case 'text':        return <TextCell        {...readOnlyProps} />
+          case 'number':      return <NumberCell      {...readOnlyProps} />
+          case 'date':        return <DateCell        {...readOnlyProps} settings={cellProps.column.settings as any} />
+          case 'select':      return <SelectCell      {...readOnlyProps} />
+          case 'people':      return <PeopleCell      {...readOnlyProps} settings={cellProps.column.settings as any} />
+          case 'phone':       return <PhoneCell       {...readOnlyProps} />
+          case 'email':       return <EmailCell       {...readOnlyProps} />
+          case 'boolean':     return <BooleanCell     {...readOnlyProps} />
+          case 'relation':    return <RelationCell    {...readOnlyProps} />  // RelationCell already detects ref and renders read-only
+          default:            return (
+            <span className="block w-full px-2 py-1 text-[13px] text-gray-700 truncate">
+              {cellProps.value != null ? String(cellProps.value) : '—'}
+            </span>
+          )
+        }
+      }
       default:            return (
         <span className="block w-full px-2 py-1 text-[13px] text-gray-400 truncate">
           {cellProps.value != null ? String(cellProps.value) : '—'}

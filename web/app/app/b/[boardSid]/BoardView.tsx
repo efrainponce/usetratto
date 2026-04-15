@@ -230,7 +230,7 @@ export function BoardView({
         label:    c.name,
         kind:     c.kind as CellKind,
         sticky:   c.col_key === 'name',
-        editable: c.kind !== 'autonumber' && c.kind !== 'button' && c.kind !== 'formula' && c.kind !== 'rollup',
+        editable: c.kind !== 'autonumber' && c.kind !== 'button' && c.kind !== 'formula' && c.kind !== 'rollup' && c.kind !== 'reflejo',
         sortable: true,
         settings: augmentSettings(c, stageColKey, ownerColKey, stages, users),
       }))

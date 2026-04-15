@@ -17,6 +17,7 @@ export type CellKind =
   | 'signature'
   | 'formula'
   | 'rollup'
+  | 'reflejo'
 
 export type SelectOption = {
   value: string
@@ -102,6 +103,7 @@ export const DEFAULT_WIDTHS: Record<CellKind, number> = {
   multiselect: 170,
   people:      140,
   relation:    150,
+  reflejo:     150,
   text:        200,
   file:        180,
   button:      120,
