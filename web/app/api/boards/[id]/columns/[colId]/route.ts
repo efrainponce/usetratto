@@ -2,7 +2,6 @@ import { requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
-import { revalidateTag } from 'next/cache'
 
 type Context = { params: Promise<{ id: string; colId: string }> }
 
@@ -75,7 +74,6 @@ export async function PATCH(req: Request, { params }: Context) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  revalidateTag('board-context', 'default')
   return NextResponse.json(updated)
 }
 
@@ -110,6 +108,5 @@ export async function DELETE(req: Request, { params }: Context) {
   const { error } = await supabase.from('board_columns').delete().eq('id', colId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  revalidateTag('board-context', 'default')
   return NextResponse.json({ success: true })
 }

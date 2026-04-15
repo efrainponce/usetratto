@@ -296,10 +296,12 @@ export function ItemDetailView({
           users={users}
           permissionsEndpoint={colSettings ? `/api/boards/${boardId}/columns/${colSettings.id}/permissions` : undefined}
           onClose={() => setColSettings(null)}
+          onPatched={updated => { setRawCols(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c)) }}
           onUpdated={updated => {
             setRawCols(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
             setColSettings(null)
           }}
+          onDeleted={colId => setRawCols(prev => prev.filter(c => c.id !== colId))}
         />
       )}
     </div>

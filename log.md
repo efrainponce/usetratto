@@ -2,6 +2,13 @@
 
 ## 2026-04-14
 
+**~sesión 26**
+- Fix `ColumnSettingsPanel` input inutilizable: `stopPropagation` en drawer evita que el click burbujee al contenedor de la tabla y robe el foco
+- Fix `SelectCell` en sub-items: reemplazado `<select>` nativo por `SelectCell` custom con `stopPropagation`; hit area corregido a `w-full`; `opt.value` → `opt.label` en display
+- Fix rollup `%` no calculaba: items route ahora lee opciones `is_closed` actuales de la columna fuente (no los `closed_values` guardados estáticamente); leyenda del candado agregada en panel de opciones
+- Fix board se borraba al cambiar agregado de rollup: `saveRollupUp` hace PATCH en columna existente (no siempre POST); removido guard `rawCols.length === 0` en `rows` memo de BoardView
+- Eliminar columnas: `ColumnSettingsPanel` con prop `onDeleted` + footer "Eliminar columna" con confirmación inline; stale `columnSizing` limpiado en `GenericDataTable` al cambiar columnas (error "Column does not exist")
+
 **~sesión 25**
 - Fix RLS en `POST /api/sub-items`: snapshot no copiaba valores del catálogo — mismo patrón `createClient()` silenciando `sub_item_columns`; cambiado a `createServiceClient()` en todas las queries post-ownership-check
 - `SubItemDetailDrawer` upgrade: nombre grande editable + badge de estado (primer select col) + info panel con ⋯ por campo → `ColumnSettingsPanel` con `patchEndpoint=/api/sub-item-columns/[id]`

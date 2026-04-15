@@ -64,7 +64,6 @@ const KIND_OPTIONS = [
   { value: 'button',      label: 'Botón' },
   { value: 'signature',   label: 'Firma' },
   { value: 'formula',     label: 'Fórmula' },
-  { value: 'rollup',      label: 'Rollup (agrega sub-items)' },
 ]
 
 const NUMBER_FORMATS = [
@@ -83,15 +82,19 @@ type Props = {
   users: PanelUser[]
   onClose: () => void
   onUpdated: (col: PanelColumn) => void
+  /** Called after options are saved — does NOT close the panel (use for add/remove option). */
+  onPatched?: (col: PanelColumn) => void
   /** Override the default PATCH URL (e.g. for sub-item columns). Hides the Permisos tab. */
   patchEndpoint?: string
   /** Endpoint for loading and managing permissions. If provided, shows the Permisos tab. */
   permissionsEndpoint?: string
+  /** Called after the column is deleted. */
+  onDeleted?: (colId: string) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClose, onUpdated, patchEndpoint, permissionsEndpoint }: Props) {
+export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClose, onUpdated, onPatched, patchEndpoint, permissionsEndpoint, onDeleted }: Props) {
   // ── General state ──────────────────────────────────────────────────────────
   const [name, setName] = useState(column.name)
   const [kind, setKind] = useState(column.kind)
@@ -125,6 +128,10 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   const [newPermId,     setNewPermId]     = useState('')   // 'u:<uuid>' | 't:<uuid>'
   const [newPermAccess, setNewPermAccess] = useState<'view' | 'edit'>('view')
   const [savingPerm,    setSavingPerm]    = useState(false)
+
+  // ── Delete state ─────────────────────────────────────────────────────────
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting,      setDeleting]      = useState(false)
 
   // ── Signature description state ───────────────────────────────────────────
   const [sigDescription,      setSigDescription]      = useState<string>(
@@ -243,7 +250,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
       const updated = await patchColumn({
         settings: { ...column.settings, options: newOptions },
       })
-      if (updated) onUpdated(updated)
+      if (updated) (onPatched ?? onUpdated)(updated)
     } finally {
       setSavingOpts(false)
     }
@@ -395,6 +402,22 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
     }
   }
 
+  // ── Delete ───────────────────────────────────────────────────────────────
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      const url = patchEndpoint ?? `/api/boards/${boardId}/columns/${column.id}`
+      const res = await fetch(url, { method: 'DELETE' })
+      if (res.ok) {
+        onDeleted?.(column.id)
+        onClose()
+      }
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
+
   // ── Tabs ──────────────────────────────────────────────────────────────────
 
   const tabs: { id: TabId; label: string }[] = [
@@ -416,7 +439,7 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-80 bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col">
+      <div className="fixed right-0 top-0 h-full w-80 bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
@@ -746,6 +769,13 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
               <p className="text-xs text-gray-500">
                 Opciones disponibles para esta columna. Los cambios se guardan inmediatamente.
               </p>
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-purple-400 shrink-0">
+                  <rect x="2" y="5" width="8" height="6" rx="1" strokeWidth="1.4"/>
+                  <path d="M4 5V3.5a2 2 0 0 1 4 0V5" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                <span>= estado final / cerrado (usado para % completado)</span>
+              </div>
 
               {/* Option list */}
               <div className="space-y-1.5">
@@ -915,6 +945,38 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
           )}
 
         </div>
+
+        {/* Delete footer — hidden for system columns */}
+        {!column.is_system && onDeleted && (
+          <div className="shrink-0 border-t border-gray-100 px-4 py-3">
+            {confirmDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[12px] text-gray-600">¿Eliminar esta columna?</span>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className="px-2.5 py-1 text-[12px] text-gray-500 hover:text-gray-700 border border-gray-200 rounded-md disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-2.5 py-1 text-[12px] text-white bg-red-500 hover:bg-red-600 rounded-md disabled:opacity-50"
+                >
+                  {deleting ? 'Eliminando…' : 'Eliminar'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-full text-left text-[12px] text-red-500 hover:text-red-700 transition-colors"
+              >
+                Eliminar columna
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </>
   )

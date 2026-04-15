@@ -74,6 +74,18 @@ export function GenericDataTable({
     localStorage.setItem(`col-widths:${storageKey}`, JSON.stringify(columnSizing))
   }, [columnSizing, storageKey])
 
+  // Drop sizing entries for deleted columns — prevents TanStack "column does not exist" error
+  useEffect(() => {
+    const validKeys = new Set(columns.map(c => c.key))
+    setColumnSizing(prev => {
+      const staleKeys = Object.keys(prev).filter(k => !validKeys.has(k))
+      if (staleKeys.length === 0) return prev
+      const next = { ...prev }
+      staleKeys.forEach(k => delete next[k])
+      return next
+    })
+  }, [columns])
+
   const handleCommit = useCallback((rowId: string, colKey: string, value: CellValue) => {
     onCellChange(rowId, colKey, value)
     setEditingCell(null)

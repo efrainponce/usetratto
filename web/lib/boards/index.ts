@@ -217,26 +217,68 @@ export const getBoardItems = unstable_cache(
       .order('position')
 
     if (error) console.error('[getBoardItems] error:', error)
-    const items = (data ?? []) as unknown as BoardItem[]
+    const items = (data ?? []) as unknown as (BoardItem & { sub_items_count?: number; sub_items_rollup?: Record<string, number | null> })[]
 
     if (items.length === 0) return items
 
-    // Separate lightweight query for sub-item counts (L1 only)
     const itemIds = items.map(i => i.id)
-    const { data: subData } = await supabase
-      .from('sub_items')
-      .select('item_id')
-      .eq('workspace_id', workspaceId)
-      .eq('depth', 0)
-      .in('item_id', itemIds)
 
-    // Build count map
+    // Sub-item counts + rollup — parallel fetch
+    const [{ data: subData }, { data: rollupCols }] = await Promise.all([
+      supabase.from('sub_items').select('item_id').eq('workspace_id', workspaceId).eq('depth', 0).in('item_id', itemIds),
+      supabase.from('board_columns').select('col_key, settings').eq('board_id', boardId).eq('kind', 'rollup'),
+    ])
+
+    // Build sub-item count map
     const countMap: Record<string, number> = {}
     for (const { item_id } of subData ?? []) {
       countMap[item_id] = (countMap[item_id] ?? 0) + 1
     }
 
-    return items.map(i => ({ ...i, sub_items_count: countMap[i.id] ?? 0 }))
+    const withCount = items.map(i => ({ ...i, sub_items_count: countMap[i.id] ?? 0 }))
+
+    // Compute rollup values if board has rollup columns
+    if (rollupCols && rollupCols.length > 0) {
+      const { computeRollup } = await import('../rollup-engine')
+
+      // col_key → id mapping for sub_item_columns
+      const { data: subCols } = await supabase.from('sub_item_columns').select('id, col_key').eq('board_id', boardId)
+      const colKeyMap: Record<string, string> = {}
+      for (const sc of subCols ?? []) colKeyMap[sc.id] = sc.col_key
+
+      // Fetch all L1 sub-items with values
+      const { data: subItems } = await supabase
+        .from('sub_items')
+        .select('id, item_id, sub_item_values(column_id, value_number, value_text)')
+        .in('item_id', itemIds)
+        .eq('depth', 0)
+
+      // Group by item_id with col_key-mapped values
+      const subsByItem: Record<string, { values: { col_key: string; value_number: number | null; value_text: string | null }[] }[]> = {}
+      for (const si of subItems ?? []) {
+        if (!subsByItem[si.item_id]) subsByItem[si.item_id] = []
+        subsByItem[si.item_id].push({
+          values: ((si as unknown as { sub_item_values: { column_id: string; value_number: number | null; value_text: string | null }[] }).sub_item_values ?? []).map(v => ({
+            col_key:      colKeyMap[v.column_id] ?? '',
+            value_number: v.value_number,
+            value_text:   v.value_text,
+          }))
+        })
+      }
+
+      for (const item of withCount) {
+        const children = subsByItem[item.id] ?? []
+        const rollup: Record<string, number | null> = {}
+        for (const rc of rollupCols) {
+          const cfg = rc.settings?.rollup_config
+          if (!cfg) { rollup[rc.col_key] = null; continue }
+          rollup[rc.col_key] = computeRollup(cfg as import('../rollup-engine').RollupConfig, { values: [], children })
+        }
+        item.sub_items_rollup = rollup
+      }
+    }
+
+    return withCount
   },
   ['board-items'],
   { revalidate: 15 }

@@ -697,10 +697,12 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
             allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
             users={workspaceUsers}
             onClose={() => setColSettingsId(null)}
+            onPatched={updated => { setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c)) }}
             onUpdated={updated => {
               setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
               setColSettingsId(null)
             }}
+            onDeleted={colId => { setColumns(prev => prev.filter(c => c.id !== colId)); setColSettingsId(null) }}
           />
         )
       })()}

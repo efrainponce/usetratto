@@ -1,5 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
 export async function GET(req: Request) {
@@ -50,18 +51,28 @@ export async function GET(req: Request) {
     .eq('kind', 'rollup')
 
   if (rollupCols && rollupCols.length > 0 && items.length > 0) {
-    // Get sub_item_columns for col_key→id mapping
-    const { data: subCols } = await supabase
+    // Use service client — sub_item_columns RLS subqueries through boards fail silently with user JWT
+    const svc = createServiceClient()
+
+    // Get sub_item_columns for col_key→id mapping + settings (needed for percent_done closed_values)
+    const { data: subCols } = await svc
       .from('sub_item_columns')
-      .select('id, col_key')
+      .select('id, col_key, settings')
       .eq('board_id', boardId)
 
     const colKeyMap: Record<string, string> = {}  // id → col_key
     for (const sc of subCols ?? []) colKeyMap[sc.id] = sc.col_key
 
+    // Build a map of col_key → current closed option values (for percent_done)
+    const closedValuesMap: Record<string, string[]> = {}
+    for (const sc of subCols ?? []) {
+      const opts = (sc.settings as Record<string, unknown>)?.options as { value: string; is_closed?: boolean }[] | undefined
+      if (opts) closedValuesMap[sc.col_key] = opts.filter(o => o.is_closed).map(o => o.value)
+    }
+
     // Fetch all L1 sub-items with their values for these items
     const itemIds = items.map(i => i.id)
-    const { data: subItems } = await supabase
+    const { data: subItems } = await svc
       .from('sub_items')
       .select('id, item_id, sub_item_values(column_id, value_number, value_text)')
       .in('item_id', itemIds)
@@ -86,12 +97,13 @@ export async function GET(req: Request) {
       const children = subsByItem[item.id] ?? []
       const rollup: Record<string, number | null> = {}
       for (const rc of rollupCols) {
-        const cfg = rc.settings?.rollup_config
+        const cfg = rc.settings?.rollup_config as import('@/lib/rollup-engine').RollupConfig | undefined
         if (!cfg) { rollup[rc.col_key] = null; continue }
-        rollup[rc.col_key] = computeRollup(
-          cfg as import('@/lib/rollup-engine').RollupConfig,
-          { values: [], children }
-        )
+        // For percent_done: always use current is_closed options from source column (not stale saved closed_values)
+        const effectiveCfg = cfg.aggregate === 'percent_done'
+          ? { ...cfg, closed_values: closedValuesMap[cfg.source_col_key] ?? cfg.closed_values ?? [] }
+          : cfg
+        rollup[rc.col_key] = computeRollup(effectiveCfg, { values: [], children })
       }
       item.sub_items_rollup = rollup
     }

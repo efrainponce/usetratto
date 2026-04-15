@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { ProductPicker } from './ProductPicker'
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 import { ColumnSettingsPanel } from './ColumnSettingsPanel'
+import { SelectCell } from './data-table/cells/SelectCell'
 
 // ─── Sub-item view types ──────────────────────────────────────────────────────
 
@@ -57,20 +58,21 @@ type EditTarget = { id: string; field: string } | null
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 type Props = {
-  itemId:              string
-  boardId:             string
-  views:               SubItemView[]
-  onCountChange?:      (count: number) => void
-  onAddView?:          () => void
-  onDeleteView?:       (viewId: string) => void
-  onConfigureColumns?: (viewId: string) => void
-  compact?:            boolean
-  columnsVersion?:     number
-  boardSettings?:      Record<string, unknown>
-  subitemView?:        'L1_only' | 'L1_L2' | 'L2_only'
+  itemId:                  string
+  boardId:                 string
+  views:                   SubItemView[]
+  onCountChange?:          (count: number) => void
+  onAddView?:              () => void
+  onDeleteView?:           (viewId: string) => void
+  onConfigureColumns?:     (viewId: string) => void
+  onBoardColumnCreated?:   () => void
+  compact?:                boolean
+  columnsVersion?:         number
+  boardSettings?:          Record<string, unknown>
+  subitemView?:            'L1_only' | 'L1_L2' | 'L2_only'
 }
 
-export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onDeleteView, onConfigureColumns, compact, columnsVersion, boardSettings, subitemView }: Props) {
+export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView, onDeleteView, onConfigureColumns, onBoardColumnCreated, compact, columnsVersion, boardSettings, subitemView }: Props) {
   const [activeViewId, setActiveViewId] = useState<string>(views[0]?.id ?? '')
   const activeView = views.find(v => v.id === activeViewId) ?? views[0]
 
@@ -154,6 +156,7 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
           viewId={activeView.id}
           config={activeView.config}
           onCountChange={onCountChange}
+          onBoardColumnCreated={onBoardColumnCreated}
           compact={compact}
           boardSettings={boardSettings}
           subitemView={subitemView}
@@ -175,16 +178,17 @@ export function SubItemsView({ itemId, boardId, views, onCountChange, onAddView,
 // Without source_board_id → manual add form.
 
 function NativeRenderer({
-  itemId, boardId, viewId, config, onCountChange, compact, boardSettings, subitemView,
+  itemId, boardId, viewId, config, onCountChange, onBoardColumnCreated, compact, boardSettings, subitemView,
 }: {
-  itemId:          string
-  boardId:         string
-  viewId:          string
-  config:          Record<string, unknown>
-  onCountChange?:  (count: number) => void
-  compact?:        boolean
-  boardSettings?:  Record<string, unknown>
-  subitemView?:    'L1_only' | 'L1_L2' | 'L2_only'
+  itemId:                  string
+  boardId:                 string
+  viewId:                  string
+  config:                  Record<string, unknown>
+  onCountChange?:          (count: number) => void
+  onBoardColumnCreated?:   () => void
+  compact?:                boolean
+  boardSettings?:          Record<string, unknown>
+  subitemView?:            'L1_only' | 'L1_L2' | 'L2_only'
 }) {
   const sourceBoardId = (config.source_board_id as string) ?? null
 
@@ -198,6 +202,8 @@ function NativeRenderer({
   const [addingCol,    setAddingCol]    = useState(false)
   const [openDetailId, setOpenDetailId] = useState<string | null>(null)
   const [colSettings,  setColSettings]  = useState<SubItemColumn | null>(null)
+  const [rollupTarget, setRollupTarget] = useState<{ colId: string; colKey: string; colName: string; colKind?: string; closedValues?: string[]; currentAggregate?: string; currentBoardColId?: string } | null>(null)
+  const [savingRollup, setSavingRollup] = useState(false)
 
   // Column widths — resizable
   const [colWidths, setColWidths] = useState<Record<string, number>>({
@@ -430,6 +436,79 @@ function NativeRenderer({
     }
   }, [load])
 
+  // ── Rollup-up handlers ─────────────────────────────────────────────────────
+
+  const saveRollupUp = useCallback(async (target: NonNullable<typeof rollupTarget>, aggregate: string) => {
+    setSavingRollup(true)
+    try {
+      const prefix = aggregate === 'sum' ? 'Σ' : aggregate === 'avg' ? '⌀' : aggregate === 'max' ? '↑ Máx' : aggregate === 'percent_done' ? '%' : '↓ Mín'
+      const colName = `${prefix} ${target.colName}`
+      const rollup_config: Record<string, unknown> = { source_level: 'children', source_col_key: target.colKey, aggregate }
+      // Store closed_values always for percent_done (even if empty — items route will use live options)
+      if (aggregate === 'percent_done') {
+        rollup_config.closed_values = target.closedValues ?? []
+      }
+      // 1. Create or update board_column kind='rollup'
+      let boardColId: string
+      if (target.currentBoardColId) {
+        // PATCH existing column — prevents duplicate columns on aggregate change
+        const patchRes = await fetch(`/api/boards/${boardId}/columns/${target.currentBoardColId}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ name: colName, settings: { rollup_config } }),
+        })
+        if (!patchRes.ok) return
+        boardColId = target.currentBoardColId
+      } else {
+        const colRes = await fetch(`/api/boards/${boardId}/columns`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ name: colName, kind: 'rollup', settings: { rollup_config } }),
+        })
+        if (!colRes.ok) return
+        boardColId = ((await colRes.json()) as { id: string }).id
+      }
+      const newBoardCol = { id: boardColId }
+      // 2. Save rollup_up in sub_item_column settings
+      const col = columns.find(c => c.id === target.colId)
+      await fetch(`/api/sub-item-columns/${target.colId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ settings: { ...(col?.settings ?? {}), rollup_up: { aggregate, board_col_id: newBoardCol.id } } }),
+      })
+      setColumns(prev => prev.map(c => c.id === target.colId
+        ? { ...c, settings: { ...c.settings, rollup_up: { aggregate, board_col_id: newBoardCol.id } } }
+        : c
+      ))
+      onBoardColumnCreated?.()
+    } finally {
+      setSavingRollup(false)
+      setRollupTarget(null)
+    }
+  }, [boardId, columns, onBoardColumnCreated])
+
+  const removeRollupUp = useCallback(async (target: NonNullable<typeof rollupTarget>) => {
+    setSavingRollup(true)
+    try {
+      if (target.currentBoardColId) {
+        await fetch(`/api/boards/${boardId}/columns/${target.currentBoardColId}`, { method: 'DELETE' })
+      }
+      const col = columns.find(c => c.id === target.colId)
+      const newSettings = { ...(col?.settings ?? {}) } as Record<string, unknown>
+      delete newSettings.rollup_up
+      await fetch(`/api/sub-item-columns/${target.colId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ settings: newSettings }),
+      })
+      setColumns(prev => prev.map(c => c.id === target.colId ? { ...c, settings: newSettings } : c))
+      onBoardColumnCreated?.()
+    } finally {
+      setSavingRollup(false)
+      setRollupTarget(null)
+    }
+  }, [boardId, columns, onBoardColumnCreated])
+
   // ── Compute formula ────────────────────────────────────────────────────────
 
   const computeFormula = useCallback((col: SubItemColumn, row: SubItemData): number | null => {
@@ -573,36 +652,64 @@ function NativeRenderer({
             <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
           </div>
         </div>
-        {displayCols.map(c => (
-          <div key={c.id} className="relative flex-none group/col" style={{ width: cw(c.id) }}>
-            <div className="flex items-center gap-1 overflow-hidden pr-3">
-              <span className="flex-1 truncate min-w-0">{c.name}</span>
-              <button
-                onClick={e => { e.stopPropagation(); setColSettings(c) }}
-                title="Configurar columna"
-                className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
-              >⋯</button>
+        {displayCols.map(c => {
+          const hasRollup = !!(c.settings as Record<string, unknown>)?.rollup_up
+          const rollupEligible = c.kind === 'number' || c.kind === 'select'
+          return (
+            <div key={c.id} className="relative flex-none group/col" style={{ width: cw(c.id) }}>
+              <div className="flex items-center gap-1 overflow-hidden pr-3">
+                <span className="flex-1 truncate min-w-0">{c.name}</span>
+                {rollupEligible && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      const ru = (c.settings as Record<string, unknown>)?.rollup_up as { aggregate?: string; board_col_id?: string } | undefined
+                      const opts = (c.settings as Record<string, unknown>)?.options as { value: string; is_closed?: boolean }[] | undefined
+                      setRollupTarget({ colId: c.id, colKey: c.col_key, colName: c.name, colKind: c.kind, closedValues: opts?.filter(o => o.is_closed).map(o => o.value), currentAggregate: ru?.aggregate, currentBoardColId: ru?.board_col_id })
+                    }}
+                    title={hasRollup ? 'Resumen activo — click para editar' : 'Agregar resumen al item'}
+                    className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-teal-500' : 'opacity-0 group-hover/col:opacity-100 text-gray-400 hover:text-teal-500'}`}
+                  >↑</button>
+                )}
+                <button
+                  onClick={e => { e.stopPropagation(); setColSettings(c) }}
+                  title="Configurar columna"
+                  className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                >⋯</button>
+              </div>
+              <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
+                <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+              </div>
             </div>
-            <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
-              <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+          )
+        })}
+        {formulaCols.map(c => {
+          const hasRollup = !!(c.settings as Record<string, unknown>)?.rollup_up
+          return (
+            <div key={c.id} className="relative flex-none text-indigo-500 group/col" style={{ width: cw(c.id) }}>
+              <div className="flex items-center gap-1 overflow-hidden pr-3">
+                <span className="flex-1 truncate min-w-0">{c.name}</span>
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    const ru = (c.settings as Record<string, unknown>)?.rollup_up as { aggregate?: string; board_col_id?: string } | undefined
+                    setRollupTarget({ colId: c.id, colKey: c.col_key, colName: c.name, colKind: c.kind, currentAggregate: ru?.aggregate, currentBoardColId: ru?.board_col_id })
+                  }}
+                  title={hasRollup ? 'Resumen activo — click para editar' : 'Agregar resumen al item'}
+                  className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-teal-500' : 'opacity-0 group-hover/col:opacity-100 text-gray-400 hover:text-teal-500'}`}
+                >↑</button>
+                <button
+                  onClick={e => { e.stopPropagation(); setColSettings(c) }}
+                  title="Configurar columna"
+                  className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                >⋯</button>
+              </div>
+              <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
+                <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+              </div>
             </div>
-          </div>
-        ))}
-        {formulaCols.map(c => (
-          <div key={c.id} className="relative flex-none text-indigo-500 group/col" style={{ width: cw(c.id) }}>
-            <div className="flex items-center gap-1 overflow-hidden pr-3">
-              <span className="flex-1 truncate min-w-0">{c.name}</span>
-              <button
-                onClick={e => { e.stopPropagation(); setColSettings(c) }}
-                title="Configurar columna"
-                className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
-              >⋯</button>
-            </div>
-            <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
-              <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
-            </div>
-          </div>
-        ))}
+          )
+        })}
         {rollupCols.map(col => (
           <div key={col.id} className="flex-none text-right" style={{ width: cw(col.id) }}>{col.name}</div>
         ))}
@@ -801,6 +908,7 @@ function NativeRenderer({
             computeFormula={computeFormula}
             onCommit={(f, v) => editField(detailRow.id, f, v)}
             onColUpdated={updated => setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))}
+            onColDeleted={colId => setColumns(prev => prev.filter(c => c.id !== colId))}
             onClose={() => setOpenDetailId(null)}
           />
         )
@@ -815,10 +923,23 @@ function NativeRenderer({
           patchEndpoint={`/api/sub-item-columns/${colSettings.id}`}
           permissionsEndpoint={colSettings ? `/api/sub-item-columns/${colSettings.id}/permissions` : undefined}
           onClose={() => setColSettings(null)}
+          onPatched={updated => {
+            setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
+          }}
           onUpdated={updated => {
             setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
             setColSettings(null)
           }}
+          onDeleted={colId => { setColumns(prev => prev.filter(c => c.id !== colId)); setColSettings(null) }}
+        />
+      )}
+      {rollupTarget && (
+        <RollupUpPopup
+          target={rollupTarget}
+          saving={savingRollup}
+          onSelect={agg => saveRollupUp(rollupTarget, agg)}
+          onRemove={rollupTarget.currentAggregate ? () => removeRollupUp(rollupTarget) : undefined}
+          onClose={() => setRollupTarget(null)}
         />
       )}
     </div>
@@ -1011,30 +1132,19 @@ function NativeRow({
       {displayCols.map(col => {
         const val = row.values.find(v => v.column_id === col.id)
         if (col.kind === 'select') {
-          const opts = (col.settings.options as { value: string; color: string }[] | undefined) ?? []
-          const cur  = val?.value_text ?? ''
-          const opt  = opts.find(o => o.value === cur)
+          const opts = (col.settings.options as { value: string; label: string; color?: string }[] | undefined) ?? []
           return (
-            <div key={col.id} className="flex-none flex justify-end items-center" style={{ width: w(col.id, 96) }}>
-              {isEditing(col.id) ? (
-                <select
-                  autoFocus
-                  defaultValue={cur}
-                  className="w-full text-[12px] border border-indigo-400 rounded px-1 py-0.5 outline-none bg-white"
-                  onChange={e  => onCommit(col.id, e.target.value)}
-                  onBlur={e    => { onCommit(col.id, e.target.value) }}
-                  onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
-                >
-                  <option value="">—</option>
-                  {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
-                </select>
-              ) : (
-                <div onClick={() => onStartEdit(col.id)} className="cursor-pointer">
-                  {opt
-                    ? <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: opt.color }}>{opt.value}</span>
-                    : <span className="text-[12px] text-gray-300">—</span>}
-                </div>
-              )}
+            <div key={col.id} className="flex-none" style={{ width: w(col.id, 96) }} onClick={e => e.stopPropagation()}>
+              <SelectCell
+                value={val?.value_text ?? null}
+                isEditing={isEditing(col.id)}
+                column={{ key: col.col_key, label: col.name, kind: 'select', settings: { options: opts } }}
+                rowId={row.id}
+                onStartEdit={() => onStartEdit(col.id)}
+                onCommit={v => onCommit(col.id, v as string)}
+                onCancel={onCancel}
+                onNavigate={() => {}}
+              />
             </div>
           )
         }
@@ -1182,10 +1292,86 @@ function findInTree(rows: SubItemData[], id: string): SubItemData | null {
   return null
 }
 
+// ─── RollupUpPopup ────────────────────────────────────────────────────────────
+
+const ROLLUP_OPTIONS_NUMBER = [
+  { value: 'sum',   label: 'Σ  Suma'     },
+  { value: 'avg',   label: '⌀  Promedio' },
+  { value: 'max',   label: '↑  Máximo'   },
+  { value: 'min',   label: '↓  Mínimo'   },
+  { value: 'count', label: '#  Conteo'   },
+]
+
+const ROLLUP_OPTIONS_SELECT = [
+  { value: 'percent_done', label: '%  Completado' },
+  { value: 'count',        label: '#  Conteo'     },
+]
+
+function RollupUpPopup({
+  target, saving, onSelect, onRemove, onClose,
+}: {
+  target:    { colName: string; colKind?: string; closedValues?: string[]; currentAggregate?: string }
+  saving:    boolean
+  onSelect:  (aggregate: string) => void
+  onRemove?: () => void
+  onClose:   () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pointer-events-none">
+      <div
+        ref={ref}
+        className="pointer-events-auto mt-24 bg-white border border-gray-200 rounded-xl shadow-xl w-52 overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-3 py-2.5 border-b border-gray-100">
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Resumen → item</p>
+          <p className="text-[12px] text-gray-700 truncate mt-0.5">"{target.colName}"</p>
+        </div>
+        <div className="py-1">
+          {(target.colKind === 'select' ? ROLLUP_OPTIONS_SELECT : ROLLUP_OPTIONS_NUMBER).map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => !saving && onSelect(opt.value)}
+              disabled={saving}
+              className={`w-full text-left px-3 py-1.5 text-[13px] hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center justify-between ${target.currentAggregate === opt.value ? 'text-teal-600 font-semibold' : 'text-gray-700'}`}
+            >
+              {opt.label}
+              {target.currentAggregate === opt.value && <span className="text-teal-500 text-[10px]">activo</span>}
+            </button>
+          ))}
+        </div>
+        {onRemove && (
+          <div className="border-t border-gray-100 py-1">
+            <button
+              onClick={() => !saving && onRemove()}
+              disabled={saving}
+              className="w-full text-left px-3 py-1.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors"
+            >
+              Quitar resumen
+            </button>
+          </div>
+        )}
+        {saving && (
+          <div className="px-3 py-2 text-[11px] text-gray-400 text-center border-t border-gray-100">Guardando…</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── SubItemDetailDrawer ──────────────────────────────────────────────────────
 
 function SubItemDetailDrawer({
-  row, columns, boardId, computeFormula, onCommit, onColUpdated, onClose,
+  row, columns, boardId, computeFormula, onCommit, onColUpdated, onColDeleted, onClose,
 }: {
   row:            SubItemData
   columns:        SubItemColumn[]
@@ -1193,6 +1379,7 @@ function SubItemDetailDrawer({
   computeFormula: (col: SubItemColumn, row: SubItemData) => number | null
   onCommit:       (field: string, value: unknown) => void
   onColUpdated:   (updated: SubItemColumn) => void
+  onColDeleted:   (colId: string) => void
   onClose:        () => void
 }) {
   const [localName,    setLocalName]    = useState(row.name)
@@ -1329,7 +1516,9 @@ function SubItemDetailDrawer({
           patchEndpoint={`/api/sub-item-columns/${colSettings.id}`}
           permissionsEndpoint={colSettings ? `/api/sub-item-columns/${colSettings.id}/permissions` : undefined}
           onClose={() => setColSettings(null)}
+          onPatched={updated => { onColUpdated(updated as unknown as SubItemColumn) }}
           onUpdated={updated => { onColUpdated(updated as unknown as SubItemColumn); setColSettings(null) }}
+          onDeleted={colId => { onColDeleted(colId); setColSettings(null) }}
         />
       )}
     </>
@@ -1443,7 +1632,6 @@ const COL_KIND_OPTIONS = [
   { value: 'select',    label: 'Select' },
   { value: 'boolean',   label: 'Check' },
   { value: 'formula',   label: 'Fórmula' },
-  { value: 'rollup',    label: 'Rollup' },
   { value: 'relation',  label: 'Relación' },
   { value: 'signature', label: 'Firma' },
   { value: 'file',      label: 'Archivo' },

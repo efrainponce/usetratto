@@ -159,12 +159,11 @@ export function BoardView({
 
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
-    if (rawCols.length === 0) return []
     const items = territoryFilter
       ? rawItems.filter(i => i.territory_id === territoryFilter)
       : rawItems
     return items.map(item => toRow(item, colIdMap, columns))
-  }, [rawItems, colIdMap, columns, rawCols.length, territoryFilter])
+  }, [rawItems, colIdMap, columns, territoryFilter])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -846,6 +845,7 @@ export function BoardView({
                   if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
                 } : undefined}
                 onConfigureColumns={(vId) => { setMapperViewId(vId); setShowMapper(true) }}
+                onBoardColumnCreated={() => refreshAll()}
                 boardSettings={boardSettings}
                 subitemView={subitemView}
               />
@@ -918,10 +918,12 @@ export function BoardView({
           allColumns={rawCols.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
           users={users}
           onClose={() => setColSettingsCol(null)}
+          onPatched={updated => { setRawCols(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c)) }}
           onUpdated={updated => {
             setRawCols(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
             setColSettingsCol(null)
           }}
+          onDeleted={colId => setRawCols(prev => prev.filter(c => c.id !== colId))}
         />
       )}
     </div>

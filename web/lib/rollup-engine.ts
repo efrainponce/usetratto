@@ -1,9 +1,10 @@
-export type RollupAggregate = 'sum' | 'avg' | 'count' | 'min' | 'max' | 'count_not_empty'
+export type RollupAggregate = 'sum' | 'avg' | 'count' | 'min' | 'max' | 'count_not_empty' | 'percent_done'
 
 export type RollupConfig = {
-  source_level: 'children' | 'descendants'  // 'descendants' = todos los niveles recursivamente
-  source_col_key: string                     // col_key de la columna a agregar
-  aggregate: RollupAggregate
+  source_level:   'children' | 'descendants'
+  source_col_key: string
+  aggregate:      RollupAggregate
+  closed_values?: string[]   // para percent_done: qué value_text cuenta como "hecho"
 }
 
 type RowLike = {
@@ -39,6 +40,8 @@ export function computeRollup(
         return countAggregate(relevantRows)
       case 'count_not_empty':
         return countNotEmptyAggregate(config.source_col_key, relevantRows)
+      case 'percent_done':
+        return percentDoneAggregate(config.source_col_key, config.closed_values ?? [], relevantRows)
       default:
         return null
     }
@@ -165,4 +168,16 @@ function countAggregate(rows: RowLike[]): number | null {
 function countNotEmptyAggregate(colKey: string, rows: RowLike[]): number | null {
   const count = rows.filter(row => hasNonEmptyValue(colKey, row)).length
   return count > 0 ? count : null
+}
+
+/**
+ * Aggregate: Percent done — count(value in closedValues) / total * 100
+ */
+function percentDoneAggregate(colKey: string, closedValues: string[], rows: RowLike[]): number | null {
+  if (rows.length === 0 || closedValues.length === 0) return null
+  const done = rows.filter(row => {
+    const val = row.values.find(v => v.col_key === colKey)
+    return val?.value_text != null && closedValues.includes(val.value_text)
+  }).length
+  return Math.round((done / rows.length) * 100)
 }

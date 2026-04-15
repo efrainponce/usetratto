@@ -2,7 +2,6 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
-import { revalidateTag } from 'next/cache'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -203,6 +202,5 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  revalidateTag('board-context', 'default')
   return NextResponse.json(column, { status: 201 })
 }
