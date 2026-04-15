@@ -2,6 +2,13 @@
 
 ## 2026-04-14
 
+**~sesión 29**
+- Diseño completo Fases 16-19: herencia de permisos, quote engine, AI agent sidebar, WhatsApp
+- Fase 16 (nueva): column permission inheritance + row-level restrict_to_own audit en sub-items/snapshot/RelationCell
+- Fase 17 Quote Engine: board `quotes` como sistema, snapshot sub-items, folio B2G, IVA 16%, vigencia, firma → regenera PDF
+- Fase 18 Tratto AI Agent: engine compartido sidebar+WA+móvil, 8 tools, security 6 capas, rol-aware filtering
+- `/start` actualizado: regla drástica de usar Haiku para todo código
+
 **~sesión 28**
 - Stage gates rediseñados: gates viven en columna Etapa (`settings.stage_gates`), checklist de validaciones por etapa expandido; botón solo necesita `target_stage_id`
 - `ColumnSettingsPanel` columna Botón: config completa (label, acción radio, stage destino, confirmación)
