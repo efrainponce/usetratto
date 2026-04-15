@@ -166,6 +166,47 @@ export function BoardView({
     return map
   }, [rawCols])
 
+  // Relation label map: target_board_id → item_id → name (for relation cell display)
+  const [relationLabelMap, setRelationLabelMap] = useState<Record<string, Record<string, string>>>({})
+
+  // Memo for unique target board IDs from relation columns
+  const relationTargetBoards = useMemo(() => {
+    const set = new Set<string>()
+    for (const col of rawCols) {
+      if (col.kind === 'relation') {
+        const tb = (col.settings as any)?.target_board_id
+        if (tb) set.add(tb)
+      }
+    }
+    return [...set]
+  }, [rawCols])
+
+  // Effect to preload relation label maps
+  useEffect(() => {
+    if (relationTargetBoards.length === 0) return
+    Promise.all(
+      relationTargetBoards.map(async bid => {
+        try {
+          const res = await fetch(`/api/items?boardId=${bid}`)
+          if (!res.ok) return { bid, items: [] as Array<{ id: string; name: string }> }
+          const data = await res.json()
+          return { bid, items: data }
+        } catch {
+          return { bid, items: [] }
+        }
+      })
+    ).then(results => {
+      const map: Record<string, Record<string, string>> = {}
+      for (const { bid, items } of results) {
+        map[bid] = {}
+        for (const item of items) {
+          if (item?.id && item?.name) map[bid][item.id] = item.name
+        }
+      }
+      setRelationLabelMap(map)
+    })
+  }, [relationTargetBoards])
+
   // Active view lookup
   const activeView = views.find(v => v.id === activeViewId) ?? null
 
@@ -193,8 +234,8 @@ export function BoardView({
 
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
-    return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap))
-  }, [rawItems, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap])
+    return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap))
+  }, [rawItems, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -1013,13 +1054,28 @@ function toRow(
   cols: ColumnDef[],
   itemsField: Record<string, keyof BoardItem>,
   refColsMeta: any[],
-  refMap: Record<string, Record<string, unknown>>
+  refMap: Record<string, Record<string, unknown>>,
+  relationLabelMap: Record<string, Record<string, string>>
 ): Row {
   const cells: Record<string, CellValue> = {}
   for (const col of cols) {
     if (col.key === '__sid') {
       cells[col.key] = item.sid
     } else {
+      // Relation column: resolve id → name from label map (fallback to id if not resolved yet)
+      if (col.kind === 'relation') {
+        const colId = colIdMap[col.key]
+        const v = item.item_values?.find(iv => iv.column_id === colId)
+        const targetId = (v?.value_text ?? null) as string | null
+        const targetBoardId = (col as any).settings?.target_board_id as string | undefined
+        if (targetId && targetBoardId) {
+          cells[col.key] = (relationLabelMap[targetBoardId]?.[targetId] ?? targetId) as any
+        } else {
+          cells[col.key] = null
+        }
+        continue
+      }
+
       // Ref column: read from refMap based on relation
       const refMeta = refColsMeta.find(m => m.col_key === col.key)
       if (refMeta) {
