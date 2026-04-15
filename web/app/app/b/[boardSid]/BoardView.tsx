@@ -247,11 +247,14 @@ export function BoardView({
     if (colKey === '__sid') return
 
     // Ref column: write to source item instead of this item
+    // NOTE: ref cells are rendered read-only in UI (see RelationCell), so this path
+    // is rarely hit. Defensive logic here reads the source item_id from raw item_values
+    // (NOT from row.cells which holds the display name after relationLabelMap resolution).
     const refMeta = refColsMeta.find(m => m.col_key === colKey)
     if (refMeta) {
-      const row = rows.find(r => r.id === rowId)
-      const relVal = row?.cells[refMeta.relation_col_key]
-      if (typeof relVal !== 'string') {
+      const currentItem = rawItems.find(it => it.id === rowId)
+      const relVal = currentItem?.item_values?.find(iv => iv.column_id === refMeta.relation_col_id)?.value_text
+      if (typeof relVal !== 'string' || !relVal) {
         console.warn('[ref edit] no source item, skipping')
         return
       }

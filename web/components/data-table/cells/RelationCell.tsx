@@ -7,9 +7,12 @@ import { RelationPicker } from '@/components/RelationPicker'
 export function RelationCell({ value, column, onCommit }: CellProps) {
   const [showPicker, setShowPicker] = useState(false)
   const label = typeof value === 'string' && value ? value : null
-  const targetBoardId = (column.settings as any)?.target_board_id as string | undefined
+  const settings = column.settings as any
+  const isRef = !!settings?.ref_source_col_key && !!settings?.ref_field_col_key
+  const targetBoardId = settings?.target_board_id as string | undefined
 
-  const canPick = !!targetBoardId
+  // Ref cols are read-only: value comes from the mirrored source, edits happen at source
+  const canPick = !!targetBoardId && !isRef
 
   return (
     <>
@@ -23,7 +26,7 @@ export function RelationCell({ value, column, onCommit }: CellProps) {
           <span className="text-[13px] text-gray-300">{canPick ? 'Elegir…' : '—'}</span>
         )}
       </div>
-      {showPicker && targetBoardId && (
+      {showPicker && canPick && targetBoardId && (
         <RelationPicker
           targetBoardId={targetBoardId}
           onPick={(itemId, _itemName) => {
