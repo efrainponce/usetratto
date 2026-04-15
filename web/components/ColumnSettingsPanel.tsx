@@ -269,13 +269,13 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
       .then((data: RemoteBoard[]) => setBoards(data))
   }, [isRelation])
 
-  // ── Load stages for button ───────────────────────────────────────────────
+  // ── Load stages for button + stage column ────────────────────────────────
   useEffect(() => {
-    if (!isButton) return
+    if (!isButton && !isStageCol) return
     fetch(`/api/boards/${boardId}/stages`)
       .then(r => r.ok ? r.json() : [])
       .then((data: RemoteStage[]) => setStages(Array.isArray(data) ? data.sort((a, b) => a.position - b.position) : []))
-  }, [isButton, boardId])
+  }, [isButton, isStageCol, boardId])
 
   // ── Load sub-item columns for rollup ─────────────────────────────────────
   useEffect(() => {

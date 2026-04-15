@@ -2,6 +2,11 @@
 
 ## 2026-04-14
 
+**~sesión 27**
+- Fase 15 completa: validaciones por columna, IF formula UI, valores por defecto, botón change_stage con gate
+- Fix `conditionMatches`: null/undefined ya no pasa operadores `>` / `<` (String(null)>"0" era true lexicográfico)
+- Fix NativeRow en SubItemsView: formulaCols y rollupCols ahora muestran overlay rojo ❌ cuando validación falla
+
 **~sesión 26**
 - Fix `ColumnSettingsPanel` input inutilizable: `stopPropagation` en drawer evita que el click burbujee al contenedor de la tabla y robe el foco
 - Fix `SelectCell` en sub-items: reemplazado `<select>` nativo por `SelectCell` custom con `stopPropagation`; hit area corregido a `w-full`; `opt.value` → `opt.label` en display

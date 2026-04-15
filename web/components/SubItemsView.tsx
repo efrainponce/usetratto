@@ -920,7 +920,7 @@ function NativeRenderer({
         <ColumnSettingsPanel
           column={{ ...colSettings, is_system: false }}
           boardId={boardId}
-          allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
+          allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind, settings: (c.settings as Record<string, unknown>) ?? {} }))}
           users={[]}
           patchEndpoint={`/api/sub-item-columns/${colSettings.id}`}
           permissionsEndpoint={colSettings ? `/api/sub-item-columns/${colSettings.id}/permissions` : undefined}
@@ -1566,7 +1566,7 @@ function SubItemDetailDrawer({
         <ColumnSettingsPanel
           column={{ ...colSettings, is_system: false }}
           boardId={boardId}
-          allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind }))}
+          allColumns={columns.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind, settings: (c.settings as Record<string, unknown>) ?? {} }))}
           users={[]}
           patchEndpoint={`/api/sub-item-columns/${colSettings.id}`}
           permissionsEndpoint={colSettings ? `/api/sub-item-columns/${colSettings.id}/permissions` : undefined}
