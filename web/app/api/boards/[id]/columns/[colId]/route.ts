@@ -51,13 +51,14 @@ export async function PATCH(req: Request, { params }: Context) {
 
   if (!column) return NextResponse.json({ error: 'Column not found' }, { status: 404 })
 
-  if (column.is_system) {
-    return NextResponse.json({ error: 'Cannot modify system columns' }, { status: 403 })
-  }
+  // System columns: allow settings/is_hidden/position/required (config-only changes),
+  // block name/kind changes (would break identity)
+  const isSystem = !!column.is_system
 
   const patch: Record<string, unknown> = {}
 
   if ('name' in body && body.name !== undefined) {
+    if (isSystem) return NextResponse.json({ error: 'No se puede renombrar una columna de sistema' }, { status: 403 })
     if (!body.name?.trim()) return NextResponse.json({ error: 'Column name cannot be empty' }, { status: 400 })
     patch.name = body.name.trim()
   }
@@ -65,6 +66,7 @@ export async function PATCH(req: Request, { params }: Context) {
   if ('required'  in body && body.required  !== undefined) patch.required  = body.required
   if ('position'  in body && body.position  !== undefined) patch.position  = body.position
   if ('kind' in body && body.kind !== undefined) {
+    if (isSystem) return NextResponse.json({ error: 'No se puede cambiar el tipo de una columna de sistema' }, { status: 403 })
     if (!VALID_KINDS.includes(body.kind)) return NextResponse.json({ error: 'Invalid column kind' }, { status: 400 })
     patch.kind = body.kind
   }
