@@ -158,6 +158,7 @@ export function BoardView({
   }
   const [refMap, setRefMap] = useState<Record<string, Record<string, unknown>>>({})  // source_item_id → col_key → value
   const [refTargetCols, setRefTargetCols] = useState<Record<string, Record<string, string>>>({})  // target_board_id → col_key → column_id
+  const [refNestedBoardId, setRefNestedBoardId] = useState<Record<string, string>>({})  // col_key of ref col → target_board_id of the nested relation
 
   // col_key → column UUID  (for item_values lookups)
   const colIdMap = useMemo(() => {
@@ -169,7 +170,7 @@ export function BoardView({
   // Relation label map: target_board_id → item_id → name (for relation cell display)
   const [relationLabelMap, setRelationLabelMap] = useState<Record<string, Record<string, string>>>({})
 
-  // Memo for unique target board IDs from relation columns
+  // Memo for unique target board IDs from relation columns (direct + nested via ref)
   const relationTargetBoards = useMemo(() => {
     const set = new Set<string>()
     for (const col of rawCols) {
@@ -178,8 +179,12 @@ export function BoardView({
         if (tb) set.add(tb)
       }
     }
+    // Also include nested target boards from ref columns that mirror relation fields
+    for (const nbid of Object.values(refNestedBoardId)) {
+      set.add(nbid)
+    }
     return [...set]
-  }, [rawCols])
+  }, [rawCols, refNestedBoardId])
 
   // Effect to preload relation label maps
   useEffect(() => {
@@ -234,8 +239,8 @@ export function BoardView({
 
   // Row[] — derived from rawItems + columns
   const rows = useMemo((): Row[] => {
-    return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap))
-  }, [rawItems, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap])
+    return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap, refNestedBoardId))
+  }, [rawItems, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap, refNestedBoardId])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -452,29 +457,44 @@ export function BoardView({
     // Fetch per target board
     const fetches = Object.entries(idsByBoard).map(async ([bid, idsSet]) => {
       const ids = [...idsSet]
-      if (ids.length === 0) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string> }
+      if (ids.length === 0) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string>, targetColsByKey: {} }
       const res = await fetch(`/api/items?boardId=${bid}&ids=${ids.join(',')}&format=col_keys`)
-      if (!res.ok) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string> }
+      if (!res.ok) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string>, targetColsByKey: {} }
       const items = await res.json()
       // Also fetch board columns for col_key → column_id map (for PUT on edit)
       const colsRes = await fetch(`/api/boards/${bid}/columns`)
       const cols = colsRes.ok ? await colsRes.json() : []
       const colMap: Record<string, string> = {}
-      for (const c of cols) colMap[c.col_key] = c.id
-      return { boardId: bid, items, cols: colMap }
+      const targetColsByKey: Record<string, any> = {}
+      for (const c of cols) {
+        colMap[c.col_key] = c.id
+        targetColsByKey[c.col_key] = c
+      }
+      return { boardId: bid, items, cols: colMap, targetColsByKey }
     })
 
     Promise.all(fetches).then(results => {
       const map: Record<string, Record<string, unknown>> = {}
       const targetColsByBoard: Record<string, Record<string, string>> = {}
-      for (const { boardId: bid, items, cols } of results) {
+      const nestedMap: Record<string, string> = {}
+      for (const { boardId: bid, items, cols, targetColsByKey } of results) {
         targetColsByBoard[bid] = cols
         for (const item of items) {
           map[item.id] = item.col_values ?? {}
         }
       }
+      // For each ref col in THIS board, check if its mirrored field is a relation
+      for (const meta of refColsMeta) {
+        const targetCols = results.find(r => r.boardId === meta.target_board_id)?.targetColsByKey
+        const mirroredCol = targetCols?.[meta.ref_field_col_key]
+        if (mirroredCol?.kind === 'relation') {
+          const nestedBoardId = (mirroredCol.settings as any)?.target_board_id
+          if (nestedBoardId) nestedMap[meta.col_key] = nestedBoardId
+        }
+      }
       setRefMap(map)
       setRefTargetCols(targetColsByBoard)
+      setRefNestedBoardId(nestedMap)
     }).catch(err => console.error('[ref fetch]', err))
   }, [rawItems, refColsMeta])
 
@@ -1111,7 +1131,8 @@ function toRow(
   itemsField: Record<string, keyof BoardItem>,
   refColsMeta: any[],
   refMap: Record<string, Record<string, unknown>>,
-  relationLabelMap: Record<string, Record<string, string>>
+  relationLabelMap: Record<string, Record<string, string>>,
+  refNestedBoardId: Record<string, string>
 ): Row {
   const cells: Record<string, CellValue> = {}
   for (const col of cols) {
@@ -1136,7 +1157,14 @@ function toRow(
       const refMeta = refColsMeta.find(m => m.col_key === col.key)
       if (refMeta) {
         const relVal = item.item_values?.find(iv => iv.column_id === refMeta.relation_col_id)?.value_text
-        cells[col.key] = ((relVal && refMap[relVal]?.[refMeta.ref_field_col_key]) ?? null) as CellValue
+        const rawValue = (relVal && refMap[relVal]?.[refMeta.ref_field_col_key]) ?? null
+        // If the mirrored field is itself a relation, resolve item_id → name
+        const nestedBoardId = refNestedBoardId[col.key]
+        if (nestedBoardId && rawValue && typeof rawValue === 'string') {
+          cells[col.key] = (relationLabelMap[nestedBoardId]?.[rawValue] ?? rawValue) as CellValue
+        } else {
+          cells[col.key] = rawValue as CellValue
+        }
         continue
       }
 
