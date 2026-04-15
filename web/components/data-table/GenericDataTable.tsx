@@ -589,6 +589,7 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
           ref={panelRef}
           style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
           className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56"
+          onMouseDown={e => e.stopPropagation()}
         >
           <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Nueva columna</p>
           <input
