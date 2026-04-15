@@ -1028,120 +1028,80 @@ En rutas API que ya validaron autorización con `requireAuthApi()` + check de `w
 
 ---
 
-## Fase 15 — Stage Gates + Field Locks
+## Fase 15 — Column Validations + IF Formula + Stage Gates
 
-**Goal:** Reemplazar Make checks con validaciones nativas. Bloquear campos según estado.
+**Goal:** Validaciones nativas por columna. Las condiciones viven en la columna, no en la etapa. El stage gate es un botón (`kind='button'`) que evalúa todas las columnas con validación antes de avanzar.
 
-### 13.A — Stage Gates
+### Diseño
 
-Antes de que un item avance a una etapa, todas las `entry_conditions` de esa etapa deben cumplirse.
+**Decisión arquitectónica (sesión 27):** Las condiciones no viven en `board_stages.entry_conditions` sino en `board_columns.settings.validation`. Ventaja: la columna sabe si está "ok", visible inmediatamente en la tabla. Para sub-item aggregates se usan rollup columns como intermediarias — la condición solo referencia col_keys del mismo nivel (incluyendo rollups).
 
-```sql
--- board_stages.entry_conditions jsonb DEFAULT '[]'
--- Cada condition:
-{
-  "id": "uuid",
-  "label": "Debe tener al menos 1 producto con descripción",  -- aparece en mensaje al vendedor
-  "type": "column_not_empty"
-        | "column_equals"
-        | "column_greater_than"
-        | "column_contains"
-        | "all_subitems_match"    -- todos los L1 tienen [column] = [value]
-        | "sum_children_equals"   -- sum(L2.column) = item.column
-        | "signature_exists"      -- columna kind='signature' está firmada
-        | "file_attached",        -- columna kind='file' tiene al menos 1 archivo
-  "column_id": "uuid",
-  "value": any,
-  "child_column_id": "uuid"       -- para all_subitems_match y sum_children_equals
-}
-```
-
-**Flujo cuando falla:**
-
-```
-PATCH /api/items/[id] { stage_id: 'nuevo' }
-  → evalúa entry_conditions del stage destino
-  → si alguna falla:
-      1. Retorna 422 { blocked: true, failed: [{ label, type }] }
-      2. INSERT item_activity { action: 'stage_blocked', metadata: { failed_checks, attempted_stage } }
-      3. POST canal "Sistema": "@[owner] No pudiste avanzar a [Etapa]:\n❌ [label1]\n❌ [label2]"
-      4. INSERT mentions → trigger WhatsApp al owner (ya existente)
-```
-
-**UI en Settings → Boards → click en etapa:**
-```
-┌─────────────────────────────────────────────────┐
-│  Requisitos para entrar a "Costeo"              │
-│                                                 │
-│  ❯ Institución del contacto  [no está vacío]    │
-│  ❯ Descripción               [no está vacío]    │
-│  ❯ Cantidad                  [mayor que 0]      │
-│  + Agregar requisito                            │
-└─────────────────────────────────────────────────┘
-```
-
-### 13.B — Field Locks
-
-Cuando una columna alcanza cierto valor → se vuelve read-only para roles no privilegiados.
+#### Validación por columna
 
 ```typescript
-// sub_item_columns.settings (o board_columns.settings):
+// board_columns.settings.validation  (jsonb — sin migration)
 {
-  lock_when: {
-    column_id: 'stage_col_id',
-    operator: 'equals',
-    value: 'listo_stage_id'
+  condition: {
+    col: string            // cualquier col_key del mismo nivel, incluyendo rollups
+    operator: 'empty' | 'not_empty' | '>' | '<' | '=' | '!=' | 'contains' | 'not_contains'
+    value?: unknown        // literal; para 'contains' sobre multiselect = string a buscar
   },
-  lock_for_roles: ['member', 'viewer']  // admin/costeador sí puede editar
+  message: string          // "Cantidad debe ser mayor a 0"
 }
 ```
 
-Enforcement:
-- **API**: `PATCH /api/sub-items/[id]/values` verifica lock antes de escribir → 403 si aplica
-- **UI**: celda se muestra con fondo gris + cursor not-allowed + tooltip "Este campo está bloqueado"
+**Ejemplo cross-level (via rollup):**
+- Rollup column `total_l1_qty = sum(L1.cantidad)` ya existe en el board
+- Validation en esa columna: `{ col: 'total_l1_qty', operator: '>', value: 0 }`
+
+#### IF fórmula (completa)
+
+```typescript
+// formula_config en board_columns / sub_item_columns con kind='formula'
+{ type: 'if'; condition: FormulaCondition; col_true: string | number; col_false: string | number }
+// col_true / col_false = col_key ó literal (number o string prefijado "literal:")
+```
+
+#### Default value
+
+```typescript
+// board_columns.settings.default_value  (jsonb — sin migration)
+// Tipo ajustado al kind de la columna; se aplica al crear item/sub-item nuevo
+```
+
+#### Button column como stage gate
+
+```typescript
+// board_columns.settings  (kind='button')
+{
+  action: 'change_stage',
+  target_stage_id: 'uuid'    // estático por ahora
+  label?: string             // texto del botón, default = nombre de la columna
+}
+```
+
+**Flujo al click:**
+1. Recolecta todas las columnas del board con `settings.validation`
+2. Evalúa `evaluateCondition(condition, row)` para cada una
+3. Si alguna falla → cells rojos + toast con mensajes, sin cambio de etapa
+4. Si todas ok → `PATCH /api/items/[id] { stage_id }`
 
 ### Tareas
-- [ ] **13.1** `board_stages.entry_conditions` — migration + PATCH en API de stages
-- [ ] **13.2** Evaluador de conditions en `lib/stage-gates.ts` (todos los tipos)
-- [ ] **13.3** Enforcement en `PATCH /api/items/[id]` al cambiar `stage_id`
-- [ ] **13.4** Auto-post canal Sistema + mention al owner cuando falla
-- [ ] **13.5** UI condition builder en Settings → Boards → Stages
-- [ ] **13.6** `lock_when` en settings de board_columns y sub_item_columns
-- [ ] **13.7** Enforcement de lock en API + UI (celda gris)
+- [x] **15.1** `formula-engine.ts`: agregar `contains`/`not_contains` a `evaluateCondition`; exportar función; tipar `FormulaCondition` con nuevo operador
+- [x] **15.2** `ColumnSettingsPanel` tab **Fórmula** completo: UI para `type: 'if'` (condition builder + true/false; columna o literal); `handleSaveFormula` guarda IF config
+- [x] **15.3** `ColumnSettingsPanel` tab **Validación** (nuevo, todos los kinds): condition builder reutilizando mismos inputs; campo mensaje; `handleSaveValidation` hace PATCH en `settings.validation`
+- [x] **15.4** `ColumnSettingsPanel` tab **General**: campo "Valor por defecto" según kind (text input / number / date / select dropdown / checkbox / user picker); `POST /api/items` aplica default_value al crear
+- [x] **15.5** `ColumnCell`: si `column.settings.validation` existe, evalúa contra row → borde rojo + ❌ en esquina cuando falla; fallback a col_key propio cuando `condition.col` vacío; NativeRow sub-items también muestra overlay rojo
+- [x] **15.6** `ButtonCell` (`action: 'change_stage'`): antes de ejecutar, evalúa validaciones de todas las columnas del board → lista de mensajes bloqueantes inline; botón rojo cuando hay fallas
+- [x] **15.7** `GenericDataTable` propaga `allColumns` + `row` a cada `ColumnCell`; `ColumnSettings` tipado con `validation`, `default_value`, `target_stage_id`, `rollup_config`
 
 ### Verificación
-- [ ] Item sin institución de contacto → no puede avanzar a Costeo → mensaje en canal con checks fallidos
-- [ ] Sub-item en stage Listo → vendor intenta editar → bloqueado; costeador sí puede
-- [ ] Firma requerida → sin firma → no avanza → con firma → avanza
-
----
-
-### Reflexión arquitectónica: Column-level gate conditions (pendiente de diseño)
-
-**Idea del usuario:** en lugar de definir las condiciones en la etapa, definirlas en la columna.
-Cada columna puede tener una `gate_condition` que se evalúa antes de avanzar a cierta etapa.
-El gate del stage agrega automáticamente todas las columnas que tengan una condición activa.
-
-**Ventaja:** más modular. El vendedor ve en cada columna si está "bloqueando" el avance.
-**Ejemplo concreto:** columna `color_disponible` tiene condición `matches_subitem_colors = true`.
-Si los sub-items tienen colores que no existen en el catálogo → esa columna bloquea el paso a Costeo.
-
-**Alternativa a evaluar (vs diseño actual):**
-- Diseño actual (`board_stages.entry_conditions`): condiciones definidas en la etapa destino.
-- Propuesta nueva (`board_columns.settings.gate_condition`): condición vive en la columna; la etapa solo define qué condiciones activar (o todas).
-
-**Posible estructura de columna:**
-```json
-// board_columns.settings.gate_condition
-{
-  "applies_to_stage_id": "uuid-costeo",
-  "label": "Colores deben estar disponibles en catálogo",
-  "type": "if",
-  "formula_config": { "type": "if", "condition": { "col": "color_match", "operator": "=", "value": true } }
-}
-```
-
-**Decisión pendiente:** ¿conditions en la etapa (actual) o en la columna (propuesta)? Evaluar en Fase 15 antes de implementar.
+- [ ] Columna "Cantidad" con validation `> 0` → cell roja mientras el valor es 0 o vacío
+- [ ] Rollup `total_l1_qty` con validation `> 0` → cell roja si no hay sub-items con cantidad
+- [ ] IF formula `IF(precio > 1000, "Premium", "Estándar")` → muestra texto correcto según valor
+- [ ] IF con `contains` en multiselect → `IF(colores contains "rojo", 1, 0)` funciona
+- [ ] Botón "Avanzar a Costeo" con `target_stage_id` → bloquea si hay validaciones fallidas; avanza si todas ok
+- [ ] Default value en columna select → nuevo item ya trae la opción preseleccionada
 
 ---
 

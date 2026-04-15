@@ -148,5 +148,43 @@ export async function POST(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Apply default_value from board_columns
+  const svc = createServiceClient()
+  const { data: cols } = await svc
+    .from('board_columns')
+    .select('id, col_key, kind, settings')
+    .eq('board_id', board_id)
+    .eq('is_system', false)
+
+  const defaultInserts: {
+    item_id: string; column_id: string;
+    value_text?: string; value_number?: number; value_date?: string; value_json?: unknown
+  }[] = []
+
+  for (const col of cols ?? []) {
+    const def = (col.settings as Record<string, unknown>)?.default_value
+    if (def === null || def === undefined || def === '') continue
+    const kind = col.kind as string
+    const entry: typeof defaultInserts[number] = { item_id: data.id, column_id: col.id }
+    if (kind === 'number' || kind === 'formula' || kind === 'rollup') {
+      const n = typeof def === 'number' ? def : parseFloat(String(def))
+      if (!isNaN(n)) entry.value_number = n
+    } else if (kind === 'boolean') {
+      entry.value_json = def === 'true' || def === true
+    } else if (kind === 'date') {
+      entry.value_date = String(def)
+    } else {
+      entry.value_text = String(def)
+    }
+    // Skip if nothing to insert
+    if (entry.value_text === undefined && entry.value_number === undefined && entry.value_date === undefined && entry.value_json === undefined) continue
+    defaultInserts.push(entry)
+  }
+
+  if (defaultInserts.length > 0) {
+    await svc.from('item_values').insert(defaultInserts)
+  }
+
   return NextResponse.json(data, { status: 201 })
 }

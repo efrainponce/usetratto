@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { evaluateCondition, type FormulaCondition } from '@/lib/formula-engine'
 
 // ─── Local types (compatible with BoardColumn + WorkspaceUser) ────────────────
 
@@ -177,6 +178,37 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   const [subItemCols,        setSubItemCols]        = useState<SubItemCol[]>([])
   const [savingRollup,       setSavingRollup]       = useState(false)
 
+  // ── IF formula state ──────────────────────────────────────────────────────
+  type CondOp = FormulaCondition['operator']
+  const existingIf = (column.settings?.formula_config as { type?: string; condition?: { col?: string; operator?: string; value?: unknown }; col_true?: unknown; col_false?: unknown; col_true_is_literal?: boolean; col_false_is_literal?: boolean } | undefined)
+  const isExistingIf = existingIf?.type === 'if'
+
+  const [ifCondCol,    setIfCondCol]    = useState<string>(isExistingIf ? (existingIf?.condition?.col ?? '') : '')
+  const [ifCondOp,     setIfCondOp]     = useState<CondOp>(isExistingIf ? ((existingIf?.condition?.operator ?? '=') as CondOp) : '=')
+  const [ifCondValue,  setIfCondValue]  = useState<string>(isExistingIf ? String(existingIf?.condition?.value ?? '') : '')
+  const [ifTrueType,   setIfTrueType]   = useState<'col' | 'literal'>(isExistingIf && existingIf?.col_true_is_literal ? 'literal' : 'col')
+  const [ifTrueVal,    setIfTrueVal]    = useState<string>(isExistingIf ? String(existingIf?.col_true ?? '') : '')
+  const [ifFalseType,  setIfFalseType]  = useState<'col' | 'literal'>(isExistingIf && existingIf?.col_false_is_literal ? 'literal' : 'col')
+  const [ifFalseVal,   setIfFalseVal]   = useState<string>(isExistingIf ? String(existingIf?.col_false ?? '') : '')
+
+  // ── Validation state ──────────────────────────────────────────────────────
+  const existingVal = column.settings?.validation as { condition?: { col?: string; operator?: string; value?: unknown }; message?: string } | undefined
+
+  const [validationEnabled,  setValidationEnabled]  = useState<boolean>(!!existingVal)
+  const [validationCol,      setValidationCol]       = useState<string>(existingVal?.condition?.col ?? '')
+  const [validationOp,       setValidationOp]        = useState<CondOp>((existingVal?.condition?.operator ?? '=') as CondOp)
+  const [validationValue,    setValidationValue]     = useState<string>(String(existingVal?.condition?.value ?? ''))
+  const [validationMessage,  setValidationMessage]   = useState<string>(existingVal?.message ?? '')
+  const [savingValidation,   setSavingValidation]    = useState(false)
+
+  // ── Default value state ───────────────────────────────────────────────────
+  const [defaultValue,   setDefaultValue]   = useState<string>(
+    column.settings?.default_value !== undefined && column.settings?.default_value !== null
+      ? String(column.settings.default_value)
+      : ''
+  )
+  const [savingDefault,  setSavingDefault]  = useState(false)
+
   // ── Active tab ────────────────────────────────────────────────────────────
   const isSelect    = kind === 'select' || kind === 'multiselect'
   const isNumber    = kind === 'number'
@@ -184,8 +216,9 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   const isSignature = kind === 'signature'
   const isFormula   = kind === 'formula'
   const isRollup    = kind === 'rollup'
+  const hasDefault  = !['formula', 'rollup', 'signature', 'file', 'button', 'autonumber'].includes(kind)
 
-  type TabId = 'general' | 'opciones' | 'formula' | 'rollup' | 'permisos'
+  type TabId = 'general' | 'opciones' | 'formula' | 'rollup' | 'validacion' | 'permisos'
   const [tab, setTab] = useState<TabId>('general')
 
   // ── Load permissions + teams ──────────────────────────────────────────────
@@ -330,19 +363,79 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   }
 
   async function handleSaveFormula() {
-    if (!arithColA || !arithColB) return
     setSavingFormula(true)
     try {
-      const formula_config = formulaType === 'arithmetic'
-        ? { type: 'arithmetic', op: arithOp, col_a: arithColA, col_b: arithColB }
-        : null
+      let formula_config: Record<string, unknown> | null = null
+      if (formulaType === 'arithmetic') {
+        if (!arithColA || !arithColB) return
+        formula_config = { type: 'arithmetic', op: arithOp, col_a: arithColA, col_b: arithColB }
+      } else if (formulaType === 'if') {
+        if (!ifCondCol) return
+        const trueVal: string | number = ifTrueType === 'literal'
+          ? (isNaN(parseFloat(ifTrueVal)) ? ifTrueVal : parseFloat(ifTrueVal))
+          : ifTrueVal
+        const falseVal: string | number = ifFalseType === 'literal'
+          ? (isNaN(parseFloat(ifFalseVal)) ? ifFalseVal : parseFloat(ifFalseVal))
+          : ifFalseVal
+        formula_config = {
+          type: 'if',
+          condition: {
+            col: ifCondCol,
+            operator: ifCondOp,
+            ...(ifCondOp !== 'empty' && ifCondOp !== 'not_empty' ? { value: isNaN(parseFloat(ifCondValue)) ? ifCondValue : parseFloat(ifCondValue) } : {}),
+          },
+          col_true: trueVal,
+          col_false: falseVal,
+          col_true_is_literal: ifTrueType === 'literal',
+          col_false_is_literal: ifFalseType === 'literal',
+        }
+      }
       if (!formula_config) return
-      const updated = await patchColumn({
-        settings: { ...column.settings, formula_config },
-      })
+      const updated = await patchColumn({ settings: { ...column.settings, formula_config } })
       if (updated) onUpdated(updated)
     } finally {
       setSavingFormula(false)
+    }
+  }
+
+  async function handleSaveValidation() {
+    setSavingValidation(true)
+    try {
+      const validation = validationEnabled
+        ? {
+            condition: {
+              col: validationCol || column.col_key,
+              operator: validationOp,
+              ...(validationOp !== 'empty' && validationOp !== 'not_empty' ? { value: isNaN(parseFloat(validationValue)) ? validationValue : parseFloat(validationValue) } : {}),
+            },
+            message: validationMessage.trim() || 'Valor inválido',
+          }
+        : null
+      const newSettings = { ...column.settings }
+      if (validation) newSettings.validation = validation
+      else delete newSettings.validation
+      const updated = await patchColumn({ settings: newSettings })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingValidation(false)
+    }
+  }
+
+  async function handleSaveDefault() {
+    setSavingDefault(true)
+    try {
+      let value: unknown = defaultValue
+      if (kind === 'number' || kind === 'formula' || kind === 'rollup') {
+        value = defaultValue === '' ? null : parseFloat(defaultValue)
+      } else if (kind === 'boolean') {
+        value = defaultValue === 'true'
+      } else if (defaultValue === '') {
+        value = null
+      }
+      const updated = await patchColumn({ settings: { ...column.settings, default_value: value } })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingDefault(false)
     }
   }
 
@@ -421,10 +514,11 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   // ── Tabs ──────────────────────────────────────────────────────────────────
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: 'general',  label: 'General' },
-    ...(isSelect  ? [{ id: 'opciones' as TabId, label: 'Opciones' }] : []),
-    ...(isFormula ? [{ id: 'formula'  as TabId, label: 'Fórmula'  }] : []),
-    ...(isRollup  ? [{ id: 'rollup'   as TabId, label: 'Rollup'   }] : []),
+    { id: 'general',    label: 'General' },
+    ...(isSelect  ? [{ id: 'opciones'   as TabId, label: 'Opciones'  }] : []),
+    ...(isFormula ? [{ id: 'formula'    as TabId, label: 'Fórmula'   }] : []),
+    ...(isRollup  ? [{ id: 'rollup'     as TabId, label: 'Rollup'    }] : []),
+    { id: 'validacion', label: 'Validación' },
     ...(permissionsEndpoint ? [{ id: 'permisos' as TabId, label: 'Permisos' }] : []),
   ]
 
@@ -593,6 +687,44 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
                 </div>
               )}
 
+              {/* Default value */}
+              {hasDefault && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Valor por defecto</label>
+                  {kind === 'boolean' ? (
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" checked={defaultValue === 'true'}
+                        onChange={e => setDefaultValue(e.target.checked ? 'true' : 'false')}
+                        className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900/20" />
+                      <span className="text-sm text-gray-600">{defaultValue === 'true' ? 'Activado' : 'Desactivado'}</span>
+                    </div>
+                  ) : kind === 'number' ? (
+                    <input type="number" value={defaultValue} onChange={e => setDefaultValue(e.target.value)}
+                      placeholder="0"
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                  ) : kind === 'date' ? (
+                    <input type="date" value={defaultValue} onChange={e => setDefaultValue(e.target.value)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                  ) : isSelect ? (
+                    <select value={defaultValue} onChange={e => setDefaultValue(e.target.value)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                      <option value="">Sin valor por defecto</option>
+                      {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                  ) : (
+                    <input type="text" value={defaultValue} onChange={e => setDefaultValue(e.target.value)}
+                      placeholder="Valor por defecto..."
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                  )}
+                  <div className="flex justify-end mt-1.5">
+                    <button onClick={handleSaveDefault} disabled={savingDefault}
+                      className="px-3 py-1 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50">
+                      {savingDefault ? '...' : 'Guardar'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Save general (name + kind) */}
               {!column.is_system && (
                 <button
@@ -687,7 +819,100 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
                 </>
               )}
 
-              {formulaType !== 'arithmetic' && (
+              {formulaType === 'if' && (
+                <>
+                  {/* Condition row */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-600">SI esta condición se cumple:</p>
+                    <select value={ifCondCol} onChange={e => setIfCondCol(e.target.value)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                      <option value="">— elegir columna —</option>
+                      {boardCols.map(c => <option key={c.col_key} value={c.col_key}>{c.name}</option>)}
+                    </select>
+                    <select value={ifCondOp} onChange={e => setIfCondOp(e.target.value as CondOp)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                      <option value="=">=  igual a</option>
+                      <option value="!=">≠  no es igual a</option>
+                      <option value=">">&gt;  mayor que</option>
+                      <option value="<">&lt;  menor que</option>
+                      <option value="empty">está vacío</option>
+                      <option value="not_empty">no está vacío</option>
+                      <option value="contains">contiene (texto / opción)</option>
+                      <option value="not_contains">no contiene</option>
+                    </select>
+                    {ifCondOp !== 'empty' && ifCondOp !== 'not_empty' && (
+                      <input type="text" value={ifCondValue} onChange={e => setIfCondValue(e.target.value)}
+                        placeholder="Valor a comparar"
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                    )}
+                  </div>
+
+                  {/* True branch */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-600">ENTONCES retornar:</p>
+                    <div className="flex gap-1">
+                      {(['col', 'literal'] as const).map(t => (
+                        <button key={t} type="button" onClick={() => setIfTrueType(t)}
+                          className={['flex-1 py-1 text-xs rounded border transition-colors', ifTrueType === t ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-500 hover:border-gray-400'].join(' ')}>
+                          {t === 'col' ? 'Columna' : 'Literal'}
+                        </button>
+                      ))}
+                    </div>
+                    {ifTrueType === 'col' ? (
+                      <select value={ifTrueVal} onChange={e => setIfTrueVal(e.target.value)}
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                        <option value="">— elegir columna —</option>
+                        {boardCols.map(c => <option key={c.col_key} value={c.col_key}>{c.name}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" value={ifTrueVal} onChange={e => setIfTrueVal(e.target.value)}
+                        placeholder='Ej: "Aprobado" o 1'
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                    )}
+                  </div>
+
+                  {/* False branch */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-600">SI NO retornar:</p>
+                    <div className="flex gap-1">
+                      {(['col', 'literal'] as const).map(t => (
+                        <button key={t} type="button" onClick={() => setIfFalseType(t)}
+                          className={['flex-1 py-1 text-xs rounded border transition-colors', ifFalseType === t ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-500 hover:border-gray-400'].join(' ')}>
+                          {t === 'col' ? 'Columna' : 'Literal'}
+                        </button>
+                      ))}
+                    </div>
+                    {ifFalseType === 'col' ? (
+                      <select value={ifFalseVal} onChange={e => setIfFalseVal(e.target.value)}
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                        <option value="">— elegir columna —</option>
+                        {boardCols.map(c => <option key={c.col_key} value={c.col_key}>{c.name}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" value={ifFalseVal} onChange={e => setIfFalseVal(e.target.value)}
+                        placeholder='Ej: "Pendiente" o 0'
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                    )}
+                  </div>
+
+                  {/* Preview */}
+                  {ifCondCol && (ifTrueVal || ifFalseVal) && (
+                    <div className="rounded-md bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-700 leading-relaxed">
+                      SI &quot;{boardCols.find(c => c.col_key === ifCondCol)?.name ?? ifCondCol}&quot;{' '}
+                      {ifCondOp === '=' ? '=' : ifCondOp === '!=' ? '≠' : ifCondOp === '>' ? '>' : ifCondOp === '<' ? '<' : ifCondOp === 'empty' ? 'está vacío' : ifCondOp === 'not_empty' ? 'no está vacío' : ifCondOp}{' '}
+                      {ifCondOp !== 'empty' && ifCondOp !== 'not_empty' && `"${ifCondValue}" `}
+                      → &quot;{ifTrueVal || '…'}&quot; SI NO → &quot;{ifFalseVal || '…'}&quot;
+                    </div>
+                  )}
+
+                  <button onClick={handleSaveFormula} disabled={savingFormula || !ifCondCol}
+                    className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50">
+                    {savingFormula ? 'Guardando…' : 'Guardar fórmula'}
+                  </button>
+                </>
+              )}
+
+              {formulaType !== 'arithmetic' && formulaType !== 'if' && (
                 <p className="text-[12px] text-gray-400">
                   Este tipo de fórmula se configurará en una próxima versión.
                 </p>
@@ -759,6 +984,72 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
                 className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
               >
                 {savingRollup ? 'Guardando…' : 'Guardar rollup'}
+              </button>
+            </div>
+          )}
+
+          {/* ── Validación ──────────────────────────────────────────────── */}
+          {tab === 'validacion' && (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-500">
+                Define cuándo esta columna es válida. Las celdas inválidas se marcan en rojo con ❌.
+                Para sub-item aggregates, apunta a una columna rollup del mismo nivel.
+              </p>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={validationEnabled} onChange={e => setValidationEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900/20" />
+                <span className="text-xs font-medium text-gray-700">Activar validación</span>
+              </label>
+
+              {validationEnabled && (
+                <>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-600">La columna es válida si:</p>
+                    <select value={validationCol} onChange={e => setValidationCol(e.target.value)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                      <option value="">— esta misma columna —</option>
+                      {boardCols.map(c => <option key={c.col_key} value={c.col_key}>{c.name}</option>)}
+                    </select>
+                    <select value={validationOp} onChange={e => setValidationOp(e.target.value as CondOp)}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20">
+                      <option value="not_empty">no está vacío</option>
+                      <option value="empty">está vacío</option>
+                      <option value="=">=  igual a</option>
+                      <option value="!=">≠  no es igual a</option>
+                      <option value=">">&gt;  mayor que</option>
+                      <option value="<">&lt;  menor que</option>
+                      <option value="contains">contiene</option>
+                      <option value="not_contains">no contiene</option>
+                    </select>
+                    {validationOp !== 'empty' && validationOp !== 'not_empty' && (
+                      <input type="text" value={validationValue} onChange={e => setValidationValue(e.target.value)}
+                        placeholder="Valor de referencia"
+                        className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Mensaje cuando falla</label>
+                    <input type="text" value={validationMessage} onChange={e => setValidationMessage(e.target.value)}
+                      placeholder="Ej: Cantidad debe ser mayor a 0"
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20" />
+                  </div>
+
+                  {/* Preview */}
+                  {(validationCol || validationOp) && (
+                    <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                      ❌ cuando &quot;{boardCols.find(c => c.col_key === validationCol)?.name ?? (validationCol || 'esta columna')}&quot;{' '}
+                      {validationOp === '=' ? 'no es igual a' : validationOp === '!=' ? 'es igual a' : validationOp === '>' ? 'es ≤' : validationOp === '<' ? 'es ≥' : validationOp === 'empty' ? 'no está vacío' : validationOp === 'not_empty' ? 'está vacío' : validationOp === 'contains' ? 'no contiene' : 'contiene'}{' '}
+                      {validationOp !== 'empty' && validationOp !== 'not_empty' && `"${validationValue}"`}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <button onClick={handleSaveValidation} disabled={savingValidation || (validationEnabled && !validationCol && validationOp === '=')}
+                className="w-full px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50">
+                {savingValidation ? 'Guardando…' : validationEnabled ? 'Guardar validación' : 'Quitar validación'}
               </button>
             </div>
           )}

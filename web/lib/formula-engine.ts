@@ -1,12 +1,12 @@
 export type FormulaCondition = {
   col: string
-  operator: '>' | '<' | '=' | '!=' | 'empty' | 'not_empty'
+  operator: '>' | '<' | '=' | '!=' | 'empty' | 'not_empty' | 'contains' | 'not_contains'
   value?: unknown
 }
 
 export type FormulaConfig =
   | { type: 'arithmetic'; op: 'add' | 'subtract' | 'multiply' | 'divide' | 'percent'; col_a: string; col_b: string }
-  | { type: 'if'; condition: FormulaCondition; col_true: string | number; col_false: string | number }
+  | { type: 'if'; condition: FormulaCondition; col_true: string | number; col_false: string | number; col_true_is_literal?: boolean; col_false_is_literal?: boolean }
   | { type: 'concat'; cols: string[]; separator: string }
   | { type: 'date_diff'; col_a: string; col_b: string; unit: 'days' | 'hours' }
   | { type: 'count_if'; col: string; operator: '>' | '<' | '=' | '!='; value: unknown }
@@ -70,20 +70,19 @@ function computeArithmetic(
 }
 
 function computeIf(
-  config: { type: 'if'; condition: FormulaCondition; col_true: string | number; col_false: string | number },
+  config: { type: 'if'; condition: FormulaCondition; col_true: string | number; col_false: string | number; col_true_is_literal?: boolean; col_false_is_literal?: boolean },
   row: Record<string, unknown>
 ): unknown {
   const conditionMet = evaluateCondition(config.condition, row)
   const resultKey = conditionMet ? config.col_true : config.col_false
+  const isLiteral = conditionMet ? !!config.col_true_is_literal : !!config.col_false_is_literal
 
-  // If resultKey is a number literal, return it directly
-  if (typeof resultKey === 'number') {
-    return resultKey
-  }
-
+  // Number literal → return directly
+  if (typeof resultKey === 'number') return resultKey
+  // String literal (flagged) → return as-is
+  if (isLiteral) return resultKey
   // Otherwise treat as column key
-  const value = row[resultKey]
-  return value ?? null
+  return row[resultKey] ?? null
 }
 
 function computeConcat(
@@ -139,16 +138,29 @@ function computeCountIf(
 }
 
 /**
- * Helper: Evaluate a single condition
+ * Helper: Evaluate a single condition against a row.
+ * Exported so validation and stage-gate logic can reuse it.
  */
-function evaluateCondition(condition: FormulaCondition, row: Record<string, unknown>): boolean {
+export function evaluateCondition(condition: FormulaCondition, row: Record<string, unknown>): boolean {
   const value = row[condition.col]
 
   switch (condition.operator) {
     case 'empty':
-      return value === null || value === undefined || value === ''
+      return value === null || value === undefined || value === '' ||
+        (Array.isArray(value) && value.length === 0)
     case 'not_empty':
-      return value !== null && value !== undefined && value !== ''
+      return value !== null && value !== undefined && value !== '' &&
+        !(Array.isArray(value) && value.length === 0)
+    case 'contains': {
+      const needle = String(condition.value ?? '')
+      if (Array.isArray(value)) return value.some(v => String(v) === needle || String(v).toLowerCase().includes(needle.toLowerCase()))
+      return String(value ?? '').toLowerCase().includes(needle.toLowerCase())
+    }
+    case 'not_contains': {
+      const needle = String(condition.value ?? '')
+      if (Array.isArray(value)) return !value.some(v => String(v) === needle || String(v).toLowerCase().includes(needle.toLowerCase()))
+      return !String(value ?? '').toLowerCase().includes(needle.toLowerCase())
+    }
     case '=':
     case '!=':
     case '<':

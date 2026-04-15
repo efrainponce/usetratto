@@ -2,79 +2,116 @@
 
 import { useState } from 'react'
 import type { CellProps } from '../types'
+import { evaluateCondition, type FormulaCondition } from '@/lib/formula-engine'
 
-export function ButtonCell({ column, rowId }: CellProps) {
+export function ButtonCell({ column, rowId, row, allColumns }: CellProps) {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [failedMessages, setFailedMessages] = useState<string[]>([])
 
-  const label = column.settings.label ?? 'Acción'
-  const action = (column.settings as any).action as string | undefined
-  const stageId = (column.settings as any).stage_id as string | undefined
-  const confirm = (column.settings as any).confirm as boolean | undefined
-  const confirmMessage = (column.settings as any).confirm_message as string | undefined
+  const label         = column.settings.label ?? column.label ?? 'Acción'
+  const action        = column.settings.action
+  const targetStageId = column.settings.target_stage_id ?? column.settings.stage_id
+  const confirm       = column.settings.confirm
+  const confirmMsg    = column.settings.confirm_message
+
+  /** Evaluate all column validations for the current row. Returns failed messages. */
+  function runValidations(): string[] {
+    if (!allColumns || !row) return []
+    const failed: string[] = []
+    for (const col of allColumns) {
+      const validation = col.settings?.validation
+      if (!validation?.condition) continue
+      try {
+        const ok = evaluateCondition(
+          validation.condition as FormulaCondition,
+          row as Record<string, unknown>
+        )
+        if (!ok) failed.push(`❌ ${col.label}: ${validation.message}`)
+      } catch {
+        // ignore eval errors — don't block
+      }
+    }
+    return failed
+  }
 
   const handleClick = async () => {
-    // Check confirmation dialog
     if (confirm) {
-      const userConfirmed = window.confirm(confirmMessage ?? '¿Confirmar acción?')
-      if (!userConfirmed) return
+      if (!window.confirm(confirmMsg ?? '¿Confirmar acción?')) return
     }
 
-    // Execute action
     try {
       setLoading(true)
+      setFailedMessages([])
 
       if (action === 'change_stage') {
-        if (!stageId) {
-          alert('Error: stage_id no configurado')
+        if (!targetStageId) {
+          alert('Error: target_stage_id no configurado en este botón')
+          return
+        }
+
+        // Gate check — evaluate all column validations
+        const failed = runValidations()
+        if (failed.length > 0) {
+          setFailedMessages(failed)
           return
         }
 
         const response = await fetch(`/api/items/${rowId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stage_id: stageId }),
+          body: JSON.stringify({ stage_id: targetStageId }),
         })
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
-          const message = errorData.message || response.statusText || 'Error desconocido'
-          alert(`Error al cambiar etapa: ${message}`)
+          alert(`Error al cambiar etapa: ${errorData.message ?? response.statusText}`)
           return
         }
 
-        // Success: show flash effect
         setSuccess(true)
-        setTimeout(() => setSuccess(false), 300)
-        // Realtime will update the table
+        setTimeout(() => setSuccess(false), 600)
+        // Realtime will sync the table
       } else if (action === 'create_quote') {
-        alert('Quote Engine disponible en Fase 15')
+        alert('Quote Engine disponible en Fase 17')
       } else if (action === 'run_automation') {
-        alert('Automation Engine disponible en Fase 14')
+        alert('Automation Engine disponible en Fase 16')
       } else {
         alert('Acción no reconocida')
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Error desconocido'
-      alert(`Error al ejecutar acción: ${message}`)
+      alert(`Error: ${error instanceof Error ? error.message : 'desconocido'}`)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex items-center justify-center w-full h-full px-2 py-1">
+    <div className="flex flex-col items-center justify-center w-full h-full px-1 py-0.5 gap-0.5">
       <button
         onClick={handleClick}
         disabled={loading}
-        className={`text-[12px] px-3 py-1 rounded font-medium transition-colors duration-200 ${
+        className={[
+          'text-[11px] px-2.5 py-1 rounded font-medium transition-colors duration-150 w-full',
           success
             ? 'bg-green-600 text-white'
-            : 'bg-indigo-600 text-white hover:bg-indigo-700'
-        } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            : failedMessages.length > 0
+            ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
+            : 'bg-indigo-600 text-white hover:bg-indigo-700',
+          loading ? 'opacity-50 cursor-not-allowed' : '',
+        ].join(' ')}
       >
-        {loading ? '...' : label}
+        {loading ? '…' : label}
       </button>
+
+      {/* Validation failure list — shown inline below the button */}
+      {failedMessages.length > 0 && (
+        <div className="w-full text-[10px] text-red-600 leading-tight space-y-0.5 max-h-20 overflow-y-auto">
+          {failedMessages.map((msg, i) => (
+            <div key={i} className="truncate" title={msg}>{msg}</div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

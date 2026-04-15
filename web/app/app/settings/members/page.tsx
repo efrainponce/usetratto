@@ -7,7 +7,7 @@ type WorkspaceUser = {
   sid: number
   name: string | null
   phone: string | null
-  role: 'admin' | 'member' | 'viewer'
+  role: 'admin' | 'member' | 'viewer' | 'superadmin'
 }
 
 export default function MembersSettingsPage() {

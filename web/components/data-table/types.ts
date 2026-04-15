@@ -24,6 +24,15 @@ export type SelectOption = {
   color?: string  // hex color
 }
 
+export type ColumnValidation = {
+  condition: {
+    col: string
+    operator: 'empty' | 'not_empty' | '>' | '<' | '=' | '!=' | 'contains' | 'not_contains'
+    value?: unknown
+  }
+  message: string
+}
+
 export type ColumnSettings = {
   options?:         SelectOption[]   // select, multiselect, people
   target_board_id?: string           // relation
@@ -34,7 +43,8 @@ export type ColumnSettings = {
   // button
   label?:           string
   action?:          'change_stage' | 'create_quote' | 'run_automation'
-  stage_id?:        string
+  target_stage_id?: string           // change_stage target
+  stage_id?:        string           // legacy alias
   template_id?:     string
   automation_id?:   string
   confirm?:         boolean
@@ -43,7 +53,13 @@ export type ColumnSettings = {
   allowed_roles?:   string[]
   column_id?:       string           // UUID fallback para SignatureCell
   // formula
-  formula_config?: { type: string; [key: string]: unknown }
+  formula_config?:  { type: string; [key: string]: unknown }
+  // rollup
+  rollup_config?:   { source_level: string; source_col_key: string; aggregate: string }
+  // validation
+  validation?:      ColumnValidation
+  // default value
+  default_value?:   unknown
 }
 
 export type ColumnDef = {
@@ -98,6 +114,8 @@ export type NavDirection = 'up' | 'down' | 'left' | 'right' | 'tab' | 'shifttab'
 export type CellProps = {
   column:      ColumnDef
   value:       CellValue
+  row?:        Record<string, CellValue>  // full row cells for validation + IF formulas
+  allColumns?: ColumnDef[]               // all board columns — used by ButtonCell for gate validation
   isEditing:   boolean
   rowId:       string
   onStartEdit: () => void

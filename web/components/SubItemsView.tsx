@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { ProductPicker } from './ProductPicker'
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
+import { evaluateCondition, type FormulaCondition } from '../lib/formula-engine'
 import { ColumnSettingsPanel } from './ColumnSettingsPanel'
 import { SelectCell } from './data-table/cells/SelectCell'
 
@@ -1131,10 +1132,27 @@ function NativeRow({
       {/* Value columns */}
       {displayCols.map(col => {
         const val = row.values.find(v => v.column_id === col.id)
+        const cellValue = col.kind === 'number' ? (val?.value_number ?? null) : (val?.value_text ?? null)
+
+        // Validation check
+        const colValidation = (col.settings as Record<string, unknown>)?.validation as { condition: { col?: string; operator: string; value?: unknown }; message: string } | undefined
+        const isInvalid = (() => {
+          if (!colValidation?.condition) return false
+          const condCol = colValidation.condition.col || col.col_key
+          const evalRow: Record<string, unknown> = {}
+          for (const v of row.values) {
+            evalRow[v.col_key ?? ''] = v.value_number ?? v.value_text ?? null
+          }
+          evalRow[col.col_key] = cellValue
+          try {
+            return !evaluateCondition({ ...colValidation.condition as FormulaCondition, col: condCol }, evalRow)
+          } catch { return false }
+        })()
+
         if (col.kind === 'select') {
           const opts = (col.settings.options as { value: string; label: string; color?: string }[] | undefined) ?? []
           return (
-            <div key={col.id} className="flex-none" style={{ width: w(col.id, 96) }} onClick={e => e.stopPropagation()}>
+            <div key={col.id} className="relative flex-none" style={{ width: w(col.id, 96) }} onClick={e => e.stopPropagation()}>
               <SelectCell
                 value={val?.value_text ?? null}
                 isEditing={isEditing(col.id)}
@@ -1145,17 +1163,27 @@ function NativeRow({
                 onCancel={onCancel}
                 onNavigate={() => {}}
               />
+              {isInvalid && (
+                <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
+                  <span className="absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>
+                </div>
+              )}
             </div>
           )
         }
         return (
-          <div key={col.id} className="flex-none text-right" style={{ width: w(col.id, 96) }}>
+          <div key={col.id} className="relative flex-none text-right" style={{ width: w(col.id, 96) }}>
             <EditableCell
               value={col.kind === 'number' ? (val?.value_number ?? '') : (val?.value_text ?? '')}
               isEditing={isEditing(col.id)} kind={col.kind === 'number' ? 'number' : 'text'}
               onStartEdit={() => onStartEdit(col.id)}
               onCommit={v => onCommit(col.id, v)} onCancel={onCancel} align="right"
             />
+            {isInvalid && (
+              <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
+                <span className="absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>
+              </div>
+            )}
           </div>
         )
       })}

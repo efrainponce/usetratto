@@ -206,6 +206,8 @@ export function GenericDataTable({
           <ColumnCell
             column={col}
             value={row.original.cells[col.key] ?? null}
+            row={row.original.cells}
+            allColumns={columns}
             isEditing={editingCell?.rowId === row.original.id && editingCell?.colKey === col.key}
             rowId={row.original.id}
             onStartEdit={() => {
