@@ -628,18 +628,18 @@ user_trusted_devices (
 - [x] **17.8** Email template (Resend) con branding minimalista — HTML inline en POST route
 
 #### 17.B — Email auth (Supabase native)
-- [ ] **17.9** Login page: toggle "Email / Teléfono" — email usa `signInWithOtp({ email })`
+- [x] **17.9** Login page: toggle "Email / Teléfono" — email usa `signInWithOtp({ email })`
 - [x] **17.10** Trigger `handle_new_auth_user` hardened: SET search_path=public, EXCEPTION block, soporta email signups (migration 16)
-- [ ] **17.11** Lookup durante OTP: resolver user por email desde `user_emails` (cualquier alias) → obtener primary email → enviar OTP a ese
+- [ ] **17.11** DIFERIDO: Lookup email aliases — requiere `user_emails` table (17.C)
 
-#### 17.C — Multi-identity
+#### 17.C — Multi-identity — DIFERIDO (CMP tiene 21 users, 1 email cada uno)
 - [ ] **17.12** Migration: `user_emails` table + UNIQUE(email) global + RLS
 - [ ] **17.13** Seed: copiar `users.email` actuales a `user_emails` con `is_primary=true, verified_at=now()`
 - [ ] **17.14** Settings → Profile → tab "Correos": lista + agregar nuevo email (envía verificación) + marcar primario + eliminar
 - [ ] **17.15** `POST /api/user-emails` — agrega email pendiente, dispara OTP de verificación
 - [ ] **17.16** `POST /api/user-emails/[id]/verify` — marca verified_at, permite login desde este alias
 
-#### 17.D — Session + trusted device
+#### 17.D — Session + trusted device — DIFERIDO (optimización UX, no crítico)
 - [ ] **17.17** Supabase dashboard config: refresh token 90 días (documentar en plan, no código)
 - [ ] **17.18** Migration: `user_trusted_devices` table + RLS
 - [ ] **17.19** Cliente: generar device_id (UUID) en primer login, guardar en localStorage
@@ -649,16 +649,16 @@ user_trusted_devices (
 - [ ] **17.23** Settings → Profile → tab "Dispositivos": lista trusted devices con last_seen + botón revocar
 - [ ] **17.24** Middleware: auto-extend trusted device (sliding window) cada vez que se usa
 
-#### 17.E — Cost monitoring
+#### 17.E — Cost monitoring — DIFERIDO (admin nicety, no bloquea nada)
 - [ ] **17.25** Tabla `auth_events (user_id, method, cost_estimate, created_at)` — log de cada OTP enviado
 - [ ] **17.26** Settings → Workspace → "Uso de auth" — total OTP este mes + estimado mensual
 
 ### Verificación
-- [ ] Admin invita 3 users por email → reciben email con link → aceptan → aparecen en Members
-- [ ] User con 2 emails registrados → login con cualquiera de los dos → mismo account
-- [ ] User marca "Recordar device" → cierra sesión → reabre → entra directo sin OTP
-- [ ] User revoca trusted device desde Settings → next login pide OTP
-- [ ] Métrica: contar OTP enviados antes vs después → reducción ≥70%
+- [x] Admin invita 3 users por email → reciben email con link → aceptan → aparecen en Members
+- [ ] DIFERIDO: User con 2 emails registrados → login con cualquiera de los dos → mismo account
+- [ ] DIFERIDO: User marca "Recordar device" → cierra sesión → reabre → entra directo sin OTP
+- [ ] DIFERIDO: User revoca trusted device desde Settings → next login pide OTP
+- [ ] DIFERIDO: Métrica: contar OTP enviados antes vs después → reducción ≥70%
 
 ## Fase 18 — Quote Engine
 

@@ -2,6 +2,11 @@
 
 ## 2026-04-16
 
+**~sesión 6 — Fase 17.B Email auth + cierre Fase 17**
+- Login page: toggle Email/Teléfono con tabs pill — email como método default, `signInWithOtp({ email })` + `verifyOtp({ type:'email' })`
+- Fase 17 cerrada: 17.A invitations + 17.B email auth done; 17.C multi-identity, 17.D trusted devices, 17.E cost monitoring DIFERIDOS (no críticos para CMP 21 users)
+- Build limpio 72+ rutas
+
 **~sesión 5 — Fase 17.A Invitations slice vertical**
 - Migration 15 `invitations` table + migration 16 hardened `handle_new_auth_user` (SET search_path + EXCEPTION block para email signups)
 - 3 API routes: POST/GET `/api/invitations`, DELETE `/api/invitations/[id]`, POST `/api/invitations/accept` (token validation + user provisioning)
