@@ -2,6 +2,12 @@
 
 ## 2026-04-16
 
+**~sesión 7 — Audit completo + Fase 17.5 Performance plan**
+- Audit 5 dimensiones: componentes (131 archivos, 23K LOC), API routes (56), lib/, frontend perf, DB layer
+- Hallazgos clave: `@tanstack/react-virtual` instalado pero NO USADO, 7 DB indexes faltantes, zero lazy loading, N+1 waterfall en refColsMeta, ~3K inline callbacks recreados por render
+- Fase 17.5 agregada a plan.md: 3 sprints (speed → re-renders → code reduction) con 11 tasks concretas
+- Decisión: no splitear megafiles ahora — speed fix real es virtual scrolling + lazy load + indexes
+
 **~sesión 6 — Fase 17.B Email auth + cierre Fase 17**
 - Login page: toggle Email/Teléfono con tabs pill — email como método default, `signInWithOtp({ email })` + `verifyOtp({ type:'email' })`
 - Fase 17 cerrada: 17.A invitations + 17.B email auth done; 17.C multi-identity, 17.D trusted devices, 17.E cost monitoring DIFERIDOS (no críticos para CMP 21 users)

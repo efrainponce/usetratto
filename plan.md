@@ -61,6 +61,8 @@ Fase 16.6: Ref Columns (kind='reflejo', mirror/lookup con nested resolution)
    ↓
 Fase 17: Invitations + Email Auth + Session Optimization
    ↓
+Fase 17.5: Performance & Code Consolidation (speed + menos código + mismas features)
+   ↓
 Fase 18: Quote Engine (templates PDF, cotizaciones desde items)
    ↓
 Fase 19: Tratto AI Agent + Sidebar Chat (engine compartido — sidebar, WA, móvil)
@@ -659,6 +661,88 @@ user_trusted_devices (
 - [ ] DIFERIDO: User marca "Recordar device" → cierra sesión → reabre → entra directo sin OTP
 - [ ] DIFERIDO: User revoca trusted device desde Settings → next login pide OTP
 - [ ] DIFERIDO: Métrica: contar OTP enviados antes vs después → reducción ≥70%
+
+---
+
+## Fase 17.5 — Performance & Code Consolidation
+
+**Goal:** App más rápida, menos código, mismas features. Zero regresiones. Mantenibilidad, velocidad, inteligencia y minimalismo.
+
+**Contexto del audit (23,058 LOC, 131 archivos, 56 API routes):**
+- 4 megafiles >1,000 LOC (SubItemsView 1,942 · ColumnSettingsPanel 1,910 · BoardView 1,208 · settings/boards/[boardId] 1,052)
+- `@tanstack/react-virtual` instalado pero **NO USADO** — tabla renderiza TODOS los rows en DOM
+- 7 indexes de DB faltantes en FKs frecuentes (board_columns, board_stages, users, teams, territories, sub_item_columns, column_permissions)
+- Zero lazy loading — modales pesados (~2,900 LOC) importados eagerly en BoardView
+- N+1 waterfall en refColsMeta — fetches secuenciales por board en vez de paralelos
+- ~3,000 funciones inline recreadas por render en GenericDataTable (1 por celda visible)
+- Boilerplate duplicado: board verification (~20 routes), position increment (~10 routes), fetch+loading pattern (~7 components)
+- Auth profile resolution duplicada en 2 archivos (~30 LOC × 2)
+
+### Sprint 1 — Speed (máximo impacto, mínimo riesgo)
+
+#### 17.5.1 — DB indexes en FKs frecuentes
+- [ ] **17.5.1** Migration nueva: 7 `CREATE INDEX` en `board_columns(board_id)`, `board_stages(board_id)`, `users(workspace_id)`, `teams(workspace_id)`, `territories(workspace_id)`, `sub_item_columns(board_id)`, `column_permissions(column_id)`
+
+#### 17.5.2 — Virtual scrolling en GenericDataTable
+- [ ] **17.5.2** Activar `useVirtualizer` de `@tanstack/react-virtual` (ya instalado) en `GenericDataTable.tsx` — solo renderizar filas visibles en viewport (~25-30 rows). Mantener API de props existente intacta (columns[], rows[], onCellChange). De ~3,000 nodos DOM a ~400.
+
+#### 17.5.3 — Lazy load modales pesados
+- [ ] **17.5.3** En `BoardView.tsx`: reemplazar imports directos de `SubItemViewWizard`, `SourceColumnMapper`, `ImportWizard`, `ColumnSettingsPanel` por `next/dynamic` con `ssr: false`. Se cargan solo cuando su flag `show*` es true. ~40% menos JS parseado en carga inicial del board.
+
+#### 17.5.4 — Parallel ref column fetches
+- [ ] **17.5.4** En `BoardView.tsx` useEffect de refColsMeta (~línea 461): reemplazar loop secuencial por `Promise.all` — fetch items Y columns de todos los target boards en paralelo. Con 3 boards referenciados, latencia /3.
+
+### Sprint 2 — Re-renders (segundo mayor impacto)
+
+#### 17.5.5 — useCallback estable en celdas de tabla
+- [ ] **17.5.5a** `GenericDataTable.tsx` (~línea 220): extraer handlers de celda (`onStartEdit`, `onCommit`, `onCancel`, `onNavigate`) a `useCallback` parametrizados por rowId/colId en vez de inline arrows por celda. Elimina ~3,000 funciones recreadas por render.
+- [ ] **17.5.5b** `BoardView.tsx` (~línea 1005): `renderRowExpansion` y callbacks `onCountChange`, `onDeleteView`, `onConfigureColumns` a `useCallback`. `handleCellChange` NO debe depender de `rows` — usar `useRef` para `rawItems`.
+
+#### 17.5.6 — Singleton Supabase client en effects
+- [ ] **17.5.6** `BoardView.tsx`: extraer `createClient()` a `useMemo(() => createClient(), [])` al top del componente. Reusar en ambos useEffects de realtime (items + schema). Elimina instancias duplicadas.
+
+### Sprint 3 — Code reduction (~720 LOC eliminados)
+
+#### 17.5.7 — Custom hooks compartidos
+- [ ] **17.5.7a** Crear `hooks/useAsyncData.ts`: `useAsyncData<T>(url, deps)` → `{ data, loading, error, reload }`. Reemplazar patrón fetch+useState+useEffect en 7+ componentes.
+- [ ] **17.5.7b** Crear `hooks/useDisclosure.ts`: `useDisclosure(initial?)` → `{ isOpen, open, close, toggle }`. Reemplazar 15+ pares `[show*, setShow*]` across codebase.
+- [ ] **17.5.7c** Crear `hooks/useClickOutside.ts`: `useClickOutside(ref, handler)`. Extraer de BoardView y reusar en popups.
+
+#### 17.5.8 — API route helpers compartidos
+- [ ] **17.5.8** Crear `lib/api-helpers.ts` con:
+  - `verifyBoardAccess(supabase, boardId, workspaceId)` → board | NextResponse 404 (usado en ~20 routes)
+  - `getNextPosition(supabase, table, filterCol, filterVal)` → number (usado en ~10 routes)
+  - `jsonError(message, status)` → NextResponse (usado en ~40 routes)
+  - `jsonOk(data?, status?)` → NextResponse
+  Refactorizar las rutas existentes para usar estos helpers. ~300 LOC eliminados.
+
+#### 17.5.9 — Consolidar permission routes
+- [ ] **17.5.9** Extraer `lib/column-permissions-handler.ts` con lógica compartida de GET/POST/DELETE permissions para `column_id` y `sub_item_column_id`. Los 4 archivos de routes (392 LOC total) llaman al handler con su FK respectivo. Target: ~200 LOC eliminados.
+
+#### 17.5.10 — Deduplicar auth profile resolution
+- [ ] **17.5.10** Crear `lib/auth/resolve-profile.ts` con función `resolveUserProfile(userId, phone?)` compartida. Refactorizar `lib/auth/api.ts` y `lib/auth/index.ts` para usarla. Incluye phone normalization (withPlus/withoutPlus). ~30 LOC eliminados.
+
+#### 17.5.11 — Remove type duplication
+- [ ] **17.5.11** Borrar definición duplicada de `SubItemColumn` en `SourceColumnMapper.tsx`. Importar de `@/lib/boards`.
+
+### Verificación
+
+- [ ] `npm run build` pasa sin errores
+- [ ] Board con 200+ items: scroll fluido (virtual scrolling activo, <30 rows en DOM)
+- [ ] Abrir board con ref columns: Network tab muestra fetches paralelos (no waterfall)
+- [ ] Abrir ColumnSettingsPanel: chunk se carga on-demand (visible en Network tab)
+- [ ] Crear/editar/borrar items: sin regresiones en inline edit, realtime, sub-items
+- [ ] Permisos: column_permissions siguen funcionando (restrict, view, edit)
+- [ ] Lighthouse Performance score mejora vs baseline (medir antes y después)
+
+### Decisiones de diseño
+
+1. **No splitear megafiles ahora** — SubItemsView/ColumnSettingsPanel/BoardView son grandes pero funcionales. El speed fix real es virtual scrolling + lazy load, no reorganizar archivos. Si después de Sprint 1+2 sigue lento, evaluar split como Sprint 4.
+2. **No agregar global state** — prop drilling funciona. El fix es memoización (useCallback/useMemo), no indirection (context/zustand).
+3. **No consolidar API routes en una ruta genérica** — 56 archivos separados es zero overhead en runtime. La claridad por archivo supera el ahorro de LOC.
+4. **No squash migrations** — es cleanup de DX, no optimización. Hacerlo después si el equipo crece.
+
+---
 
 ## Fase 18 — Quote Engine
 
