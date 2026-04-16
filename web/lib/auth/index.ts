@@ -3,6 +3,7 @@ import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
+import { resolveUserProfile, checkSuperadminPhone } from './resolve-profile'
 
 export type UserRole = 'superadmin' | 'admin' | 'member' | 'viewer'
 
@@ -22,35 +23,32 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   if (error || !user) return null
 
   const service = createServiceClient()
-  let { data: profile } = await service
-    .from('users')
-    .select('sid, name, role, workspace_id')
-    .eq('id', user.id)
-    .maybeSingle()
+  let profile = await resolveUserProfile(service, user.id, user.phone)
 
   // handle_new_auth_user trigger may fail silently — auto-provision as fallback.
-  // Supabase stores phone without '+', superadmin_phones stores it with '+'.
   if (!profile) {
-    const withPlus    = user.phone ? (user.phone.startsWith('+') ? user.phone : `+${user.phone}`) : null
-    const withoutPlus = user.phone ? (user.phone.startsWith('+') ? user.phone.slice(1) : user.phone) : null
-    const phoneCandidates = [withPlus, withoutPlus].filter(Boolean) as string[]
-
-    const { data: saRow } = phoneCandidates.length
-      ? await service.from('superadmin_phones').select('workspace_id').in('phone', phoneCandidates).maybeSingle()
-      : { data: null }
+    const saWorkspaceId = await checkSuperadminPhone(service, user.phone)
 
     const { data: newProfile } = await service
       .from('users')
       .upsert({
         id:           user.id,
         phone:        user.phone,
-        role:         saRow ? 'superadmin' : 'member',
-        workspace_id: saRow?.workspace_id ?? null,
+        role:         saWorkspaceId ? 'superadmin' : 'member',
+        workspace_id: saWorkspaceId ?? null,
       }, { onConflict: 'id' })
-      .select('sid, name, role, workspace_id')
+      .select('id, sid, name, phone, email, role, workspace_id')
       .maybeSingle()
 
-    profile = newProfile
+    profile = newProfile ? {
+      id: newProfile.id,
+      sid: newProfile.sid,
+      name: newProfile.name,
+      phone: newProfile.phone,
+      email: newProfile.email,
+      role: newProfile.role,
+      workspace_id: newProfile.workspace_id,
+    } : null
   }
 
   if (!profile) return null
@@ -61,7 +59,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     phone: user.phone ?? null,
     name: profile.name,
     role: profile.role as UserRole,
-    workspaceId: profile.workspace_id,
+    workspaceId: profile.workspace_id!,
   }
 })
 

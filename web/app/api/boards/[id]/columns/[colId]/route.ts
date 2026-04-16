@@ -2,6 +2,7 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError, jsonOk, verifyBoardAccess } from '@/lib/api-helpers'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string; colId: string }> }
@@ -18,7 +19,7 @@ export async function PATCH(req: Request, { params }: Context) {
   const { id, colId } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as {
@@ -33,14 +34,8 @@ export async function PATCH(req: Request, { params }: Context) {
   const svc = createServiceClient()
 
   // Service client bypasses RLS for the ownership check
-  const { data: board } = await svc
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .maybeSingle()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(svc, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   const { data: column } = await svc
     .from('board_columns')
@@ -49,7 +44,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .eq('board_id', id)
     .maybeSingle()
 
-  if (!column) return NextResponse.json({ error: 'Column not found' }, { status: 404 })
+  if (!column) return jsonError('Column not found', 404)
 
   // System columns: allow settings/is_hidden/position/required (config-only changes),
   // block name/kind changes (would break identity)
@@ -58,8 +53,8 @@ export async function PATCH(req: Request, { params }: Context) {
   const patch: Record<string, unknown> = {}
 
   if ('name' in body && body.name !== undefined) {
-    if (isSystem) return NextResponse.json({ error: 'No se puede renombrar una columna de sistema' }, { status: 403 })
-    if (!body.name?.trim()) return NextResponse.json({ error: 'Column name cannot be empty' }, { status: 400 })
+    if (isSystem) return jsonError('No se puede renombrar una columna de sistema', 403)
+    if (!body.name?.trim()) return jsonError('Column name cannot be empty', 400)
     patch.name = body.name.trim()
   }
   if ('is_hidden' in body && body.is_hidden !== undefined) patch.is_hidden = body.is_hidden
@@ -68,14 +63,14 @@ export async function PATCH(req: Request, { params }: Context) {
   if ('kind' in body && body.kind !== undefined) {
     const isReflejoTransition = body.kind === 'reflejo' || column.kind === 'reflejo'
     if (isSystem && !isReflejoTransition) {
-      return NextResponse.json({ error: 'No se puede cambiar el tipo de una columna de sistema' }, { status: 403 })
+      return jsonError('No se puede cambiar el tipo de una columna de sistema', 403)
     }
-    if (!VALID_KINDS.includes(body.kind)) return NextResponse.json({ error: 'Invalid column kind' }, { status: 400 })
+    if (!VALID_KINDS.includes(body.kind)) return jsonError('Invalid column kind', 400)
     patch.kind = body.kind
   }
   if ('settings' in body && body.settings !== undefined) patch.settings = body.settings
 
-  if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+  if (Object.keys(patch).length === 0) return jsonError('Nothing to update', 400)
 
   // Validate uniqueness of role settings
   if (patch.settings && typeof patch.settings === 'object') {
@@ -93,7 +88,7 @@ export async function PATCH(req: Request, { params }: Context) {
       })
 
       if (conflicting) {
-        return NextResponse.json({ error: 'Ya existe otra columna con este rol' }, { status: 409 })
+        return jsonError('Ya existe otra columna con este rol', 409)
       }
     }
   }
@@ -105,8 +100,8 @@ export async function PATCH(req: Request, { params }: Context) {
     .select('id, col_key, name, kind, position, is_system, is_hidden, required, settings')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(updated)
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(updated)
 }
 
 export async function DELETE(req: Request, { params }: Context) {
@@ -116,19 +111,13 @@ export async function DELETE(req: Request, { params }: Context) {
   const { id, colId } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const svc = createServiceClient()
 
-  const { data: board } = await svc
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .maybeSingle()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(svc, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   const { data: column } = await svc
     .from('board_columns')
@@ -137,13 +126,13 @@ export async function DELETE(req: Request, { params }: Context) {
     .eq('board_id', id)
     .maybeSingle()
 
-  if (!column) return NextResponse.json({ error: 'Column not found' }, { status: 404 })
+  if (!column) return jsonError('Column not found', 404)
 
-  if (column.is_system) return NextResponse.json({ error: 'Cannot delete system columns' }, { status: 403 })
+  if (column.is_system) return jsonError('Cannot delete system columns', 403)
 
   const supabase = await createClient()
   const { error } = await supabase.from('board_columns').delete().eq('id', colId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+  if (error) return jsonError(error.message, 500)
+  return jsonOk({ success: true })
 }

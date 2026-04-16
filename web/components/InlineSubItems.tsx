@@ -1,22 +1,11 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
+import { useDisclosure } from '../hooks/useDisclosure'
+import type { SubItemColumn } from '@/lib/boards'
 import { ProductPicker } from './ProductPicker'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type SubItemColumn = {
-  id: string
-  board_id: string
-  col_key: string
-  name: string
-  kind: string
-  position: number
-  is_hidden: boolean
-  required: boolean
-  settings: Record<string, unknown>
-  source_col_key: string | null
-}
 
 type SubItemValue = {
   column_id: string
@@ -68,8 +57,8 @@ export function InlineSubItems({
   const [loading, setLoading] = useState(true)
   const [expandedL1, setExpandedL1] = useState<Set<string>>(new Set())
   const [editTarget, setEditTarget] = useState<EditTarget>(null)
-  const [showPicker, setShowPicker] = useState(false)
-  const [showAddForm, setShowAddForm] = useState(false)
+  const { isOpen: showPicker, open: openPicker, close: closePicker } = useDisclosure(false)
+  const { isOpen: showAddForm, open: openAddForm, close: closeAddForm } = useDisclosure(false)
   const [addingL2For, setAddingL2For] = useState<string | null>(null)
   const [addName, setAddName] = useState('')
   const addInputRef = useRef<HTMLInputElement>(null)
@@ -175,7 +164,7 @@ export function InlineSubItems({
       if (!name.trim()) return
 
       setAddName('')
-      setShowAddForm(false)
+      closeAddForm()
 
       try {
         const res = await fetch('/api/sub-items', {
@@ -315,7 +304,7 @@ export function InlineSubItems({
         <span className="text-[12px] font-semibold text-gray-600">Sub-items</span>
         {!showAddForm && (
           <button
-            onClick={() => sourceBoardId ? setShowPicker(true) : setShowAddForm(true)}
+            onClick={() => sourceBoardId ? openPicker() : openAddForm()}
             className="flex items-center gap-1 text-[12px] text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
           >
             <span className="text-[15px] leading-none">+</span> Agregar
@@ -448,11 +437,11 @@ export function InlineSubItems({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && addName.trim())
                   submitAdd(addName)
-                if (e.key === 'Escape') setShowAddForm(false)
+                if (e.key === 'Escape') closeAddForm()
               }}
             />
             <button
-              onClick={() => setShowAddForm(false)}
+              onClick={() => closeAddForm()}
               className="flex-none text-gray-400 hover:text-gray-600 transition-colors"
             >
               <svg
@@ -475,9 +464,9 @@ export function InlineSubItems({
           sourceBoardId={sourceBoardId}
           onSelect={({ name, id }) => {
             submitAdd(name, id)
-            setShowPicker(false)
+            closePicker()
           }}
-          onClose={() => setShowPicker(false)}
+          onClose={() => closePicker()}
         />
       )}
     </div>

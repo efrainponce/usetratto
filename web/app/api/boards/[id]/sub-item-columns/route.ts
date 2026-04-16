@@ -1,5 +1,6 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError, jsonOk, verifyBoardAccess, getNextPosition } from '@/lib/api-helpers'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -13,14 +14,8 @@ export async function GET(req: Request, { params }: Context) {
   const supabase = createServiceClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   let query = supabase
     .from('sub_item_columns')
@@ -32,8 +27,8 @@ export async function GET(req: Request, { params }: Context) {
 
   const { data: columns, error } = await query
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(columns ?? [])
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(columns ?? [])
 }
 
 export async function POST(req: Request, { params }: Context) {
@@ -57,27 +52,13 @@ export async function POST(req: Request, { params }: Context) {
   const supabase = createServiceClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   // Get next position if not provided
   let position = body.position
   if (position === undefined) {
-    const { data: last } = await supabase
-      .from('sub_item_columns')
-      .select('position')
-      .eq('board_id', id)
-      .order('position', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    position = (last?.position ?? -1) + 1
+    position = await getNextPosition(supabase, 'sub_item_columns', 'board_id', id)
   }
 
   const { data, error } = await supabase
@@ -98,6 +79,6 @@ export async function POST(req: Request, { params }: Context) {
     .select('id, board_id, col_key, name, kind, position, is_hidden, required, is_system, settings, source_col_key')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data, { status: 201 })
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(data, 201)
 }

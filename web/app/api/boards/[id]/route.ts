@@ -2,6 +2,7 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError, jsonOk, verifyBoardAccess } from '@/lib/api-helpers'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -20,7 +21,7 @@ export async function GET(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (error || !board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (error || !board) return jsonError('Not found', 404)
 
   const { data: stages } = await supabase
     .from('board_stages')
@@ -28,7 +29,7 @@ export async function GET(req: Request, { params }: Context) {
     .eq('board_id', id)
     .order('position')
 
-  return NextResponse.json({ ...board, stages: stages ?? [] })
+  return jsonOk({ ...board, stages: stages ?? [] })
 }
 
 export async function PATCH(req: Request, { params }: Context) {
@@ -38,7 +39,7 @@ export async function PATCH(req: Request, { params }: Context) {
   const { id } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as Partial<{
@@ -51,14 +52,9 @@ export async function PATCH(req: Request, { params }: Context) {
   const supabase = createServiceClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
+  const { board } = verified
 
   const patch: Record<string, unknown> = {}
 
@@ -68,14 +64,14 @@ export async function PATCH(req: Request, { params }: Context) {
 
   if ('name' in body && body.name !== undefined) {
     if (!body.name?.trim()) {
-      return NextResponse.json({ error: 'Board name cannot be empty' }, { status: 400 })
+      return jsonError('Board name cannot be empty', 400)
     }
     patch.name = body.name.trim()
   }
 
   if ('type' in body && body.type !== undefined) {
     if (!['pipeline', 'table'].includes(body.type)) {
-      return NextResponse.json({ error: "Type must be 'pipeline' or 'table'" }, { status: 400 })
+      return jsonError("Type must be 'pipeline' or 'table'", 400)
     }
     patch.type = body.type
   }
@@ -85,7 +81,7 @@ export async function PATCH(req: Request, { params }: Context) {
   }
 
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    return jsonError('Nothing to update', 400)
   }
 
   const { data, error } = await supabase
@@ -96,8 +92,8 @@ export async function PATCH(req: Request, { params }: Context) {
     .select('id, sid, slug, name, type, system_key, description')
     .single()
 
-  if (error || !data) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
-  return NextResponse.json(data)
+  if (error || !data) return jsonError('Update failed', 500)
+  return jsonOk(data)
 }
 
 export async function DELETE(req: Request, { params }: Context) {
@@ -107,7 +103,7 @@ export async function DELETE(req: Request, { params }: Context) {
   const { id } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const supabase = createServiceClient()
@@ -120,14 +116,11 @@ export async function DELETE(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  if (!board) return jsonError('Board not found', 404)
 
   // Verify not a system board (system_key IS NULL)
   if (board.system_key !== null) {
-    return NextResponse.json(
-      { error: 'Cannot delete system boards' },
-      { status: 403 }
-    )
+    return jsonError('Cannot delete system boards', 403)
   }
 
   // Delete board
@@ -136,6 +129,6 @@ export async function DELETE(req: Request, { params }: Context) {
     .delete()
     .eq('id', id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+  if (error) return jsonError(error.message, 500)
+  return jsonOk({ success: true })
 }

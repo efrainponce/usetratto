@@ -5,11 +5,11 @@ import { resolveBoardBySid, getBoardContext, getWorkspaceUsers, getBoardItems, g
 import { BoardView } from './BoardView'
 
 type Props = {
-  params: Promise<{ boardSid: string }>
+  params: Promise<{ workspaceSid: string; boardSid: string }>
 }
 
 export default async function BoardPage({ params }: Props) {
-  const { boardSid } = await params
+  const { workspaceSid, boardSid } = await params
   const sid = parseInt(boardSid, 10)
   if (isNaN(sid)) notFound()
 
@@ -32,6 +32,7 @@ export default async function BoardPage({ params }: Props) {
 
   return (
     <BoardView
+      workspaceSid={parseInt(workspaceSid, 10)}
       boardId={board.id}
       boardSid={board.sid}
       boardName={board.name}

@@ -6,28 +6,28 @@ import { usePathname } from 'next/navigation'
 type NavItem = { label: string; href: string }
 type NavSection = { section: string; items: NavItem[] }
 
-function buildNav(role: string): NavSection[] {
+function buildNav(role: string, workspaceSid: number): NavSection[] {
   const nav: NavSection[] = [
     {
       section: 'Mi cuenta',
       items: [
-        { label: 'Perfil', href: '/app/settings/profile' },
+        { label: 'Perfil', href: `/app/w/${workspaceSid}/settings/profile` },
       ],
     },
     {
       section: 'Workspace',
       items: [
-        { label: 'General',      href: '/app/settings/workspace' },
-        { label: 'Miembros',     href: '/app/settings/members' },
-        { label: 'Equipos',      href: '/app/settings/teams' },
-        { label: 'Territorios',  href: '/app/settings/territories' },
-        { label: 'Boards',       href: '/app/settings/boards' },
+        { label: 'General',      href: `/app/w/${workspaceSid}/settings/workspace` },
+        { label: 'Miembros',     href: `/app/w/${workspaceSid}/settings/members` },
+        { label: 'Equipos',      href: `/app/w/${workspaceSid}/settings/teams` },
+        { label: 'Territorios',  href: `/app/w/${workspaceSid}/settings/territories` },
+        { label: 'Boards',       href: `/app/w/${workspaceSid}/settings/boards` },
       ],
     },
     {
       section: 'Plan',
       items: [
-        { label: 'Facturación', href: '/app/settings/billing' },
+        { label: 'Facturación', href: `/app/w/${workspaceSid}/settings/billing` },
       ],
     },
   ]
@@ -36,7 +36,7 @@ function buildNav(role: string): NavSection[] {
     nav.push({
       section: 'Superadmin',
       items: [
-        { label: 'Workspaces', href: '/app/settings/superadmin' },
+        { label: 'Workspaces', href: `/app/w/${workspaceSid}/settings/superadmin` },
       ],
     })
   }
@@ -44,9 +44,9 @@ function buildNav(role: string): NavSection[] {
   return nav
 }
 
-export default function SettingsNav({ role }: { role: string }) {
+export default function SettingsNav({ role, workspaceSid }: { role: string; workspaceSid: number }) {
   const pathname = usePathname()
-  const nav = buildNav(role)
+  const nav = buildNav(role, workspaceSid)
 
   return (
     <nav className="w-[200px] flex-none h-full border-r border-gray-100 bg-gray-50/50 px-3 py-6 overflow-y-auto">

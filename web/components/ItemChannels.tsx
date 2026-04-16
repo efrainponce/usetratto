@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useDisclosure } from '../hooks/useDisclosure'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,13 +63,13 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Mention picker state
-  const [showMentionPicker, setShowMentionPicker] = useState(false)
+  const { isOpen: showMentionPicker, open: openMentionPicker, close: closeMentionPicker } = useDisclosure(false)
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionStartPos, setMentionStartPos] = useState(0)
   const mentionPickerRef = useRef<HTMLDivElement>(null)
 
   // Members modal state
-  const [showMembersModal, setShowMembersModal] = useState(false)
+  const { isOpen: showMembersModal, open: openMembersModal, close: closeMembersModal } = useDisclosure(false)
   const [contextMenuId, setContextMenuId] = useState<string | null>(null)
 
   // ── Load channels on mount ──────────────────────────────────────────────────
@@ -151,12 +152,12 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       if (/^[a-zA-Z0-9\s]*$/.test(afterAt) && !afterAt.includes('\n')) {
         setMentionQuery(afterAt)
         setMentionStartPos(lastAtIndex)
-        setShowMentionPicker(true)
+        openMentionPicker()
       } else {
-        setShowMentionPicker(false)
+        closeMentionPicker()
       }
     } else {
-      setShowMentionPicker(false)
+      closeMentionPicker()
     }
 
     // Auto-expand textarea — set to auto first to shrink, then grow to scrollHeight
@@ -175,7 +176,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     }
     if (e.key === 'Escape' && showMentionPicker) {
       e.preventDefault()
-      setShowMentionPicker(false)
+      closeMentionPicker()
     }
   }
 
@@ -184,7 +185,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     const before = inputValue.substring(0, mentionStartPos)
     const after = inputValue.substring(mentionStartPos + mentionQuery.length + 1)
     setInputValue(before + mention + after)
-    setShowMentionPicker(false)
+    closeMentionPicker()
     setMentionQuery('')
   }
 
@@ -391,7 +392,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
                       </button>
                       <button
                         onClick={() => {
-                          setShowMembersModal(true)
+                          openMembersModal()
                           setContextMenuId(null)
                         }}
                         className="block w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-100"
@@ -544,7 +545,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       {showMembersModal && selectedChannel && (
         <div
           className="fixed inset-0 bg-black/20 flex items-center justify-center z-50"
-          onClick={() => setShowMembersModal(false)}
+          onClick={() => closeMembersModal()}
         >
           <div
             className="bg-white rounded-lg shadow-lg p-4 max-w-sm w-full mx-4"
@@ -553,7 +554,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[14px] font-semibold text-gray-900">Miembros de {selectedChannel.name}</h3>
               <button
-                onClick={() => setShowMembersModal(false)}
+                onClick={() => closeMembersModal()}
                 className="text-gray-400 hover:text-gray-600"
               >
                 ×

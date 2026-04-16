@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useAsyncData } from '../hooks/useAsyncData'
 
 type Item = { id: string; sid: number; name: string }
 
@@ -13,19 +14,12 @@ type Props = {
 }
 
 export function RelationPicker({ targetBoardId, targetBoardName, currentItemId, onPick, onClose }: Props) {
-  const [items, setItems] = useState<Item[]>([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    fetch(`/api/items?boardId=${targetBoardId}`)
-      .then(r => r.ok ? r.json() : [])
-      .then((data: Item[]) => setItems(data ?? []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false))
-  }, [targetBoardId])
+  const { data: items, loading } = useAsyncData<Item[]>(`/api/items?boardId=${targetBoardId}`)
 
   const filtered = useMemo(() => {
+    if (!items) return []
     if (!search.trim()) return items
     const q = search.toLowerCase()
     return items.filter(it => it.name?.toLowerCase().includes(q) || String(it.sid).includes(q))

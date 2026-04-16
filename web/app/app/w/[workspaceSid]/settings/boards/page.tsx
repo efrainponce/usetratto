@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 
 type Board = {
   id: string
@@ -63,6 +63,8 @@ function BoardSvgIcon({ systemKey }: { systemKey: string | null }) {
 
 export default function BoardsSettingsPage() {
   const router = useRouter()
+  const params = useParams()
+  const workspaceSid = params.workspaceSid as string
   const [boards, setBoards] = useState<Board[]>([])
   const [loading, setLoading] = useState(true)
   const [showNewForm, setShowNewForm] = useState(false)
@@ -117,7 +119,7 @@ export default function BoardsSettingsPage() {
         setNewName('')
         setNewType('pipeline')
         setShowNewForm(false)
-        router.push(`/app/settings/boards/${data.id}`)
+        router.push(`/app/w/${workspaceSid}/settings/boards/${data.id}`)
       }
     } catch (error) {
       console.error('Error creating board:', error)
@@ -255,7 +257,7 @@ export default function BoardsSettingsPage() {
 
               <div className="flex items-center gap-2">
                 <Link
-                  href={`/app/settings/boards/${board.id}`}
+                  href={`/app/w/${workspaceSid}/settings/boards/${board.id}`}
                   className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Configurar →

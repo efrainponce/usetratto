@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useDisclosure } from '../../../hooks/useDisclosure'
 import type { CellProps } from '../types'
 import { RelationPicker } from '@/components/RelationPicker'
 
 export function RelationCell({ value, column, onCommit }: CellProps) {
-  const [showPicker, setShowPicker] = useState(false)
+  const { isOpen: showPicker, open: openPicker, close: closePicker } = useDisclosure(false)
   const label = typeof value === 'string' && value ? value : null
   const settings = column.settings as any
   const isRef = !!settings?.ref_source_col_key && !!settings?.ref_field_col_key
@@ -18,7 +18,7 @@ export function RelationCell({ value, column, onCommit }: CellProps) {
     <>
       <div
         className={`flex items-center gap-1 w-full px-2 py-1 ${canPick ? 'cursor-pointer hover:bg-gray-50' : 'cursor-default'}`}
-        onClick={() => { if (canPick) setShowPicker(true) }}
+        onClick={() => { if (canPick) openPicker() }}
       >
         {label ? (
           <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[12px] font-medium text-gray-700 truncate max-w-full">
@@ -34,9 +34,9 @@ export function RelationCell({ value, column, onCommit }: CellProps) {
           targetBoardId={targetBoardId}
           onPick={(itemId, _itemName) => {
             onCommit(itemId ?? null)
-            setShowPicker(false)
+            closePicker()
           }}
-          onClose={() => setShowPicker(false)}
+          onClose={() => closePicker()}
         />
       )}
     </>

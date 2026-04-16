@@ -1,9 +1,13 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError, jsonOk, verifyBoardAccess } from '@/lib/api-helpers'
+import { createPermissionHandlers } from '@/lib/column-permissions-handler'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string; colId: string }> }
+
+const permissionHandlers = createPermissionHandlers('column_id')
 
 export async function GET(req: Request, { params }: Context) {
   const auth = await requireAuthApi()
@@ -12,15 +16,11 @@ export async function GET(req: Request, { params }: Context) {
   const { id, colId } = await params
   const supabase = createServiceClient()
 
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
+  // Verify board exists
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
+  // Verify column exists
   const { data: column } = await supabase
     .from('board_columns')
     .select('id')
@@ -28,24 +28,9 @@ export async function GET(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!column) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!column) return jsonError('Not found', 404)
 
-  const { data: permissions, error } = await supabase
-    .from('column_permissions')
-    .select(`
-      id,
-      column_id,
-      user_id,
-      team_id,
-      access,
-      created_at,
-      users(id, sid, name),
-      teams(id, sid, name)
-    `)
-    .eq('column_id', colId)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(permissions ?? [])
+  return permissionHandlers.GET(supabase, colId, auth.workspaceId)
 }
 
 export async function POST(req: Request, { params }: Context) {
@@ -55,7 +40,7 @@ export async function POST(req: Request, { params }: Context) {
   const { id, colId } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as {
@@ -64,33 +49,11 @@ export async function POST(req: Request, { params }: Context) {
     access?: string
   }
 
-  const hasUserId = body.user_id && body.user_id.trim()
-  const hasTeamId = body.team_id && body.team_id.trim()
-
-  if ((hasUserId && hasTeamId) || (!hasUserId && !hasTeamId)) {
-    return NextResponse.json(
-      { error: 'Must specify exactly one of user_id or team_id' },
-      { status: 400 }
-    )
-  }
-
-  if (!body.access || !['view', 'edit'].includes(body.access)) {
-    return NextResponse.json(
-      { error: "Access must be 'view' or 'edit'" },
-      { status: 400 }
-    )
-  }
-
   const supabase = createServiceClient()
 
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  // Verify board and column exist
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   const { data: column } = await supabase
     .from('board_columns')
@@ -99,30 +62,9 @@ export async function POST(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!column) return NextResponse.json({ error: 'Column not found' }, { status: 404 })
+  if (!column) return jsonError('Column not found', 404)
 
-  const { data: permission, error } = await supabase
-    .from('column_permissions')
-    .insert({
-      column_id: colId,
-      user_id: hasUserId ? body.user_id : null,
-      team_id: hasTeamId ? body.team_id : null,
-      access: body.access,
-    })
-    .select(`
-      id,
-      column_id,
-      user_id,
-      team_id,
-      access,
-      created_at,
-      users(id, sid, name),
-      teams(id, sid, name)
-    `)
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(permission, { status: 201 })
+  return permissionHandlers.POST(supabase, colId, auth.workspaceId, body)
 }
 
 export async function DELETE(req: Request, { params }: Context) {
@@ -132,28 +74,16 @@ export async function DELETE(req: Request, { params }: Context) {
   const { id, colId } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as { perm_id?: string }
 
-  if (!body.perm_id?.trim()) {
-    return NextResponse.json(
-      { error: 'perm_id is required' },
-      { status: 400 }
-    )
-  }
-
   const supabase = createServiceClient()
 
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  // Verify board and column exist
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   const { data: column } = await supabase
     .from('board_columns')
@@ -162,14 +92,7 @@ export async function DELETE(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!column) return NextResponse.json({ error: 'Column not found' }, { status: 404 })
+  if (!column) return jsonError('Column not found', 404)
 
-  const { error } = await supabase
-    .from('column_permissions')
-    .delete()
-    .eq('id', body.perm_id)
-    .eq('column_id', colId)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+  return permissionHandlers.DELETE(supabase, colId, auth.workspaceId, body.perm_id ?? '')
 }

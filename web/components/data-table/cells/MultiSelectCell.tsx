@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useDisclosure } from '../../../hooks/useDisclosure'
+import { useClickOutside } from '../../../hooks/useClickOutside'
 import type { CellProps, SelectOption } from '../types'
 
 export function MultiSelectCell({ value, isEditing, column, onStartEdit, onCommit, onCancel }: CellProps) {
-  const [open, setOpen] = useState(false)
+  const { isOpen: open, open: openDropdown, close: closeDropdown } = useDisclosure(false)
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -13,21 +15,16 @@ export function MultiSelectCell({ value, isEditing, column, onStartEdit, onCommi
   const selected: string[] = Array.isArray(value) ? value : (value ? [String(value)] : [])
 
   useEffect(() => {
-    if (isEditing) { setOpen(true); setSearch(''); setTimeout(() => searchRef.current?.focus(), 30) }
-    else setOpen(false)
-  }, [isEditing])
+    if (isEditing) { openDropdown(); setSearch(''); setTimeout(() => searchRef.current?.focus(), 30) }
+    else closeDropdown()
+  }, [isEditing, openDropdown, closeDropdown])
 
-  useEffect(() => {
-    if (!open) return
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        onCommit(selected.length ? selected : null)
-        onCancel()
-      }
+  useClickOutside(containerRef, () => {
+    if (open) {
+      onCommit(selected.length ? selected : null)
+      onCancel()
     }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open, onCancel, onCommit, selected])
+  })
 
   function toggle(val: string) {
     const next = selected.includes(val)
@@ -71,7 +68,7 @@ export function MultiSelectCell({ value, isEditing, column, onStartEdit, onCommi
               placeholder="Buscar..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); onCancel() } }}
+              onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); closeDropdown() } }}
             />
           </div>
           <div className="max-h-48 overflow-y-auto">

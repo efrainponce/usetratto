@@ -5,11 +5,11 @@ import { resolveBoardBySid, resolveItemBySid, getBoardContext, getWorkspaceUsers
 import { ItemDetailView } from './ItemDetailView'
 
 type Props = {
-  params: Promise<{ boardSid: string; itemSid: string }>
+  params: Promise<{ workspaceSid: string; boardSid: string; itemSid: string }>
 }
 
 export default async function ItemPage({ params }: Props) {
-  const { boardSid, itemSid } = await params
+  const { workspaceSid, boardSid, itemSid } = await params
   const boardSidNum = parseInt(boardSid, 10)
   const itemSidNum  = parseInt(itemSid, 10)
 
@@ -37,6 +37,7 @@ export default async function ItemPage({ params }: Props) {
 
   return (
     <ItemDetailView
+      workspaceSid={parseInt(workspaceSid, 10)}
       boardId={board.id}
       boardSid={board.sid}
       boardName={board.name}

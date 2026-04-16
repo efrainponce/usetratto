@@ -26,6 +26,7 @@ type Tab = 'subitems' | 'channels' | 'activity'
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
+  workspaceSid:        number
   boardId:             string
   boardSid:            number
   boardName:           string
@@ -42,7 +43,7 @@ type Props = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ItemDetailView({
-  boardId, boardSid, boardName,
+  workspaceSid, boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItem, initialSubItemViews,
   boardSettings, subitemView, isBoardAdmin,
 }: Props) {
@@ -170,7 +171,7 @@ export function ItemDetailView({
       {/* ── Top bar: breadcrumb ──────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 flex-none text-[13px]">
         <Link
-          href={`/app/b/${boardSid}`}
+          href={`/app/w/${workspaceSid}/b/${boardSid}`}
           className="flex items-center gap-1 text-gray-500 hover:text-gray-800 transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="stroke-current">
@@ -277,6 +278,7 @@ export function ItemDetailView({
           <div className="flex-1 overflow-hidden">
             {activeTab === 'subitems' && (
               <SubItemsView
+                workspaceSid={workspaceSid}
                 itemId={item.id}
                 boardId={boardId}
                 views={subItemViews}

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect, Fragment, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   useReactTable,
   getCoreRowModel,
@@ -57,6 +58,7 @@ export function GenericDataTable({
   const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>({})
   const [selectedCell,  setSelectedCell]  = useState<{ rowId: string; colKey: string } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const tbodyRef = useRef<HTMLTableSectionElement>(null)
 
   // Load persisted column widths after hydration (never during SSR to avoid mismatch)
   useEffect(() => {
@@ -90,6 +92,15 @@ export function GenericDataTable({
     onCellChange(rowId, colKey, value)
     setEditingCell(null)
   }, [onCellChange])
+
+  const handleStartEdit = useCallback((rowId: string, colKey: string) => {
+    setSelectedCell({ rowId, colKey })
+    setEditingCell({ rowId, colKey })
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    setEditingCell(null)
+  }, [])
 
   const handleNavigate = useCallback((rowId: string, colKey: string, dir: NavDirection) => {
     const colIdx = columns.findIndex(c => c.key === colKey)
@@ -217,12 +228,9 @@ export function GenericDataTable({
             allColumns={columns}
             isEditing={editingCell?.rowId === row.original.id && editingCell?.colKey === col.key}
             rowId={row.original.id}
-            onStartEdit={() => {
-              setSelectedCell({ rowId: row.original.id, colKey: col.key })
-              setEditingCell({ rowId: row.original.id, colKey: col.key })
-            }}
+            onStartEdit={() => handleStartEdit(row.original.id, col.key)}
             onCommit={value => handleCommit(row.original.id, col.key, value)}
-            onCancel={() => setEditingCell(null)}
+            onCancel={handleCancel}
             onNavigate={dir => handleNavigate(row.original.id, col.key, dir)}
           />
         ),
@@ -256,7 +264,7 @@ export function GenericDataTable({
     })
 
     return [expandCol, openCol, ...dataCols]
-  }, [columns, editingCell, expandedSubItemId, handleCommit, handleNavigate, onExpandSubItems, onOpenItem])
+  }, [columns, editingCell, expandedSubItemId, handleCommit, handleStartEdit, handleCancel, handleNavigate, onExpandSubItems, onOpenItem])
 
   const table = useReactTable({
     data:                   rows,
@@ -290,6 +298,22 @@ export function GenericDataTable({
   const totalWidth           = headers.reduce((s, h) => s + h.getSize(), 0)
   const selectedIds          = Object.keys(selection).filter(k => selection[k])
   const selectedCount        = selectedIds.length
+
+  // Virtual scrolling: only render ~25-30 visible rows
+  const virtualizer = useVirtualizer({
+    count: tableRows.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+    measureElement: typeof window !== 'undefined' ? element => element?.getBoundingClientRect().height : undefined,
+  })
+
+  const virtualRows = virtualizer.getVirtualItems()
+  const totalSize = virtualizer.getTotalSize()
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start ?? 0 : 0
+  const paddingBottom = virtualRows.length > 0
+    ? totalSize - (virtualRows[virtualRows.length - 1]?.end ?? 0)
+    : 0
 
   if (loading) {
     return (
@@ -414,8 +438,8 @@ export function GenericDataTable({
             ))}
           </thead>
 
-          {/* Body — no virtualizer, rows with inline expansion */}
-          <tbody>
+          {/* Body — with virtual scrolling, rows with inline expansion */}
+          <tbody ref={tbodyRef}>
             {tableRows.length === 0 && (
               <tr>
                 <td colSpan={headers.length} className="py-16 text-center text-[13px] text-gray-400">
@@ -424,60 +448,84 @@ export function GenericDataTable({
               </tr>
             )}
 
-            {tableRows.map(row => (
-              <Fragment key={row.id}>
-                {/* Main row */}
-                <tr
-                  className="group/row border-b border-gray-100 transition-colors hover:bg-gray-50"
-                  style={{ height: ROW_HEIGHT }}
-                >
-                  {row.getVisibleCells().map(cell => {
-                    const isSticky = cell.column.id in stickyLefts
-                    const isThisSelected = !cell.column.id.startsWith('__') &&
-                      selectedCell?.rowId === row.original.id &&
-                      selectedCell?.colKey === cell.column.id
-                    return (
-                      <td
-                        key={cell.id}
-                        className="border-r border-gray-100 p-0 cursor-default"
-                        onClick={() => {
-                          if (!cell.column.id.startsWith('__')) {
-                            setSelectedCell({ rowId: row.original.id, colKey: cell.column.id })
-                            containerRef.current?.focus()
-                          }
-                        }}
-                        style={{
-                          width:    cell.column.getSize(),
-                          height:   ROW_HEIGHT,
-                          position: isSticky ? 'sticky' : undefined,
-                          left:     isSticky ? stickyLefts[cell.column.id] : undefined,
-                          background: isSticky
-                            ? (isThisSelected ? '#eef2ff' : 'white')
-                            : (isThisSelected ? '#eef2ff' : undefined),
-                          boxShadow: isThisSelected
-                            ? 'inset 0 0 0 2px #6366f1'
-                            : (cell.column.id === lastStickyId(columns) ? '2px 0 4px rgba(0,0,0,0.04)' : undefined),
-                          zIndex: isSticky ? 10 : undefined,
-                        }}
-                      >
-                        <div className="w-full h-full flex items-center">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </div>
-                      </td>
-                    )
-                  })}
-                </tr>
-
-                {/* Expansion row (inline sub-items) */}
-                {expandedSubItemId === row.original.id && renderRowExpansion && (
-                  <tr className="border-b border-indigo-100">
-                    <td colSpan={headers.length} className="p-0 bg-indigo-50/30">
-                      {renderRowExpansion(row.original.id)}
-                    </td>
+            {tableRows.length > 0 && (
+              <>
+                {/* Padding for rows before virtual window */}
+                {paddingTop > 0 && (
+                  <tr style={{ height: paddingTop }}>
+                    <td />
                   </tr>
                 )}
-              </Fragment>
-            ))}
+
+                {/* Virtual rows */}
+                {virtualRows.map(virtualRow => {
+                  const row = tableRows[virtualRow.index]
+                  if (!row) return null
+
+                  return (
+                    <Fragment key={row.id}>
+                      {/* Main row */}
+                      <tr
+                        className="group/row border-b border-gray-100 transition-colors hover:bg-gray-50"
+                        style={{ height: ROW_HEIGHT }}
+                      >
+                        {row.getVisibleCells().map(cell => {
+                          const isSticky = cell.column.id in stickyLefts
+                          const isThisSelected = !cell.column.id.startsWith('__') &&
+                            selectedCell?.rowId === row.original.id &&
+                            selectedCell?.colKey === cell.column.id
+                          return (
+                            <td
+                              key={cell.id}
+                              className="border-r border-gray-100 p-0 cursor-default"
+                              onClick={() => {
+                                if (!cell.column.id.startsWith('__')) {
+                                  setSelectedCell({ rowId: row.original.id, colKey: cell.column.id })
+                                  containerRef.current?.focus()
+                                }
+                              }}
+                              style={{
+                                width:    cell.column.getSize(),
+                                height:   ROW_HEIGHT,
+                                position: isSticky ? 'sticky' : undefined,
+                                left:     isSticky ? stickyLefts[cell.column.id] : undefined,
+                                background: isSticky
+                                  ? (isThisSelected ? '#eef2ff' : 'white')
+                                  : (isThisSelected ? '#eef2ff' : undefined),
+                                boxShadow: isThisSelected
+                                  ? 'inset 0 0 0 2px #6366f1'
+                                  : (cell.column.id === lastStickyId(columns) ? '2px 0 4px rgba(0,0,0,0.04)' : undefined),
+                                zIndex: isSticky ? 10 : undefined,
+                              }}
+                            >
+                              <div className="w-full h-full flex items-center">
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </div>
+                            </td>
+                          )
+                        })}
+                      </tr>
+
+                      {/* Expansion row (inline sub-items) */}
+                      {expandedSubItemId === row.original.id && renderRowExpansion && (
+                        <tr className="border-b border-indigo-100">
+                          <td colSpan={headers.length} className="p-0 bg-indigo-50/30">
+                            {renderRowExpansion(row.original.id)}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+
+                {/* Padding for rows after virtual window */}
+                {paddingBottom > 0 && (
+                  <tr style={{ height: paddingBottom }}>
+                    <td />
+                  </tr>
+                )}
+              </>
+            )}
           </tbody>
         </table>
       </div>

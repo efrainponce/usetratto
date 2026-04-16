@@ -1,21 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import type { SubItemColumn } from '@/lib/boards'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-export type SubItemColumn = {
-  id: string
-  board_id: string
-  col_key: string
-  name: string
-  kind: string
-  position: number
-  is_hidden: boolean
-  required: boolean
-  settings: Record<string, unknown>
-  source_col_key: string | null
-}
 
 type SourceBoard = {
   id: string

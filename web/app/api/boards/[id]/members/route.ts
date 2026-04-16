@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
+import { jsonError, jsonOk, verifyBoardAccess } from '@/lib/api-helpers'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -13,14 +14,8 @@ export async function GET(req: Request, { params }: Context) {
   const supabase = await createClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   const { data: members, error } = await supabase
     .from('board_members')
@@ -35,8 +30,8 @@ export async function GET(req: Request, { params }: Context) {
     `)
     .eq('board_id', id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(members ?? [])
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(members ?? [])
 }
 
 export async function POST(req: Request, { params }: Context) {
@@ -46,7 +41,7 @@ export async function POST(req: Request, { params }: Context) {
   const { id } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as {
@@ -60,30 +55,18 @@ export async function POST(req: Request, { params }: Context) {
   const hasTeamId = body.team_id && body.team_id.trim()
 
   if ((hasUserId && hasTeamId) || (!hasUserId && !hasTeamId)) {
-    return NextResponse.json(
-      { error: 'Must specify exactly one of user_id or team_id' },
-      { status: 400 }
-    )
+    return jsonError('Must specify exactly one of user_id or team_id', 400)
   }
 
   if (!body.access || !['view', 'edit'].includes(body.access)) {
-    return NextResponse.json(
-      { error: "Access must be 'view' or 'edit'" },
-      { status: 400 }
-    )
+    return jsonError("Access must be 'view' or 'edit'", 400)
   }
 
   const supabase = await createClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   // Insert member
   const { data: member, error } = await supabase
@@ -104,8 +87,8 @@ export async function POST(req: Request, { params }: Context) {
     `)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(member, { status: 201 })
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(member, 201)
 }
 
 export async function DELETE(req: Request, { params }: Context) {
@@ -115,29 +98,20 @@ export async function DELETE(req: Request, { params }: Context) {
   const { id } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as { member_id?: string }
 
   if (!body.member_id?.trim()) {
-    return NextResponse.json(
-      { error: 'member_id is required' },
-      { status: 400 }
-    )
+    return jsonError('member_id is required', 400)
   }
 
   const supabase = await createClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   // Delete member
   const { error } = await supabase
@@ -146,6 +120,6 @@ export async function DELETE(req: Request, { params }: Context) {
     .eq('id', body.member_id)
     .eq('board_id', id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+  if (error) return jsonError(error.message, 500)
+  return jsonOk({ success: true })
 }

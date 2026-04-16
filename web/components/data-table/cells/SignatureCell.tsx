@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useDisclosure } from '../../../hooks/useDisclosure'
 import type { CellProps } from '../types'
 
 type SignatureValue = {
@@ -18,7 +19,7 @@ export function SignatureCell({
 }: CellProps) {
   const sigValue = (value as unknown as SignatureValue | null) ?? null
   const [localSig, setLocalSig] = useState(sigValue)
-  const [showModal, setShowModal] = useState(false)
+  const { isOpen: showModal, open: openModal, close: closeModal } = useDisclosure(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,7 +49,7 @@ export function SignatureCell({
 
       const signed = result.value_json as SignatureValue
       setLocalSig(signed)
-      setShowModal(false)
+      closeModal()
       // no onCommit — signature is persisted by /signature endpoint; local state handles display
     } catch (err) {
       setError('Error de conexión. Intenta nuevamente.')
@@ -63,7 +64,7 @@ export function SignatureCell({
     return (
       <div className="flex items-center justify-center w-full h-full px-2 py-1">
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => openModal()}
           className="text-[12px] px-2 py-0.5 border border-gray-300 rounded text-gray-600 hover:border-indigo-400 hover:text-indigo-600 cursor-pointer flex items-center gap-1 transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -96,7 +97,7 @@ export function SignatureCell({
               <div className="flex gap-2 justify-end">
                 <button
                   onClick={() => {
-                    setShowModal(false)
+                    closeModal()
                     setError(null)
                   }}
                   disabled={loading}
@@ -141,15 +142,7 @@ export function SignatureCell({
             strokeLinejoin="round"
           />
         </svg>
-        <span>
-          Firmado por {localSig.signed_by} · {new Date(localSig.signed_at).toLocaleString('es-MX', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </span>
+        Firmado por {localSig?.signed_by} · {new Date(localSig?.signed_at ?? '').toLocaleDateString('es-ES')}
       </div>
     </div>
   )

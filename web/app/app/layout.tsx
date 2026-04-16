@@ -13,7 +13,7 @@ export default async function AppLayout({
   const [{ data: workspace }, { data: boards }] = await Promise.all([
     supabase
       .from('workspaces')
-      .select('name')
+      .select('sid, name')
       .eq('id', user.workspaceId)
       .single(),
     supabase
@@ -29,6 +29,7 @@ export default async function AppLayout({
         boards={(boards ?? []) as SidebarBoard[]}
         user={{ name: user.name, role: user.role }}
         workspaceName={workspace?.name ?? 'Tratto'}
+        workspaceSid={workspace?.sid ?? 0}
       />
       <main className="flex-1 overflow-auto">
         {children}

@@ -21,19 +21,20 @@ type Props = {
   boards:        SidebarBoard[]
   user:          SidebarUser
   workspaceName: string
+  workspaceSid:  number
 }
 
 // ─── Icon map per system_key ──────────────────────────────────────────────────
 
-function BoardIcon({ board, pathname }: { board: SidebarBoard; pathname: string }) {
+function BoardIcon({ board, pathname, workspaceSid }: { board: SidebarBoard; pathname: string; workspaceSid: number }) {
   const active =
-    pathname === `/app/b/${board.sid}` ||
-    pathname.startsWith(`/app/b/${board.sid}/`)
+    pathname === `/app/w/${workspaceSid}/b/${board.sid}` ||
+    pathname.startsWith(`/app/w/${workspaceSid}/b/${board.sid}/`)
 
   return (
     <Tooltip label={board.name} side="right">
       <Link
-        href={`/app/b/${board.sid}`}
+        href={`/app/w/${workspaceSid}/b/${board.sid}`}
         className={[
           'w-8 h-8 rounded-lg flex items-center justify-center transition-all',
           active
@@ -108,7 +109,7 @@ function initial(name: string | null) {
   return name.charAt(0).toUpperCase()
 }
 
-export default function Sidebar({ boards, user, workspaceName }: Props) {
+export default function Sidebar({ boards, user, workspaceName, workspaceSid }: Props) {
   const pathname = usePathname()
   const router   = useRouter()
 
@@ -133,7 +134,7 @@ export default function Sidebar({ boards, user, workspaceName }: Props) {
 
       {/* System boards */}
       {systemBoards.map(board => (
-        <BoardIcon key={board.id} board={board} pathname={pathname} />
+        <BoardIcon key={board.id} board={board} pathname={pathname} workspaceSid={workspaceSid} />
       ))}
 
       {/* Divider before custom boards */}
@@ -142,7 +143,7 @@ export default function Sidebar({ boards, user, workspaceName }: Props) {
       )}
 
       {customBoards.map(board => (
-        <BoardIcon key={board.id} board={board} pathname={pathname} />
+        <BoardIcon key={board.id} board={board} pathname={pathname} workspaceSid={workspaceSid} />
       ))}
 
       {/* Empty state hint */}
@@ -162,7 +163,7 @@ export default function Sidebar({ boards, user, workspaceName }: Props) {
       {/* Settings */}
       <Tooltip label="Configuración" side="right">
         <Link
-          href="/app/settings"
+          href={`/app/w/${workspaceSid}/settings`}
           className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">

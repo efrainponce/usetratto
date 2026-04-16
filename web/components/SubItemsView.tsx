@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { createPortal } from 'react-dom'
+import type { SubItemColumn as BaseSubItemColumn } from '@/lib/boards'
 import { ProductPicker } from './ProductPicker'
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 import { evaluateCondition, type FormulaCondition } from '../lib/formula-engine'
@@ -19,10 +20,8 @@ type SubItemView = {
   config:   Record<string, unknown>
 }
 
-type SubItemColumn = {
-  id: string; col_key: string; name: string; kind: string
-  position: number; is_hidden: boolean; required: boolean; is_system?: boolean
-  settings: Record<string, unknown>; source_col_key: string | null
+type SubItemColumn = BaseSubItemColumn & {
+  is_system?: boolean
   permission_mode?: 'public' | 'inherit' | 'custom'
   user_access?: 'edit' | 'view' | null
 }
@@ -62,6 +61,7 @@ type EditTarget = { id: string; field: string } | null
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 type Props = {
+  workspaceSid?:           number
   itemId:                  string
   boardId:                 string
   views:                   SubItemView[]
@@ -78,7 +78,7 @@ type Props = {
   isBoardAdmin?:           boolean
 }
 
-export function SubItemsView({ itemId, boardId, views, users, onCountChange, onAddView, onDeleteView, onConfigureColumns, onBoardColumnCreated, compact, columnsVersion, boardSettings, subitemView, isBoardAdmin }: Props) {
+export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCountChange, onAddView, onDeleteView, onConfigureColumns, onBoardColumnCreated, compact, columnsVersion, boardSettings, subitemView, isBoardAdmin }: Props) {
   const [activeViewId, setActiveViewId] = useState<string>(views[0]?.id ?? '')
   const activeView = views.find(v => v.id === activeViewId) ?? views[0]
 
@@ -179,6 +179,7 @@ export function SubItemsView({ itemId, boardId, views, users, onCountChange, onA
           boardSettings={boardSettings}
           subitemView={subitemView}
           isBoardAdmin={isBoardAdmin}
+          workspaceSid={workspaceSid}
         />
       )}
       {activeView.type === 'board_items' && (
@@ -197,7 +198,7 @@ export function SubItemsView({ itemId, boardId, views, users, onCountChange, onA
 // Without source_board_id → manual add form.
 
 function NativeRenderer({
-  itemId, boardId, viewId, config, users, onCountChange, onBoardColumnCreated, compact, boardSettings, subitemView, isBoardAdmin,
+  itemId, boardId, viewId, config, users, onCountChange, onBoardColumnCreated, compact, boardSettings, subitemView, isBoardAdmin, workspaceSid,
 }: {
   itemId:                  string
   boardId:                 string
@@ -210,6 +211,7 @@ function NativeRenderer({
   boardSettings?:          Record<string, unknown>
   subitemView?:            'L1_only' | 'L1_L2' | 'L2_only'
   isBoardAdmin?:           boolean
+  workspaceSid?:           number
 }) {
   const sourceBoardId = (config.source_board_id as string) ?? null
 
@@ -789,6 +791,7 @@ function NativeRenderer({
                 onImportChildren={() => importChildren(row.id)}
                 onRefresh={() => refreshRow(row.id)}
                 colWidths={colWidths}
+                workspaceSid={workspaceSid}
               />
             )}
             {showL2 && expandedL1.has(row.id) && (
@@ -808,6 +811,7 @@ function NativeRenderer({
                     computeFormula={computeFormula}
                     onOpenDetail={() => setOpenDetailId(child.id)}
                     colWidths={colWidths}
+                    workspaceSid={workspaceSid}
                   />
                 ))}
                 {addingL2For === row.id && (
@@ -1102,7 +1106,7 @@ function NativeRow({
   row, depth, isExpanded, displayCols, formulaCols, rollupCols, editTarget,
   onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild,
   computeFormula, onExpandVariants, onOpenDetail, isLocked, onImportChildren, onRefresh,
-  colWidths,
+  colWidths, workspaceSid,
 }: {
   row: SubItemData; depth: number; isExpanded: boolean
   displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]; rollupCols: SubItemColumn[]
@@ -1120,6 +1124,7 @@ function NativeRow({
   onImportChildren?: () => void
   onRefresh?: () => void
   colWidths: Record<string, number>
+  workspaceSid?: number
 }) {
   const isEditing = (f: string) => editTarget?.id === row.id && editTarget.field === f
   const indent    = depth === 1 ? 'pl-5' : ''
@@ -1277,9 +1282,9 @@ function NativeRow({
       {/* Actions */}
       <div className="w-7 flex-none flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {/* Open detail / navigate to source */}
-        {row.source_board_sid && row.source_item_sid ? (
+        {row.source_board_sid && row.source_item_sid && workspaceSid ? (
           <a
-            href={`/app/b/${row.source_board_sid}/${row.source_item_sid}`}
+            href={`/app/w/${workspaceSid}/b/${row.source_board_sid}/${row.source_item_sid}`}
             title="Ver en catálogo"
             className="text-gray-400 hover:text-indigo-600 transition-colors"
           >

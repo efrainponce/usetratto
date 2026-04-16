@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useDisclosure } from '../../../hooks/useDisclosure'
+import { useClickOutside } from '../../../hooks/useClickOutside'
 import type { CellProps, SelectOption } from '../types'
 
 export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, onCancel, settings }: CellProps & { settings?: { display?: 'read_only' } }) {
-  const [open, setOpen] = useState(false)
+  const { isOpen: open, open: openDropdown, close: closeDropdown } = useDisclosure(false)
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -13,18 +15,13 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
   const selected = options.find(o => o.value === value)
 
   useEffect(() => {
-    if (isEditing) { setOpen(true); setSearch(''); setTimeout(() => searchRef.current?.focus(), 30) }
-    else setOpen(false)
-  }, [isEditing])
+    if (isEditing) { openDropdown(); setSearch(''); setTimeout(() => searchRef.current?.focus(), 30) }
+    else closeDropdown()
+  }, [isEditing, openDropdown, closeDropdown])
 
-  useEffect(() => {
-    if (!open) return
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) onCancel()
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open, onCancel])
+  useClickOutside(containerRef, () => {
+    if (open) closeDropdown()
+  })
 
   const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
 
@@ -53,17 +50,17 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Escape') { e.preventDefault(); onCancel() }
-                if (e.key === 'Enter' && filtered.length > 0) { e.preventDefault(); onCommit(filtered[0].value); setOpen(false) }
+                if (e.key === 'Escape') { e.preventDefault(); closeDropdown() }
+                if (e.key === 'Enter' && filtered.length > 0) { e.preventDefault(); onCommit(filtered[0].value); closeDropdown() }
               }}
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            <button className="w-full text-left px-3 py-1.5 text-[12px] text-gray-400 hover:bg-gray-50" onClick={() => { onCommit(null); setOpen(false) }}>
+            <button className="w-full text-left px-3 py-1.5 text-[12px] text-gray-400 hover:bg-gray-50" onClick={() => { onCommit(null); closeDropdown() }}>
               Sin asignar
             </button>
             {filtered.map(opt => (
-              <button key={opt.value} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2" onClick={() => { onCommit(opt.value); setOpen(false) }}>
+              <button key={opt.value} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2" onClick={() => { onCommit(opt.value); closeDropdown() }}>
                 <Avatar name={opt.label} />
                 <span className="text-[12px] text-gray-700">{opt.label}</span>
               </button>

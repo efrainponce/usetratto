@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useAsyncData } from '../hooks/useAsyncData'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,37 +21,22 @@ type Props = {
 
 export function ProductPicker({ sourceBoardId, onSelect, onClose }: Props) {
   const [query, setQuery] = useState('')
-  const [items, setItems] = useState<Item[]>([])
-  const [loading, setLoading] = useState(true)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // ── Load items from source board on mount ──────────────────────────────────
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
+  // 16.12: picker uses GET /api/items which already enforces restrict_to_own (Fase 9)
+  const { data: rawData, loading } = useAsyncData<Array<{
+    id: string
+    sid: number
+    name: string
+  }>>(`/api/items?boardId=${sourceBoardId}`)
 
-    // 16.12: picker uses GET /api/items which already enforces restrict_to_own (Fase 9)
-    fetch(`/api/items?boardId=${sourceBoardId}`)
-      .then(r => r.json())
-      .then((data: Array<{
-        id: string
-        sid: number
-        name: string
-      }>) => {
-        if (cancelled) return
-        const mapped: Item[] = data.map(item => ({
-          id: item.id,
-          sid: item.sid,
-          name: item.name,
-        }))
-        setItems(mapped)
-        setLoading(false)
-      })
-      .catch(() => { if (!cancelled) setLoading(false) })
-
-    return () => { cancelled = true }
-  }, [sourceBoardId])
+  const items: Item[] = (rawData ?? []).map(item => ({
+    id: item.id,
+    sid: item.sid,
+    name: item.name,
+  }))
 
   // ── Filtered list (fuzzy by name) ──────────────────────────────────────────
 

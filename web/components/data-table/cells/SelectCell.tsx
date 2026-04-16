@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useDisclosure } from '../../../hooks/useDisclosure'
+import { useClickOutside } from '../../../hooks/useClickOutside'
 import type { CellProps, SelectOption } from '../types'
 
 export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, onCancel }: CellProps) {
-  const [open, setOpen] = useState(false)
+  const { isOpen: open, open: openDropdown, close: closeDropdown } = useDisclosure(false)
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -14,24 +16,19 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
 
   useEffect(() => {
     if (isEditing) {
-      setOpen(true)
+      openDropdown()
       setSearch('')
       setTimeout(() => searchRef.current?.focus(), 30)
     } else {
-      setOpen(false)
+      closeDropdown()
     }
-  }, [isEditing])
+  }, [isEditing, openDropdown, closeDropdown])
 
-  useEffect(() => {
-    if (!open) return
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        onCancel()
-      }
+  useClickOutside(containerRef, () => {
+    if (open) {
+      onCancel()
     }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open, onCancel])
+  })
 
   const filtered = options.filter(o =>
     o.label.toLowerCase().includes(search.toLowerCase())
@@ -62,9 +59,9 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Escape') { e.preventDefault(); onCancel() }
+                if (e.key === 'Escape') { e.preventDefault(); closeDropdown(); onCancel() }
                 if (e.key === 'Enter' && filtered.length > 0) {
-                  e.preventDefault(); onCommit(filtered[0].value); setOpen(false)
+                  e.preventDefault(); onCommit(filtered[0].value); closeDropdown()
                 }
               }}
             />
@@ -73,7 +70,7 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
             {/* Clear option */}
             <button
               className="w-full text-left px-3 py-1.5 text-[12px] text-gray-400 hover:bg-gray-50 transition-colors"
-              onClick={() => { onCommit(null); setOpen(false) }}
+              onClick={() => { onCommit(null); closeDropdown() }}
             >
               Sin valor
             </button>
@@ -81,7 +78,7 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
               <button
                 key={opt.value}
                 className="w-full text-left px-3 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2"
-                onClick={() => { onCommit(opt.value); setOpen(false) }}
+                onClick={() => { onCommit(opt.value); closeDropdown() }}
               >
                 <Badge option={opt} />
               </button>

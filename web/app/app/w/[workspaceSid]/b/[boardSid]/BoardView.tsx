@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import { SubItemsView } from '@/components/SubItemsView'
-import { SourceColumnMapper } from '@/components/SourceColumnMapper'
-import { ImportWizard } from '@/components/import/ImportWizard'
-import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
-import { SubItemViewWizard } from '@/components/SubItemViewWizard'
+
+const SubItemViewWizard = dynamic(() => import('@/components/SubItemViewWizard').then(m => m.SubItemViewWizard), { ssr: false })
+const SourceColumnMapper = dynamic(() => import('@/components/SourceColumnMapper').then(m => m.SourceColumnMapper), { ssr: false })
+const ImportWizard = dynamic(() => import('@/components/import/ImportWizard').then(m => m.ImportWizard), { ssr: false })
+const ColumnSettingsPanel = dynamic(() => import('@/components/ColumnSettingsPanel').then(m => m.ColumnSettingsPanel), { ssr: false })
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView, SubItemView } from '@/lib/boards'
 import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
 import { computeFormula, type FormulaConfig } from '@/lib/formula-engine'
@@ -56,6 +58,7 @@ const SID_COL: ColumnDef = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
+  workspaceSid:          number
   boardId:               string
   boardSid:              number
   boardName:             string
@@ -76,13 +79,16 @@ type Props = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BoardView({
-  boardId, boardSid, boardName,
+  workspaceSid, boardId, boardSid, boardName,
   initialStages, initialColumns, initialUsers, initialItems,
   initialSubItemColumns, initialSourceBoardId, initialViews, initialSubItemViews,
   boardSettings, subitemView, userRole, isBoardAdmin,
 }: Props) {
   const router = useRouter()
   const isAdmin = userRole === 'admin' || userRole === 'superadmin'
+
+  // Singleton Supabase client for realtime subscriptions
+  const supabase = useMemo(() => createClient(), [])
 
   // All data pre-fetched by server — no loading state, no useEffect
   const [rawCols,  setRawCols]  = useState<BoardColumn[]>(initialColumns)
@@ -166,6 +172,12 @@ export function BoardView({
     rawCols.forEach(c => { map[c.col_key] = c.id })
     return map
   }, [rawCols])
+
+  // Keep rawItems in a ref to avoid recreating handleCellChange on every row change
+  const rawItemsRef = useRef(rawItems)
+  useEffect(() => {
+    rawItemsRef.current = rawItems
+  }, [rawItems])
 
   // Relation label map: target_board_id → item_id → name (for relation cell display)
   const [relationLabelMap, setRelationLabelMap] = useState<Record<string, Record<string, string>>>({})
@@ -252,7 +264,7 @@ export function BoardView({
     // (NOT from row.cells which holds the display name after relationLabelMap resolution).
     const refMeta = refColsMeta.find(m => m.col_key === colKey)
     if (refMeta) {
-      const currentItem = rawItems.find(it => it.id === rowId)
+      const currentItem = rawItemsRef.current.find(it => it.id === rowId)
       const relVal = currentItem?.item_values?.find(iv => iv.column_id === refMeta.relation_col_id)?.value_text
       if (typeof relVal !== 'string' || !relVal) {
         console.warn('[ref edit] no source item, skipping')
@@ -341,7 +353,7 @@ export function BoardView({
           const srcValues = srcItem?.col_values ?? {}
 
           // Get current row state AFTER optimistic update
-          const currentRowItem = rawItems.find(it => it.id === rowId)
+          const currentRowItem = rawItemsRef.current.find(it => it.id === rowId)
           if (!currentRowItem) return
 
           for (const { source_col_key, target_col_key } of autoFillTargets) {
@@ -383,7 +395,7 @@ export function BoardView({
         console.error('[auto-fill]', err)
       }
     }
-  }, [colIdMap, refColsMeta, refTargetCols, rows, rawCols, rawItems])
+  }, [colIdMap, refColsMeta, refTargetCols, rawCols, ITEMS_FIELD])
 
   // ── Create ─────────────────────────────────────────────────────────────────
   const handleAddColumn = useCallback(async (name: string, kind: string) => {
@@ -424,6 +436,36 @@ export function BoardView({
   // ── Inline sub-items expansion ────────────────────────────────────────────
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
+  const renderRowExpansion = useCallback((rowId: string) => {
+    const onDeleteSubItemView = isBoardAdmin ? async (viewId: string) => {
+      if (!confirm('¿Eliminar esta vista?')) return
+      const res = await fetch(`/api/boards/${boardId}/sub-item-views/${viewId}`, { method: 'DELETE' })
+      if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
+    } : undefined
+
+    return (
+      <div className="max-h-56 overflow-y-auto">
+        <SubItemsView
+          workspaceSid={workspaceSid}
+          itemId={rowId}
+          boardId={boardId}
+          views={subItemViews}
+          users={users}
+          compact
+          columnsVersion={columnsVersion}
+          onCountChange={(count) => handleSubItemCountChange(rowId, count)}
+          onAddView={() => setShowViewWizard(true)}
+          onDeleteView={onDeleteSubItemView}
+          onConfigureColumns={(vId) => { setMapperViewId(vId); setShowMapper(true) }}
+          onBoardColumnCreated={() => refreshAll()}
+          boardSettings={boardSettings}
+          subitemView={subitemView}
+          isBoardAdmin={isBoardAdmin}
+        />
+      </div>
+    )
+  }, [boardId, subItemViews, users, columnsVersion, isBoardAdmin, boardSettings, subitemView])
+
   const handleExpandSubItems = useCallback((rowId: string) => {
     setExpandedItemId(prev => prev === rowId ? null : rowId)
   }, [])
@@ -435,12 +477,18 @@ export function BoardView({
     ))
   }, [])
 
+  // Callback to configure sub-item view columns
+  const onConfigureColumns = useCallback((vId: string) => {
+    setMapperViewId(vId)
+    setShowMapper(true)
+  }, [])
+
   // ── Open item detail ───────────────────────────────────────────────────────
   const handleOpenItem = useCallback((rowId: string) => {
     const item = rawItems.find(i => i.id === rowId)
     if (!item?.sid) return
-    router.push(`/app/b/${boardSid}/${item.sid}`)
-  }, [rawItems, boardSid, router])
+    router.push(`/app/w/${workspaceSid}/b/${boardSid}/${item.sid}`)
+  }, [rawItems, boardSid, workspaceSid, router])
 
   // Fetch source items for ref columns
   useEffect(() => {
@@ -457,16 +505,21 @@ export function BoardView({
       }
     }
 
-    // Fetch per target board
+    // Fetch per target board — parallel requests for items and columns
     const fetches = Object.entries(idsByBoard).map(async ([bid, idsSet]) => {
       const ids = [...idsSet]
       if (ids.length === 0) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string>, targetColsByKey: {} }
-      const res = await fetch(`/api/items?boardId=${bid}&ids=${ids.join(',')}&format=col_keys`)
-      if (!res.ok) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string>, targetColsByKey: {} }
-      const items = await res.json()
-      // Also fetch board columns for col_key → column_id map (for PUT on edit)
-      const colsRes = await fetch(`/api/boards/${bid}/columns`)
+
+      // Parallel fetch: items AND columns at the same time
+      const [itemsRes, colsRes] = await Promise.all([
+        fetch(`/api/items?boardId=${bid}&ids=${ids.join(',')}&format=col_keys`),
+        fetch(`/api/boards/${bid}/columns`),
+      ])
+
+      if (!itemsRes.ok) return { boardId: bid, items: [] as any[], cols: {} as Record<string, string>, targetColsByKey: {} }
+      const items = await itemsRes.json()
       const cols = colsRes.ok ? await colsRes.json() : []
+
       const colMap: Record<string, string> = {}
       const targetColsByKey: Record<string, any> = {}
       for (const c of cols) {
@@ -532,13 +585,13 @@ export function BoardView({
     setNewViewName('')
   }
 
-  const handleDeleteView = async (viewId: string) => {
+  const handleDeleteView = useCallback(async (viewId: string) => {
     await fetch(`/api/boards/${boardId}/views/${viewId}`, { method: 'DELETE' })
     setViews(prev => prev.filter(v => v.id !== viewId))
     if (activeViewId === viewId) {
-      setActiveViewId(views.find(v => v.id !== viewId)?.id ?? null)
+      setActiveViewId(prev => views.find(v => v.id !== viewId)?.id ?? null)
     }
-  }
+  }, [boardId, activeViewId, views])
 
   const handleRenameView = async (viewId: string) => {
     const name = renameValue.trim()
@@ -552,7 +605,7 @@ export function BoardView({
     setRenamingViewId(null)
   }
 
-  const handleToggleColumn = async (columnId: string, currentlyVisible: boolean) => {
+  const handleToggleColumn = useCallback(async (columnId: string, currentlyVisible: boolean) => {
     if (!activeViewId) return
     const newVisible = !currentlyVisible
     // Optimistic update
@@ -569,7 +622,7 @@ export function BoardView({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_visible: newVisible }),
     })
-  }
+  }, [activeViewId, boardId])
 
   const loadViewMembers = async (viewId: string) => {
     const membersPromise = viewMembers[viewId] !== undefined
@@ -617,7 +670,6 @@ export function BoardView({
 
   // ── Supabase Realtime — live item updates for all users on this board ────────
   useEffect(() => {
-    const supabase = createClient()
     const channel = supabase
       .channel(`board-items-${boardId}`)
       .on(
@@ -642,12 +694,10 @@ export function BoardView({
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [boardId])
+  }, [boardId, supabase])
 
   // ── Supabase Realtime — live column + stage updates ───────────────────────
   useEffect(() => {
-    const supabase = createClient()
-
     const reloadCols = async () => {
       const res = await fetch(`/api/boards/${boardId}/columns`)
       if (res.ok) setRawCols(await res.json() as BoardColumn[])
@@ -671,7 +721,7 @@ export function BoardView({
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [boardId])
+  }, [boardId, supabase])
 
   // Close column picker on click outside
   useEffect(() => {
@@ -740,7 +790,7 @@ export function BoardView({
         </button>
         {isBoardAdmin && (
           <a
-            href={`/app/settings/boards/${boardId}`}
+            href={`/app/w/${workspaceSid}/settings/boards/${boardId}`}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
             title="Configuración del board"
           >
@@ -755,7 +805,7 @@ export function BoardView({
         {/* Permissions — link to board access settings */}
         {isBoardAdmin && (
           <a
-            href={`/app/settings/boards/${boardId}?tab=acceso`}
+            href={`/app/w/${workspaceSid}/settings/boards/${boardId}?tab=acceso`}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
@@ -1002,30 +1052,7 @@ export function BoardView({
           onCellChange={handleCellChange}
           onExpandSubItems={handleExpandSubItems}
           expandedSubItemId={expandedItemId}
-          renderRowExpansion={(rowId) => (
-            <div className="max-h-56 overflow-y-auto">
-              <SubItemsView
-                itemId={rowId}
-                boardId={boardId}
-                views={subItemViews}
-                users={users}
-                compact
-                columnsVersion={columnsVersion}
-                onCountChange={(count) => handleSubItemCountChange(rowId, count)}
-                onAddView={() => setShowViewWizard(true)}
-                onDeleteView={isBoardAdmin ? async (viewId) => {
-                  if (!confirm('¿Eliminar esta vista?')) return
-                  const res = await fetch(`/api/boards/${boardId}/sub-item-views/${viewId}`, { method: 'DELETE' })
-                  if (res.ok) setSubItemViews(prev => prev.filter(v => v.id !== viewId))
-                } : undefined}
-                onConfigureColumns={(vId) => { setMapperViewId(vId); setShowMapper(true) }}
-                onBoardColumnCreated={() => refreshAll()}
-                boardSettings={boardSettings}
-                subitemView={subitemView}
-                isBoardAdmin={isBoardAdmin}
-              />
-            </div>
-          )}
+          renderRowExpansion={renderRowExpansion}
           onOpenItem={handleOpenItem}
           onBulkDelete={handleBulkDelete}
           onColumnSettings={colKey => {

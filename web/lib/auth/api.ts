@@ -2,6 +2,7 @@ import 'server-only'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { resolveUserProfile, checkSuperadminPhone } from './resolve-profile'
 import { NextResponse } from 'next/server'
 
 export type UserRole = 'superadmin' | 'admin' | 'member' | 'viewer'
@@ -19,12 +20,8 @@ export type AuthUser = {
 const getCachedProfile = unstable_cache(
   async (userId: string) => {
     const service = createServiceClient()
-    const { data } = await service
-      .from('users')
-      .select('sid, name, role, workspace_id')
-      .eq('id', userId)
-      .single()
-    return data ?? null
+    const profile = await resolveUserProfile(service, userId)
+    return profile ? { sid: profile.sid, name: profile.name, role: profile.role, workspace_id: profile.workspace_id } : null
   },
   ['user-profile'],
   { revalidate: 30 }
@@ -38,24 +35,19 @@ export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
+  const service = createServiceClient()
   let profile = await getCachedProfile(user.id)
 
   if (!profile) {
-    const withPlus    = user.phone ? (user.phone.startsWith('+') ? user.phone : `+${user.phone}`) : null
-    const withoutPlus = user.phone ? (user.phone.startsWith('+') ? user.phone.slice(1) : user.phone) : null
-    const phoneCandidates = [withPlus, withoutPlus].filter(Boolean) as string[]
+    const saWorkspaceId = await checkSuperadminPhone(service, user.phone)
 
-    const { data: saRow } = phoneCandidates.length
-      ? await createServiceClient().from('superadmin_phones').select('workspace_id').in('phone', phoneCandidates).maybeSingle()
-      : { data: null }
-
-    const { data: newProfile } = await createServiceClient()
+    const { data: newProfile } = await service
       .from('users')
       .upsert({
         id:           user.id,
         phone:        user.phone,
-        role:         saRow ? 'superadmin' : 'member',
-        workspace_id: saRow?.workspace_id ?? null,
+        role:         saWorkspaceId ? 'superadmin' : 'member',
+        workspace_id: saWorkspaceId ?? null,
       }, { onConflict: 'id' })
       .select('sid, name, role, workspace_id')
       .maybeSingle()
@@ -73,7 +65,7 @@ export async function requireAuthApi(): Promise<AuthUser | NextResponse> {
     phone:       user.phone ?? null,
     name:        profile.name,
     role:        profile.role as UserRole,
-    workspaceId: profile.workspace_id,
+    workspaceId: profile.workspace_id!,
   }
 }
 

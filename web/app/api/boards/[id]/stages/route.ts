@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError, jsonOk, verifyBoardAccess, getNextPosition } from '@/lib/api-helpers'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -13,14 +14,8 @@ export async function GET(req: Request, { params }: Context) {
   const svc = createServiceClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await svc
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(svc, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   const { data: stages, error } = await svc
     .from('board_stages')
@@ -28,8 +23,8 @@ export async function GET(req: Request, { params }: Context) {
     .eq('board_id', id)
     .order('position')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(stages ?? [])
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(stages ?? [])
 }
 
 export async function POST(req: Request, { params }: Context) {
@@ -39,47 +34,27 @@ export async function POST(req: Request, { params }: Context) {
   const { id } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as { name?: string; color?: string }
 
   if (!body.name?.trim()) {
-    return NextResponse.json(
-      { error: 'Stage name is required' },
-      { status: 400 }
-    )
+    return jsonError('Stage name is required', 400)
   }
 
   if (!body.color?.trim()) {
-    return NextResponse.json(
-      { error: 'Stage color is required' },
-      { status: 400 }
-    )
+    return jsonError('Stage color is required', 400)
   }
 
   const supabase = createServiceClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   // Get max position
-  const { data: lastStage } = await supabase
-    .from('board_stages')
-    .select('position')
-    .eq('board_id', id)
-    .order('position', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const position = (lastStage?.position ?? -1) + 1
+  const position = await getNextPosition(supabase, 'board_stages', 'board_id', id)
 
   const { data: stage, error } = await supabase
     .from('board_stages')
@@ -93,6 +68,6 @@ export async function POST(req: Request, { params }: Context) {
     .select('id, sid, name, color, position, is_closed')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(stage, { status: 201 })
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(stage, 201)
 }

@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
+import { jsonError, jsonOk, verifyBoardAccess } from '@/lib/api-helpers'
 import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string; stageId: string }> }
@@ -12,7 +13,7 @@ export async function PATCH(req: Request, { params }: Context) {
   const { id, stageId } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as {
@@ -25,14 +26,8 @@ export async function PATCH(req: Request, { params }: Context) {
   const supabase = await createClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   // Verify stage belongs to board
   const { data: stage } = await supabase
@@ -42,21 +37,21 @@ export async function PATCH(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!stage) return NextResponse.json({ error: 'Stage not found' }, { status: 404 })
+  if (!stage) return jsonError('Stage not found', 404)
 
   // Build patch object
   const patch: Record<string, unknown> = {}
 
   if ('name' in body && body.name !== undefined) {
     if (!body.name?.trim()) {
-      return NextResponse.json({ error: 'Stage name cannot be empty' }, { status: 400 })
+      return jsonError('Stage name cannot be empty', 400)
     }
     patch.name = body.name.trim()
   }
 
   if ('color' in body && body.color !== undefined) {
     if (!body.color?.trim()) {
-      return NextResponse.json({ error: 'Stage color cannot be empty' }, { status: 400 })
+      return jsonError('Stage color cannot be empty', 400)
     }
     patch.color = body.color.trim()
   }
@@ -70,7 +65,7 @@ export async function PATCH(req: Request, { params }: Context) {
   }
 
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    return jsonError('Nothing to update', 400)
   }
 
   const { data: updated, error } = await supabase
@@ -80,8 +75,8 @@ export async function PATCH(req: Request, { params }: Context) {
     .select('id, sid, name, color, position, is_closed')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(updated)
+  if (error) return jsonError(error.message, 500)
+  return jsonOk(updated)
 }
 
 export async function DELETE(req: Request, { params }: Context) {
@@ -91,20 +86,14 @@ export async function DELETE(req: Request, { params }: Context) {
   const { id, stageId } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const supabase = await createClient()
 
   // Verify board belongs to workspace
-  const { data: board } = await supabase
-    .from('boards')
-    .select('id')
-    .eq('id', id)
-    .eq('workspace_id', auth.workspaceId)
-    .single()
-
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  const verified = await verifyBoardAccess(supabase, id, auth.workspaceId)
+  if (verified instanceof NextResponse) return verified
 
   // Verify stage belongs to board
   const { data: stage } = await supabase
@@ -114,7 +103,7 @@ export async function DELETE(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!stage) return NextResponse.json({ error: 'Stage not found' }, { status: 404 })
+  if (!stage) return jsonError('Stage not found', 404)
 
   // Delete stage
   const { error } = await supabase
@@ -122,6 +111,6 @@ export async function DELETE(req: Request, { params }: Context) {
     .delete()
     .eq('id', stageId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+  if (error) return jsonError(error.message, 500)
+  return jsonOk({ success: true })
 }
