@@ -1,5 +1,14 @@
 # log
 
+## 2026-04-16
+
+**~sesión 5 — Fase 17.A Invitations slice vertical**
+- Migration 15 `invitations` table + migration 16 hardened `handle_new_auth_user` (SET search_path + EXCEPTION block para email signups)
+- 3 API routes: POST/GET `/api/invitations`, DELETE `/api/invitations/[id]`, POST `/api/invitations/accept` (token validation + user provisioning)
+- Landing page `/invite/[token]`: server component validates token/expiry, client component handles both PKCE (`?code=`) and implicit (`#access_token=`) flows via `exchangeCodeForSession`/`setSession`
+- Settings → Members: botón "Invitar por email" + modal (email+role) + tabla invitaciones pendientes con "Copiar link" / "Revocar"
+- Email via Resend directo (bypass Supabase 2/hr rate limit): `generateLink({ type:'invite' })` + Resend REST API con template HTML; cleanup automático de auth.users huérfanos en re-invite
+
 ## 2026-04-15
 
 **~sesión 4 — 16.6 ref cols shipped + fixes RLS/UUID**

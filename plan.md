@@ -618,18 +618,18 @@ user_trusted_devices (
 ### Tareas
 
 #### 17.A — Invitations
-- [ ] **17.1** Migration: `invitations` table + índices + RLS
-- [ ] **17.2** `POST /api/invitations` (admin only) — crea row + envía email vía Resend/SendGrid con link `/invite/<token>`
-- [ ] **17.3** `GET /api/invitations?workspace_id=X` — lista pendientes + enviadas
-- [ ] **17.4** `DELETE /api/invitations/[id]` — revocar invitación
-- [ ] **17.5** Page `/invite/[token]` — landing pública: valida token, muestra workspace, botón "Aceptar" → login con email pre-rellenado
-- [ ] **17.6** `POST /api/invitations/accept` — marca accepted_at + auto-crea user en workspace con el role invitado
-- [ ] **17.7** Settings → Members → botón "Invitar por email" — modal con email + role → POST
-- [ ] **17.8** Email template (Resend) con branding minimalista
+- [x] **17.1** Migration: `invitations` table + índices + RLS
+- [x] **17.2** `POST /api/invitations` (admin only) — crea row + genera link vía `generateLink` + envía email vía Resend API directo (bypass Supabase rate limit)
+- [x] **17.3** `GET /api/invitations?workspace_id=X` — lista pendientes + enviadas
+- [x] **17.4** `DELETE /api/invitations/[id]` — revocar invitación
+- [x] **17.5** Page `/invite/[token]` — landing pública: valida token/expiry, muestra workspace+rol, client component maneja PKCE+implicit auth flows
+- [x] **17.6** `POST /api/invitations/accept` — marca accepted_at + upsert workspace_id+role en users table + valida email match
+- [x] **17.7** Settings → Members → botón "Invitar por email" — modal con email+role, tabla pendientes con "Copiar link"/"Revocar"
+- [x] **17.8** Email template (Resend) con branding minimalista — HTML inline en POST route
 
 #### 17.B — Email auth (Supabase native)
 - [ ] **17.9** Login page: toggle "Email / Teléfono" — email usa `signInWithOtp({ email })`
-- [ ] **17.10** Trigger `handle_new_auth_user` actualizado para soportar signups vía email (además de phone)
+- [x] **17.10** Trigger `handle_new_auth_user` hardened: SET search_path=public, EXCEPTION block, soporta email signups (migration 16)
 - [ ] **17.11** Lookup durante OTP: resolver user por email desde `user_emails` (cualquier alias) → obtener primary email → enviar OTP a ese
 
 #### 17.C — Multi-identity
