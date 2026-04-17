@@ -22,7 +22,10 @@ export default function LoginPage() {
 
     const supabase = createClient()
     const { error } = method === 'email'
-      ? await supabase.auth.signInWithOtp({ email })
+      ? await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        })
       : await supabase.auth.signInWithOtp({ phone })
 
     if (error) {
