@@ -2,6 +2,20 @@
 
 ## 2026-04-21
 
+**~sesión 10 — Fase 18.5/18.6/18.7 — Opinionated Knowledge Graph (quotes pipeline + default relations)**
+- Pivot de diseño: `documents` system board → `cotizaciones` (quotes) pipeline. Rationale: Tratto NO es Monday — viene opinionado. Cada board de sistema trae relations + sub_item_views por defecto, cero config.
+- Migration `20260421000001_quotes_opinionated_graph.sql`: wipe CMP + rewrite `seed_system_boards()` + re-seed. Usa `SET session_replication_role=replica` para saltar triggers `log_sub_item_activity`/`log_sub_item_deleted` durante el wipe (cascade → trigger → INSERT a item_activity que luego viola FK al borrar sub_items)
+- Quotes board: type=pipeline, stages Borrador→Enviada→Pendiente firma→Firmada→Anulada (2 closed). Columns: name · stage (primary_stage) · oportunidad/contacto/institucion (relations) · monto · pdf_url · folio · signatures · template_id · generated_by. Dropped legacy `source_item_id` + `status` select (reemplazados por relations + stages)
+- Default sub_item_views seeded: Oportunidades={Catálogo native, Cotizaciones board_items via oportunidad rel}; Contactos={Oportunidades, Cotizaciones via contacto rel}; Instituciones={Contactos, Oportunidades, Cotizaciones via institucion rel}; Catálogo={Variantes native L2}; Cotizaciones=terminal
+- Catálogo con cols: name + descripcion + foto (file) + unit_price (currency) + owner — listo para que el repeat block del template consuma directamente
+- Default template "Cotización estándar" auto-seeded por workspace (heading + fields + repeat sub_items con columns image-izq+texto-der + total monto + 2 signatures cliente/vendedor)
+- Button column "Generar cotización" auto-seeded en Oportunidades apuntando al default template (action=generate_document, confirm=true)
+- Rename `accounts` slug → 'instituciones' + name → 'Instituciones' (system_key intacto)
+- API updates (Haiku): 3 rutas `/api/documents/*` queries system_key `'documents'` → `'quotes'`; generate route extendido para populate relations oportunidad/contacto/institucion/monto desde source opp via item_values lookup; sign route limpia lógica de status (ahora stage-based)
+- DELETE /api/boards/[id] ya bloqueaba system boards (pre-existía) + UI de lista settings/boards ya condicionaba botón a `!board.system_key`
+- Plan.md: agregado Fase 22 Bidirectional Graph Editing al backlog — click en relation chip abre drawer lateral con cols editables del item relacionado (extensión de Fase 16.6 ref cols a UX de 1st class)
+- Build verde, typecheck limpio
+
 **~sesión 9 — Fase 18 Document Templates CLOSED (rediseño completo + implementación autónoma)**
 - Rediseño: Fase 18 cambió de "Quote Engine" CMP-específico a sistema genérico de plantillas (más fácil que Eledo). Templates apuntan a cualquier target_board, body = array de blocks JSON portable. Stack: `@react-pdf/renderer` + custom block list con `@dnd-kit/sortable` (en vez de TipTap/Chromium)
 - Migration `20260420000001_document_templates.sql`: `document_templates`, `document_audit_events`, `seed_system_boards` extendida con board `documents` (system_key='documents', 9 cols: template_id/source_item_id/pdf_url/folio/status/signatures/generated_by + 3 system). Backfill al workspace CMP. Fix: `ON CONFLICT DO NOTHING` en backfill porque `trg_boards_inject_system_cols` ya inyecta los 3 system cols

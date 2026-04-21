@@ -34,12 +34,12 @@ export async function GET(req: Request) {
 
     const service = createServiceClient()
 
-    // Find documents board
+    // Find quotes board
     const { data: documentsBoard } = await service
       .from('boards')
       .select('id')
       .eq('workspace_id', auth.workspaceId)
-      .eq('system_key', 'documents')
+      .eq('system_key', 'quotes')
       .maybeSingle()
 
     if (!documentsBoard) {

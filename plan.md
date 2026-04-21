@@ -744,9 +744,9 @@ user_trusted_devices (
 
 ---
 
-## Fase 18 — Document Templates ✅ CLOSED (2026-04-21)
+## Fase 18 — Document Templates + Opinionated Graph ✅ CLOSED (2026-04-21)
 
-**Goal:** Sistema generico de plantillas de documentos (cotizaciones, contratos, fichas técnicas, cualquier cosa), más fácil que Eledo. Template apunta a cualquier target_board, body = array de blocks JSON (heading, text, field, image, columns, repeat, signature, etc). Generar crea item en system board `documents` con PDF generado vía `@react-pdf/renderer`. Firma estampa PDF y dispara re-render. Killer feature: `repeat` block con imagen por sub-item (producto con foto + desc + precio).
+**Goal:** Sistema de plantillas de documentos (más fácil que Eledo) + system board `cotizaciones` (quotes) como pipeline + **knowledge graph conectado por defecto** entre system boards. Tratto NO es Monday: viene opinionado out-of-the-box — oportunidades ya traen sub-items de catálogo + cotizaciones, contactos muestran sus oportunidades/cotizaciones, etc. Killer feature del template: `repeat` block con imagen por sub-item (producto con foto + desc + precio). Firma estampa PDF y dispara re-render.
 
 ### Stack
 - **PDF:** `@react-pdf/renderer` (pure JS, sin chromium, `runtime='nodejs'`)
@@ -793,6 +793,31 @@ documents system board (auto-seeded):
 - [x] **18.12** `POST /api/documents/[id]/sign` — decode base64 → upload signature image → re-render PDF con firma stampada → update item pdf_url + signatures; status → 'signed' si todas las required ya firmadas
 - [x] **18.12** `components/templates/SignatureDrawModal.tsx` — canvas HTML5 para dibujar firma (mouse + touch), POST sign
 - [x] **18.13** `DocumentsTab` en `ItemDetailView` — tab "Documentos" lista docs del item con folio + status + "Ver PDF" / "Firmar" / "Eliminar" buttons; listens `document-generated`/`document-signed` events
+
+### Fase 18.5 — Opinionated Knowledge Graph (2026-04-21)
+- [x] **18.5.1** Migration `20260421000001_quotes_opinionated_graph.sql`: wipe CMP + rewrite `seed_system_boards` + re-seed
+- [x] **18.5.2** System board rename: `documents` → `quotes`, slug `cotizaciones`, name `Cotizaciones`, type `pipeline` con stages (Borrador/Enviada/Pendiente firma/Firmada/Anulada)
+- [x] **18.5.3** Quotes columns redesign: `name` + `stage` (primary_stage) + `oportunidad` (rel→opps) + `contacto` (rel→contacts) + `institucion` (rel→accounts) + `monto` + `pdf_url` + `folio` + `signatures` + `template_id` + `generated_by`. Dropped `source_item_id` + `status` (reemplazados por relations + stages)
+- [x] **18.5.4** Default sub_item_views auto-seeded per board:
+  - Oportunidades: Catálogo (native con source=catalog) + Cotizaciones (board_items via oportunidad rel)
+  - Contactos: Oportunidades + Cotizaciones (board_items via contacto rel en ambos)
+  - Instituciones: Contactos + Oportunidades + Cotizaciones (board_items via institucion rel)
+  - Catálogo: Variantes (native L2)
+  - Cotizaciones: terminal (sin sub-views)
+- [x] **18.5.5** Rename `accounts` → "Instituciones" (display name; `system_key='accounts'` inmutable); slug='instituciones'
+- [x] **18.5.6** Catálogo columns por defecto: `name` + `descripcion` + `foto` (file) + `unit_price` (currency) + `owner`
+- [x] **18.5.7** Default template "Cotización estándar" auto-seeded via `document_templates` (heading + field contacto/institucion + repeat sub_items con columns image+heading+text+field unit_price + total monto + 2 signatures cliente/vendedor)
+- [x] **18.5.8** Button column "Generar cotización" auto-seeded en Oportunidades (kind='button', action='generate_document', template_id apunta al default template, confirm=true)
+
+### Fase 18.6 — System boards no-borrables (2026-04-21)
+- [x] **18.6.1** API `DELETE /api/boards/[id]` → 403 si `system_key IS NOT NULL` ("No se puede eliminar un board de sistema")
+- [x] **18.6.2** UI settings → Boards lista: botón eliminar condicionado a `!board.system_key && isAdmin`
+
+### Fase 18.7 — Code updates para quotes rename
+- [x] **18.7.1** 3 rutas API (`/api/documents/generate`, `/api/documents/[id]/sign`, `/api/documents`): query `system_key='documents'` → `'quotes'`
+- [x] **18.7.2** `/api/documents/generate` extendido: populate relations `oportunidad` (source opp UUID), `contacto` + `institucion` (copiados del source opp via item_values lookup), `monto` (number del source opp)
+- [x] **18.7.3** Generate route: dropped `source_item_id` + `status` inserts (reemplazados por relations + stage_id)
+- [x] **18.7.4** Sign route: dropped status column update logic
 
 ### Folio format
 `folio_format` en template (ej `'COT-{YYYY}-{N}'`): `{YYYY}` → año actual, `{N}` → counter 0-padded 4 dígitos basado en count de docs previos con mismo `template_id`. `null` = sin folio.
@@ -1432,6 +1457,41 @@ Los tres persisten en `view.config` vía PATCH `/api/boards/[id]/views/[viewId]`
 - [ ] **21.13** Chip compacto en toolbar "3 filtros activos · Stage, Owner · Agrupado por Etapa" → click abre el panel correspondiente
 - [ ] **21.14** Botón "Limpiar" en cada panel para resetear ese eje
 - [ ] **21.15** Filter/Sort/Group en sub-items también (reusa engine, UI compacta)
+
+---
+
+## Fase 22 — Bidirectional Graph Editing
+
+**Goal:** Cualquier relation col = edit bidireccional. Desde Oportunidad, click en el contacto → drawer lateral muestra TODAS las cols del contacto editables inline. Cambios escriben al source + revalidan optimísticamente en todas las vistas afectadas. Extiende ref cols / mirror (Fase 16.6) a UX de primera clase, no sólo lookup.
+
+### Motivación
+Knowledge graph real: los system boards están conectados por defecto (Fase 18.5). Pero si estás en una Oportunidad y necesitas corregir la institución del contacto, hoy tienes que navegar al board Contactos → buscar el contacto → editar → volver. Debería ser: click en el chip del contacto → drawer → edita → sigues donde estabas.
+
+### Diseño
+- `RelationCell` hover → chip visible. Click en chip (no double-click) → abre drawer lateral derecho.
+- Drawer component nuevo `RelatedItemDrawer.tsx`:
+  - Header: nombre del item relacionado + board origen (chip)
+  - Body: todas las cols del target board (respetando column_permissions) renderizadas como info panel, cada una editable inline (reusa `ColumnCell`)
+  - Link "Abrir en [board]" → navega al item completo
+- Edits hacen PUT al item target via `/api/items/[id]/values` normal; optimistic update local
+- Si el item está abierto en otra tab/view, realtime lo sincroniza (ya existe subscription en BoardView)
+- `Esc` cierra, click fuera cierra
+
+### Tareas
+- [ ] **22.1** `components/RelatedItemDrawer.tsx` — drawer lateral fixed right, `w-[480px]`, animación slide-in
+- [ ] **22.2** Fetch lazy al abrir: `GET /api/items/[id]` + `GET /api/boards/[id]/columns` del target board
+- [ ] **22.3** Render info panel con `ColumnCell` por cada col; edits via `handleCellChange` que hace PUT al target
+- [ ] **22.4** `RelationCell` click handler: en lugar de abrir RelationPicker (cambiar cuál item), abrir RelatedItemDrawer si hay value. Picker se abre con icono dedicado `⚙` o via double-click.
+- [ ] **22.5** Igual tratamiento en `SubItemsView` type=`board_items` — click en row del sub-item abre drawer
+- [ ] **22.6** ESC + click outside cierran; botón X en header
+- [ ] **22.7** Breadcrumb/back si usuario navega nested (contacto → institución → contactos de esa institución)
+
+### Verificación
+- [ ] Desde Oportunidad, click en chip de contacto → drawer muestra campos (phone, email, institucion, owner, etc) editables
+- [ ] Editar `email` del contacto desde drawer → al cerrar, al reabrir contacto en board Contactos muestra el nuevo email
+- [ ] Column permissions respetadas: si user sólo puede ver phone (no email), drawer sólo muestra phone editable
+- [ ] ESC cierra drawer sin perder cambios pendientes (optimistic ya pushed)
+- [ ] No bloquea navegación: drawer es overlay sobre la vista activa
 
 ---
 

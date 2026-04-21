@@ -120,6 +120,21 @@ export async function POST(req: Request, { params }: Context) {
       // Bucket likely already exists
     }
 
+    // Verify document is in quotes board (not documents)
+    const { data: quotesBoard } = await service
+      .from('boards')
+      .select('id')
+      .eq('workspace_id', auth.workspaceId)
+      .eq('system_key', 'quotes')
+      .maybeSingle()
+
+    if (quotesBoard && docItem.board_id !== quotesBoard.id) {
+      return NextResponse.json(
+        { error: 'Document not in quotes board' },
+        { status: 403 }
+      )
+    }
+
     // Decode base64 signature
     let signatureBuffer: Buffer
     try {
@@ -433,34 +448,6 @@ export async function POST(req: Request, { params }: Context) {
       }
     }
 
-    // Check if all required signatures are present
-    let newStatus = valuesByColKey['status'] ?? 'draft'
-    const requiredSignatures = (template.signature_config ?? []).filter((sig: any) => sig.required)
-    if (requiredSignatures.length > 0) {
-      const signedRoles = signatures.map(s => s.role)
-      const allRequiredSigned = requiredSignatures.every((sig: any) => signedRoles.includes(sig.role))
-      if (allRequiredSigned) {
-        newStatus = 'signed'
-
-        if (colKeyToId['status']) {
-          // Delete old status and insert new one
-          await service
-            .from('item_values')
-            .delete()
-            .eq('item_id', documentId)
-            .eq('column_id', colKeyToId['status'])
-
-          await service
-            .from('item_values')
-            .insert({
-              item_id: documentId,
-              column_id: colKeyToId['status'],
-              value_text: 'signed'
-            })
-        }
-      }
-    }
-
     // Insert audit event
     await service.from('document_audit_events').insert({
       document_item_id: documentId,
@@ -475,8 +462,7 @@ export async function POST(req: Request, { params }: Context) {
 
     return NextResponse.json({
       signatures,
-      pdf_url: newPdfUrl,
-      status: newStatus
+      pdf_url: newPdfUrl
     })
   } catch (error) {
     console.error('[documents/[id]/sign] Error:', error)

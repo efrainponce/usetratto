@@ -120,7 +120,7 @@ export async function DELETE(req: Request, { params }: Context) {
 
   // Verify not a system board (system_key IS NULL)
   if (board.system_key !== null) {
-    return jsonError('Cannot delete system boards', 403)
+    return jsonError('No se puede eliminar un board de sistema', 403)
   }
 
   // Delete board

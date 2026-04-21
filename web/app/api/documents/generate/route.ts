@@ -388,16 +388,16 @@ export async function POST(req: Request) {
 
     const pdfUrl = urlData.publicUrl
 
-    // Find documents board
+    // Find quotes board
     const { data: documentsBoard } = await service
       .from('boards')
       .select('id')
       .eq('workspace_id', auth.workspaceId)
-      .eq('system_key', 'documents')
+      .eq('system_key', 'quotes')
       .maybeSingle()
 
     if (!documentsBoard) {
-      return NextResponse.json({ error: 'Documents board not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Quotes board not found' }, { status: 404 })
     }
 
     // Find board_columns
@@ -409,6 +409,44 @@ export async function POST(req: Request) {
     const colKeyToId: Record<string, string> = {}
     for (const col of docBoardCols ?? []) {
       colKeyToId[col.col_key] = col.id
+    }
+
+    // Fetch columns from source opp board to get source_contacto_id, source_institucion_id, source_monto
+    const { data: oppBoardCols } = await service
+      .from('board_columns')
+      .select('id, col_key')
+      .eq('board_id', template.target_board_id)
+
+    const oppColKeyToId: Record<string, string> = {}
+    for (const col of oppBoardCols ?? []) {
+      oppColKeyToId[col.col_key] = col.id
+    }
+
+    // Read source opp item_values for contacto, institucion, monto
+    let sourceContactoId: string | null = null
+    let sourceInstitucionId: string | null = null
+    let sourceMontoValue: number | null = null
+
+    if (oppColKeyToId['contacto'] && oppColKeyToId['institucion'] && oppColKeyToId['monto']) {
+      const { data: sourceValues } = await service
+        .from('item_values')
+        .select('column_id, value_text, value_number')
+        .eq('item_id', source_item_id)
+        .in('column_id', [
+          oppColKeyToId['contacto'],
+          oppColKeyToId['institucion'],
+          oppColKeyToId['monto']
+        ]) as any
+
+      for (const iv of sourceValues ?? []) {
+        if (iv.column_id === oppColKeyToId['contacto']) {
+          sourceContactoId = iv.value_text
+        } else if (iv.column_id === oppColKeyToId['institucion']) {
+          sourceInstitucionId = iv.value_text
+        } else if (iv.column_id === oppColKeyToId['monto']) {
+          sourceMontoValue = iv.value_number
+        }
+      }
     }
 
     // Create document item
@@ -437,6 +475,7 @@ export async function POST(req: Request) {
       item_id: string
       column_id: string
       value_text?: string
+      value_number?: number
       value_json?: unknown
     }> = []
 
@@ -448,11 +487,39 @@ export async function POST(req: Request) {
       })
     }
 
-    if (colKeyToId['source_item_id']) {
+    // Add relation to source oportunidad
+    if (colKeyToId['oportunidad']) {
       itemValuesInserts.push({
         item_id: docItem.id,
-        column_id: colKeyToId['source_item_id'],
+        column_id: colKeyToId['oportunidad'],
         value_text: source_item_id
+      })
+    }
+
+    // Add relation to contacto
+    if (colKeyToId['contacto'] && sourceContactoId) {
+      itemValuesInserts.push({
+        item_id: docItem.id,
+        column_id: colKeyToId['contacto'],
+        value_text: sourceContactoId
+      })
+    }
+
+    // Add relation to institucion
+    if (colKeyToId['institucion'] && sourceInstitucionId) {
+      itemValuesInserts.push({
+        item_id: docItem.id,
+        column_id: colKeyToId['institucion'],
+        value_text: sourceInstitucionId
+      })
+    }
+
+    // Add monto number value
+    if (colKeyToId['monto'] && sourceMontoValue !== null) {
+      itemValuesInserts.push({
+        item_id: docItem.id,
+        column_id: colKeyToId['monto'],
+        value_number: sourceMontoValue
       })
     }
 
@@ -476,16 +543,6 @@ export async function POST(req: Request) {
         item_id: docItem.id,
         column_id: colKeyToId['folio'],
         value_text: folio
-      })
-    }
-
-    if (colKeyToId['status']) {
-      const hasRequiredSignatures = (template.signature_config ?? []).some((sig: any) => sig.required)
-      const status = hasRequiredSignatures ? 'pending_signature' : 'draft'
-      itemValuesInserts.push({
-        item_id: docItem.id,
-        column_id: colKeyToId['status'],
-        value_text: status
       })
     }
 
@@ -522,19 +579,12 @@ export async function POST(req: Request) {
       }
     })
 
-    const status = colKeyToId['status']
-      ? ((template.signature_config ?? []).some((sig: any) => sig.required)
-          ? 'pending_signature'
-          : 'draft')
-      : 'draft'
-
     return NextResponse.json(
       {
         document_item_id: docItem.id,
         document_item_sid: docItem.sid,
         pdf_url: pdfUrl,
-        folio,
-        status
+        folio
       },
       { status: 201 }
     )
