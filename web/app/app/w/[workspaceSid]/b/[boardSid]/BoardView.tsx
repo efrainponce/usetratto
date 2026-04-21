@@ -16,36 +16,6 @@ import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubI
 import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
 import { computeFormula, type FormulaConfig } from '@/lib/formula-engine'
 
-// ─── Stats Component ───────────────────────────────────────────────────────────
-function StatCard({ label, value, tone }: { label: string; value: number | string; tone?: 'brand' | 'won' | 'warn' }) {
-  const toneColor = tone === 'brand' ? 'var(--brand)' : tone === 'won' ? 'var(--stage-won)' : tone === 'warn' ? 'var(--stage-quote)' : 'var(--ink)'
-  return (
-    <div className="relative px-3.5 py-2.5 pb-7 border-r border-[var(--border)] last:border-r-0 first:pl-0 flex flex-col gap-0.5 min-w-0 overflow-hidden">
-      <div className="text-[10.5px] tracking-[0.08em] uppercase font-semibold text-[var(--ink-4)]">{label}</div>
-      <div className="font-[family-name:var(--font-geist-mono)] text-[22px] font-medium leading-[1.1] tabular-nums" style={{ color: toneColor }}>{value}</div>
-    </div>
-  )
-}
-
-function BoardStats({ rows, stages }: { rows: { id: string; stage_id?: string | null; owner_id?: string | null; deadline?: string | null }[]; stages: BoardStage[] }) {
-  const abiertas = rows.filter(r => {
-    const stage = stages.find(s => s.id === r.stage_id)
-    return !stage?.is_closed
-  }).length
-  const cerradas = rows.length - abiertas
-
-  return (
-    <div className="mt-4 pt-3.5 pb-4 border-t border-[var(--border)] grid grid-cols-6 gap-0">
-      <StatCard label="Total" value={rows.length} />
-      <StatCard label="Abiertas" value={abiertas} tone="brand" />
-      <StatCard label="Cerradas" value={cerradas} tone="won" />
-      <StatCard label="Etapas" value={stages.length} />
-      <StatCard label="Sin asignar" value={rows.filter(r => !r.owner_id).length} />
-      <StatCard label="Proximamente" value={rows.filter(r => r.deadline && new Date(r.deadline).getTime() - Date.now() < 14 * 86400000 && new Date(r.deadline).getTime() > Date.now()).length} tone="warn" />
-    </div>
-  )
-}
-
 // ─── Column permission type ───────────────────────────────────────────────────
 type ColPermission = {
   id: string
@@ -849,8 +819,6 @@ export function BoardView({
           </div>
         </div>
 
-        {/* Stats strip — solo si hay etapas */}
-        {stages.length > 0 && <BoardStats rows={rows} stages={stages} />}
       </div>
 
       {/* View tab strip */}
