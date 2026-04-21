@@ -16,6 +16,36 @@ import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubI
 import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
 import { computeFormula, type FormulaConfig } from '@/lib/formula-engine'
 
+// ─── Stats Component ───────────────────────────────────────────────────────────
+function StatCard({ label, value, tone }: { label: string; value: number | string; tone?: 'brand' | 'won' | 'warn' }) {
+  const toneColor = tone === 'brand' ? 'var(--brand)' : tone === 'won' ? 'var(--stage-won)' : tone === 'warn' ? 'var(--stage-quote)' : 'var(--ink)'
+  return (
+    <div className="relative px-3.5 py-2.5 pb-7 border-r border-[var(--border)] last:border-r-0 first:pl-0 flex flex-col gap-0.5 min-w-0 overflow-hidden">
+      <div className="text-[10.5px] tracking-[0.08em] uppercase font-semibold text-[var(--ink-4)]">{label}</div>
+      <div className="font-[family-name:var(--font-geist-mono)] text-[22px] font-medium leading-[1.1] tabular-nums" style={{ color: toneColor }}>{value}</div>
+    </div>
+  )
+}
+
+function BoardStats({ rows, stages }: { rows: { id: string; stage_id?: string | null; owner_id?: string | null; deadline?: string | null }[]; stages: BoardStage[] }) {
+  const abiertas = rows.filter(r => {
+    const stage = stages.find(s => s.id === r.stage_id)
+    return !stage?.is_closed
+  }).length
+  const cerradas = rows.length - abiertas
+
+  return (
+    <div className="mt-4 pt-3.5 pb-4 border-t border-[var(--border)] grid grid-cols-6 gap-0">
+      <StatCard label="Total" value={rows.length} />
+      <StatCard label="Abiertas" value={abiertas} tone="brand" />
+      <StatCard label="Cerradas" value={cerradas} tone="won" />
+      <StatCard label="Etapas" value={stages.length} />
+      <StatCard label="Sin asignar" value={rows.filter(r => !r.owner_id).length} />
+      <StatCard label="Proximamente" value={rows.filter(r => r.deadline && new Date(r.deadline).getTime() - Date.now() < 14 * 86400000 && new Date(r.deadline).getTime() > Date.now()).length} tone="warn" />
+    </div>
+  )
+}
+
 // ─── Column permission type ───────────────────────────────────────────────────
 type ColPermission = {
   id: string
@@ -751,173 +781,167 @@ export function BoardView({
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 flex-none">
-        <h1 className="text-[14px] font-semibold text-gray-800">{boardName}</h1>
-        <div className="flex-1" />
-        <button
-          onClick={() => setShowViewWizard(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
-            <rect x="1" y="1" width="10" height="10" rx="1.5" strokeWidth="1.3"/>
-            <path d="M1 4.5h10M4.5 4.5v6.5" strokeWidth="1.3" strokeLinecap="round"/>
-          </svg>
-          Sub-items
-          {subItemViews.length > 0 && (
-            <span className="flex items-center gap-1 ml-0.5">
-              {subItemViews.slice(0, 3).map(v => (
-                <span key={v.id} className="px-1.5 py-0 rounded bg-gray-100 text-gray-500 text-[10px] font-medium">
-                  {v.name}
-                </span>
-              ))}
-              {subItemViews.length > 3 && (
-                <span className="px-1.5 py-0 rounded bg-gray-100 text-gray-400 text-[10px]">
-                  +{subItemViews.length - 3}
-                </span>
+      {/* Board Header with Stats */}
+      <div className="px-8 pt-6 pb-0 border-b border-[var(--border)] bg-[var(--bg)] flex-none">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="m-0 font-[family-name:var(--font-geist-mono)] text-[22px] font-semibold uppercase tracking-wide text-[var(--ink)]">
+              {boardName}
+            </h1>
+            <span className="mt-1 block text-[13px] text-[var(--ink-3)]">
+              <b className="font-[family-name:var(--font-geist-mono)] font-semibold text-[var(--ink)]">{rows.length}</b> registros
+              {stages.length > 0 && (
+                <> · pipeline con <b className="font-[family-name:var(--font-geist-mono)] font-semibold text-[var(--ink)]">{stages.length}</b> etapas</>
               )}
             </span>
-          )}
-        </button>
-        <button
-          onClick={() => setShowImport(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
-            <path d="M6 1v7M3 5l3 3 3-3M1 10h10" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Importar
-        </button>
-        {isBoardAdmin && (
-          <a
-            href={`/app/w/${workspaceSid}/settings/boards/${boardId}`}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-            title="Configuración del board"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
-              <circle cx="6" cy="6" r="2" strokeWidth="1.3"/>
-              <path d="M6 1v1.5M6 9.5V11M1 6h1.5M9.5 6H11M2.4 2.4l1.1 1.1M8.5 8.5l1.1 1.1M2.4 9.6l1.1-1.1M8.5 3.5l1.1-1.1" strokeWidth="1.3" strokeLinecap="round"/>
-            </svg>
-            Configurar
-          </a>
-        )}
+          </div>
+          <div className="flex gap-1.5 pt-1">
+            <button
+              onClick={() => setShowViewWizard(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] rounded-sm border border-transparent hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+                <rect x="1" y="1" width="10" height="10" rx="1.5" strokeWidth="1.3"/>
+                <path d="M1 4.5h10M4.5 4.5v6.5" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              Sub-items
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] rounded-sm border border-transparent hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+                <path d="M6 1v7M3 5l3 3 3-3M1 10h10" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Importar
+            </button>
+            {isBoardAdmin && (
+              <a
+                href={`/app/w/${workspaceSid}/settings/boards/${boardId}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] rounded-sm border border-transparent hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+                title="Configuración del board"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+                  <circle cx="6" cy="6" r="2" strokeWidth="1.3"/>
+                  <path d="M6 1v1.5M6 9.5V11M1 6h1.5M9.5 6H11M2.4 2.4l1.1 1.1M8.5 8.5l1.1 1.1M2.4 9.6l1.1-1.1M8.5 3.5l1.1-1.1" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+                Configurar
+              </a>
+            )}
+            {isBoardAdmin && (
+              <a
+                href={`/app/w/${workspaceSid}/settings/boards/${boardId}?tab=acceso`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] rounded-sm border border-transparent hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
+                  <rect x="2.5" y="5.5" width="7" height="5" rx="1" strokeWidth="1.3"/>
+                  <path d="M4 5.5V3.5a2 2 0 0 1 4 0v2" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+                Permisos
+              </a>
+            )}
+            <button
+              onClick={handleNew}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] rounded-sm hover:bg-[var(--brand-deep)]"
+            >
+              <span className="text-[15px] leading-none">+</span> Nuevo
+            </button>
+          </div>
+        </div>
 
-        {/* Permissions — link to board access settings */}
-        {isBoardAdmin && (
-          <a
-            href={`/app/w/${workspaceSid}/settings/boards/${boardId}?tab=acceso`}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
-              <rect x="2.5" y="5.5" width="7" height="5" rx="1" strokeWidth="1.3"/>
-              <path d="M4 5.5V3.5a2 2 0 0 1 4 0v2" strokeWidth="1.3" strokeLinecap="round"/>
-            </svg>
-            Permisos
-          </a>
-        )}
-
-        <span className="text-[12px] text-gray-400">
-          {rows.length} registro{rows.length !== 1 ? 's' : ''}
-        </span>
-        <button
-          onClick={handleNew}
-          className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-[12px] font-medium rounded-md hover:bg-indigo-700 transition-colors"
-        >
-          <span className="text-[15px] leading-none">+</span> Nuevo
-        </button>
+        {/* Stats strip — solo si hay etapas */}
+        {stages.length > 0 && <BoardStats rows={rows} stages={stages} />}
       </div>
 
       {/* View tab strip */}
-      <div className="relative flex items-center gap-0 px-4 border-b border-gray-100 flex-none bg-white">
-        {views.map(view => (
-          <button
-            key={view.id}
-            onClick={() => setActiveViewId(view.id)}
-            onDoubleClick={() => { setRenamingViewId(view.id); setRenameValue(view.name) }}
-            className={`group relative flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium transition-colors ${
-              activeViewId === view.id
-                ? 'text-indigo-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {/* Grid icon */}
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none opacity-60">
-              <rect x="1" y="1" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
-              <rect x="7" y="1" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
-              <rect x="1" y="7" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
-              <rect x="7" y="7" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
-            </svg>
+      <div className="flex items-center justify-between gap-3 px-8 py-2.5 border-b border-[var(--border)] bg-[var(--bg)] sticky top-0 z-[5] flex-none">
+        {/* left: view tabs */}
+        <div className="flex items-center gap-1">
+          {views.map(view => (
+            <button
+              key={view.id}
+              onClick={() => setActiveViewId(view.id)}
+              onDoubleClick={() => { setRenamingViewId(view.id); setRenameValue(view.name) }}
+              className={`group relative flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium transition-colors ${
+                activeViewId === view.id
+                  ? 'text-[var(--brand)] bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)]'
+                  : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
+              } rounded-sm`}
+            >
+              {/* Grid icon */}
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none opacity-60">
+                <rect x="1" y="1" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+                <rect x="7" y="1" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+                <rect x="1" y="7" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+                <rect x="7" y="7" width="4" height="4" rx="0.5" strokeWidth="1.2"/>
+              </svg>
 
-            {renamingViewId === view.id ? (
-              <input
-                className="text-[12px] border border-indigo-300 rounded px-1 py-0 w-24 outline-none"
-                value={renameValue}
-                autoFocus
-                onChange={e => setRenameValue(e.target.value)}
-                onBlur={() => handleRenameView(view.id)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleRenameView(view.id)
-                  if (e.key === 'Escape') setRenamingViewId(null)
-                }}
-                onClick={e => e.stopPropagation()}
-              />
-            ) : (
-              <span>{view.name}</span>
-            )}
+              {renamingViewId === view.id ? (
+                <input
+                  className="text-[12px] border border-[var(--brand-soft)] rounded px-1 py-0 w-24 outline-none bg-[var(--surface)] focus:border-[var(--brand)]"
+                  value={renameValue}
+                  autoFocus
+                  onChange={e => setRenameValue(e.target.value)}
+                  onBlur={() => handleRenameView(view.id)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleRenameView(view.id)
+                    if (e.key === 'Escape') setRenamingViewId(null)
+                  }}
+                  onClick={e => e.stopPropagation()}
+                />
+              ) : (
+                <span>{view.name}</span>
+              )}
 
-            {/* View members button */}
-            <span
-              role="button"
-              onClick={e => {
-                e.stopPropagation()
-                const next = viewMembersOpen === view.id ? null : view.id
-                setViewMembersOpen(next)
-                if (next) loadViewMembers(view.id)
-              }}
-              className="ml-0.5 text-gray-300 hover:text-indigo-500 transition-colors text-[14px] leading-none"
-              title="Quién puede ver esta vista"
-            >⋯</span>
-
-            {/* Delete button — not on default, board admin only */}
-            {!view.is_default && isBoardAdmin && (
+              {/* View members button */}
               <span
                 role="button"
-                onClick={e => { e.stopPropagation(); handleDeleteView(view.id) }}
-                className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors text-[13px] leading-none"
-              >×</span>
-            )}
+                onClick={e => {
+                  e.stopPropagation()
+                  const next = viewMembersOpen === view.id ? null : view.id
+                  setViewMembersOpen(next)
+                  if (next) loadViewMembers(view.id)
+                }}
+                className="ml-0.5 text-[var(--ink-4)] hover:text-[var(--brand)] transition-colors text-[14px] leading-none"
+                title="Quién puede ver esta vista"
+              >⋯</span>
 
-            {/* Active underline */}
-            {activeViewId === view.id && (
-              <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-indigo-500 rounded-t" />
-            )}
-          </button>
-        ))}
+              {/* Delete button — not on default, board admin only */}
+              {!view.is_default && isBoardAdmin && (
+                <span
+                  role="button"
+                  onClick={e => { e.stopPropagation(); handleDeleteView(view.id) }}
+                  className="ml-0.5 text-[var(--ink-4)] hover:text-[var(--stage-lost)] transition-colors text-[13px] leading-none"
+                >×</span>
+              )}
+            </button>
+          ))}
+        </div>
 
         {/* View members popup */}
         {viewMembersOpen && (
           <div
             ref={viewMembersPanelRef}
-            className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3"
+            className="absolute top-full left-0 mt-1 w-72 bg-[var(--bg)] border border-[var(--border)] rounded-sm shadow-lg z-30 p-3"
             style={{ left: '8px' }}
           >
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+            <p className="text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide mb-2">
               Acceso a esta vista
             </p>
             {viewMembersLoading[viewMembersOpen] ? (
-              <p className="text-xs text-gray-400">Cargando...</p>
+              <p className="text-xs text-[var(--ink-3)]">Cargando...</p>
             ) : (viewMembers[viewMembersOpen] ?? []).length === 0 ? (
-              <p className="text-xs text-gray-400 mb-3">Sin restricción — todos los miembros del board pueden ver esta vista</p>
+              <p className="text-xs text-[var(--ink-3)] mb-3">Sin restricción — todos los miembros del board pueden ver esta vista</p>
             ) : (
               <div className="space-y-1.5 mb-3">
                 {(viewMembers[viewMembersOpen] ?? []).map(m => {
                   const name = m.users?.name ?? m.teams?.name ?? 'Desconocido'
                   return (
                     <div key={m.id} className="flex items-center gap-2">
-                      <span className="flex-1 text-[12px] text-gray-700">{name}</span>
+                      <span className="flex-1 text-[12px] text-[var(--ink)]">{name}</span>
                       <button
                         onClick={() => handleRemoveViewMember(viewMembersOpen, m.id)}
-                        className="text-gray-300 hover:text-red-500 text-[13px] leading-none"
+                        className="text-[var(--ink-4)] hover:text-[var(--stage-lost)] text-[13px] leading-none"
                       >×</button>
                     </div>
                   )
@@ -928,7 +952,7 @@ export function BoardView({
               <select
                 value={newViewMemberId}
                 onChange={e => setNewViewMemberId(e.target.value)}
-                className="flex-1 border border-gray-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                className="flex-1 border border-[var(--border)] rounded-sm px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--brand-soft)] bg-[var(--surface)] text-[var(--ink)]"
               >
                 <option value="">Miembro o equipo...</option>
                 {users.filter(u => !(viewMembers[viewMembersOpen] ?? []).some(m => m.user_id === u.id)).length > 0 && (
@@ -951,7 +975,7 @@ export function BoardView({
               <button
                 onClick={() => handleAddViewMember(viewMembersOpen)}
                 disabled={!newViewMemberId}
-                className="px-2.5 py-1 bg-indigo-600 text-white text-xs rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                className="px-2.5 py-1 bg-[var(--brand)] text-[var(--brand-ink)] text-xs rounded-sm hover:bg-[var(--brand-deep)] disabled:opacity-50"
               >+</button>
             </div>
           </div>
@@ -971,13 +995,13 @@ export function BoardView({
                 if (e.key === 'Escape') { setAddingView(false); setNewViewName('') }
               }}
               placeholder="Nombre de vista"
-              className="text-[12px] border border-indigo-300 rounded px-2 py-0.5 w-32 outline-none focus:ring-1 focus:ring-indigo-300"
+              className="text-[12px] border border-[var(--brand-soft)] rounded-sm px-2 py-0.5 w-32 outline-none focus:ring-1 focus:ring-[var(--brand)] bg-[var(--surface)]"
             />
           </div>
         ) : isBoardAdmin ? (
           <button
             onClick={() => setAddingView(true)}
-            className="flex items-center gap-1 px-2.5 py-2 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-2 text-[12px] text-[var(--ink-4)] hover:text-[var(--ink)] transition-colors"
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="stroke-current">
               <path d="M5 1v8M1 5h8" strokeWidth="1.5" strokeLinecap="round"/>
@@ -992,47 +1016,47 @@ export function BoardView({
         <div className="relative py-1" ref={colPickerRef}>
           <button
             onClick={() => setShowColPicker(p => !p)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-md transition-colors ${
-              showColPicker ? 'text-indigo-600 bg-indigo-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-sm transition-colors ${
+              showColPicker ? 'text-[var(--brand)] bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--surface-2)]'
             }`}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M1 3h10M1 6h10M1 9h10" strokeWidth="1.2" strokeLinecap="round"/>
-              <circle cx="4" cy="3" r="1.5" fill="white" strokeWidth="1.2"/>
-              <circle cx="8" cy="6" r="1.5" fill="white" strokeWidth="1.2"/>
-              <circle cx="4" cy="9" r="1.5" fill="white" strokeWidth="1.2"/>
+              <circle cx="4" cy="3" r="1.5" fill="currentColor" strokeWidth="1.2" opacity="0.3"/>
+              <circle cx="8" cy="6" r="1.5" fill="currentColor" strokeWidth="1.2" opacity="0.3"/>
+              <circle cx="4" cy="9" r="1.5" fill="currentColor" strokeWidth="1.2" opacity="0.3"/>
             </svg>
             Columnas
           </button>
 
           {showColPicker && (
-            <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-96 overflow-y-auto">
-              <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 mb-1">
+            <div className="absolute right-0 top-full mt-1 w-72 bg-[var(--bg)] border border-[var(--border)] rounded-sm shadow-lg z-20 py-1 max-h-96 overflow-y-auto">
+              <div className="px-3 py-1.5 text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide border-b border-[var(--border)] mb-1">
                 Columnas visibles
               </div>
               {rawCols.filter(c => !c.is_hidden).map(col => {
                 const vc = activeView?.columns.find(vc => vc.column_id === col.id)
                 const isVisible = vc ? vc.is_visible : true
                 return (
-                  <div key={col.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
+                  <div key={col.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-2)]">
                     <input
                       type="checkbox"
                       checked={isVisible}
                       onChange={() => handleToggleColumn(col.id, isVisible)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 shrink-0"
+                      className="rounded border-[var(--border)] text-[var(--brand)] focus:ring-[var(--brand-soft)] w-3.5 h-3.5 shrink-0 accent-[var(--brand)]"
                     />
                     <span
-                      className="text-[12px] text-gray-700 flex-1 truncate cursor-pointer"
+                      className="text-[12px] text-[var(--ink)] flex-1 truncate cursor-pointer"
                       onClick={() => handleToggleColumn(col.id, isVisible)}
                     >{col.name}</span>
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">{col.kind.slice(0,4)}</span>
+                    <span className="text-[10px] text-[var(--ink-4)] uppercase tracking-wide shrink-0">{col.kind.slice(0,4)}</span>
                     <button
                       onClick={e => {
                         e.stopPropagation()
                         setColSettingsCol(col)
                         setShowColPicker(false)
                       }}
-                      className="shrink-0 text-[14px] leading-none transition-colors text-gray-300 hover:text-indigo-500"
+                      className="shrink-0 text-[14px] leading-none transition-colors text-[var(--ink-4)] hover:text-[var(--brand)]"
                       title="Configurar columna"
                     >⋯</button>
                   </div>

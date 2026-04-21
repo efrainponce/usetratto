@@ -189,7 +189,7 @@ export function GenericDataTable({
             onClick={e => { e.stopPropagation(); onExpandSubItems?.(row.original.id) }}
             title={count > 0 ? `${count} sub-item${count !== 1 ? 's' : ''}` : 'Sub-items'}
             className={`w-full h-full flex flex-col items-center justify-center gap-0.5 transition-colors ${
-              isOpen ? 'text-indigo-500' : 'text-gray-300 hover:text-gray-500'
+              isOpen ? 'text-[var(--brand)]' : 'text-[var(--ink-4)] hover:text-[var(--ink-2)]'
             }`}
           >
             <svg
@@ -254,7 +254,7 @@ export function GenericDataTable({
         <button
           onClick={e => { e.stopPropagation(); onOpenItem?.(row.original.id) }}
           title="Abrir detalle"
-          className="w-full h-full flex items-center justify-center text-gray-200 hover:text-indigo-500 transition-colors opacity-0 group-hover/row:opacity-100"
+          className="w-full h-full flex items-center justify-center text-[var(--ink-4)] hover:text-[var(--brand)] transition-colors opacity-0 group-hover/row:opacity-100"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
             <path d="M2 10L10 2M6 2h4v4" />
@@ -328,19 +328,19 @@ export function GenericDataTable({
 
       {/* Selection bar */}
       {selectedCount > 0 && (
-        <div className="flex items-center gap-4 px-4 py-2 bg-indigo-50 border-b border-indigo-100 text-[12px] text-indigo-700 flex-none">
+        <div className="flex items-center gap-4 px-4 py-2 bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)] border-b border-[var(--brand-soft)] text-[12px] text-[var(--brand-deep)] flex-none">
           <span className="font-medium">
             {selectedCount} seleccionado{selectedCount !== 1 ? 's' : ''}
           </span>
           {onBulkDelete && (
             <button
-              className="text-red-500 hover:text-red-700 font-medium"
+              className="text-[var(--stage-lost)] hover:text-[var(--stage-lost)] font-medium"
               onClick={() => { onBulkDelete(selectedIds); setSelection({}) }}
             >
               Eliminar
             </button>
           )}
-          <button className="text-gray-500 hover:text-gray-700" onClick={() => setSelection({})}>
+          <button className="text-[var(--ink-3)] hover:text-[var(--ink)]" onClick={() => setSelection({})}>
             Deseleccionar
           </button>
         </div>
@@ -349,7 +349,7 @@ export function GenericDataTable({
       {/* Table */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto outline-none"
+        className="flex-1 overflow-auto outline-none bg-[var(--bg)]"
         tabIndex={0}
         onKeyDown={handleContainerKeyDown}
         onClick={e => {
@@ -366,7 +366,7 @@ export function GenericDataTable({
           </colgroup>
 
           {/* Header */}
-          <thead className="sticky top-0 z-20 bg-white border-b border-gray-200">
+          <thead className="sticky top-0 z-20 bg-[var(--bg)] border-b border-[var(--border)]">
             {table.getHeaderGroups().map(hg => (
               <tr key={hg.id} style={{ height: ROW_HEIGHT }}>
                 {hg.headers.map(header => {
@@ -375,16 +375,16 @@ export function GenericDataTable({
                     <th
                       key={header.id}
                       className={[
-                        'text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide',
-                        'border-r border-gray-100 select-none px-2 group/th overflow-visible',
+                        'text-left text-[10.5px] font-semibold text-[var(--ink-4)] uppercase tracking-[0.08em]',
+                        'border-r border-[var(--border)] select-none px-2.5 py-2 group/th overflow-visible',
                         isSticky ? 'z-30' : '',
-                        header.column.getCanSort() ? 'cursor-pointer hover:bg-gray-50' : '',
+                        header.column.getCanSort() ? 'cursor-pointer hover:bg-[var(--surface-2)]' : '',
                       ].join(' ')}
                       style={{
                         width:    header.getSize(),
                         position: isSticky ? 'sticky' : 'relative',
                         left:     isSticky ? stickyLefts[header.id] : undefined,
-                        background: isSticky ? 'white' : undefined,
+                        background: isSticky ? 'var(--bg)' : undefined,
                         boxShadow: header.id === lastStickyId(columns)
                           ? '2px 0 4px rgba(0,0,0,0.04)' : undefined,
                         overflow: 'visible',
@@ -405,7 +405,7 @@ export function GenericDataTable({
                               e.stopPropagation()
                               onColumnSettings(header.id)
                             }}
-                            className="opacity-0 group-hover/th:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                            className="opacity-0 group-hover/th:opacity-100 shrink-0 text-[14px] leading-none text-[var(--ink-4)] hover:text-[var(--brand)] transition-opacity px-0.5"
                             title="Configurar columna"
                           >⋯</button>
                         )}
@@ -421,8 +421,8 @@ export function GenericDataTable({
                           <div className={[
                             'h-4 w-px rounded-full transition-colors',
                             header.column.getIsResizing()
-                              ? 'bg-indigo-500'
-                              : 'bg-gray-200 group-hover/resizer:bg-indigo-400',
+                              ? 'bg-[var(--brand)]'
+                              : 'bg-[var(--border)] group-hover/resizer:bg-[var(--brand-soft)]',
                           ].join(' ')} />
                         </div>
                       )}
@@ -430,7 +430,7 @@ export function GenericDataTable({
                   )
                 })}
                 {onAddColumn && (
-                  <th className="border-r border-gray-100 px-1" style={{ width: 36 }}>
+                  <th className="border-r border-[var(--border)] px-1" style={{ width: 36 }}>
                     <AddColumnButton onAdd={onAddColumn} />
                   </th>
                 )}
@@ -442,7 +442,7 @@ export function GenericDataTable({
           <tbody ref={tbodyRef}>
             {tableRows.length === 0 && (
               <tr>
-                <td colSpan={headers.length} className="py-16 text-center text-[13px] text-gray-400">
+                <td colSpan={headers.length} className="py-16 text-center text-[13px] text-[var(--ink-3)]">
                   Sin registros
                 </td>
               </tr>
@@ -466,7 +466,7 @@ export function GenericDataTable({
                     <Fragment key={row.id}>
                       {/* Main row */}
                       <tr
-                        className="group/row border-b border-gray-100 transition-colors hover:bg-gray-50"
+                        className="group/row border-b border-[var(--border)] transition-colors hover:bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]"
                         style={{ height: ROW_HEIGHT }}
                       >
                         {row.getVisibleCells().map(cell => {
@@ -477,7 +477,7 @@ export function GenericDataTable({
                           return (
                             <td
                               key={cell.id}
-                              className="border-r border-gray-100 p-0 cursor-default"
+                              className="border-r border-[var(--border)] p-0 cursor-default"
                               onClick={() => {
                                 if (!cell.column.id.startsWith('__')) {
                                   setSelectedCell({ rowId: row.original.id, colKey: cell.column.id })
@@ -490,10 +490,10 @@ export function GenericDataTable({
                                 position: isSticky ? 'sticky' : undefined,
                                 left:     isSticky ? stickyLefts[cell.column.id] : undefined,
                                 background: isSticky
-                                  ? (isThisSelected ? '#eef2ff' : 'white')
-                                  : (isThisSelected ? '#eef2ff' : undefined),
+                                  ? (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : 'var(--bg)')
+                                  : (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : undefined),
                                 boxShadow: isThisSelected
-                                  ? 'inset 0 0 0 2px #6366f1'
+                                  ? 'inset 0 0 0 2px var(--brand)'
                                   : (cell.column.id === lastStickyId(columns) ? '2px 0 4px rgba(0,0,0,0.04)' : undefined),
                                 zIndex: isSticky ? 10 : undefined,
                               }}
@@ -508,8 +508,8 @@ export function GenericDataTable({
 
                       {/* Expansion row (inline sub-items) */}
                       {expandedSubItemId === row.original.id && renderRowExpansion && (
-                        <tr className="border-b border-indigo-100">
-                          <td colSpan={headers.length} className="p-0 bg-indigo-50/30">
+                        <tr className="border-b border-[var(--border)]">
+                          <td colSpan={headers.length} className="p-0 bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]">
                             {renderRowExpansion(row.original.id)}
                           </td>
                         </tr>
@@ -540,7 +540,7 @@ function lastStickyId(columns: ColDef[]): string {
 
 function SortAsc() {
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-none">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-none text-[var(--ink-4)]">
       <path d="M12 19V5M5 12l7-7 7 7" />
     </svg>
   )
@@ -548,7 +548,7 @@ function SortAsc() {
 
 function SortDesc() {
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-none">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-none text-[var(--ink-4)]">
       <path d="M12 5v14M5 12l7 7 7-7" />
     </svg>
   )
@@ -635,7 +635,7 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className="flex items-center justify-center w-full h-full text-gray-400 hover:text-indigo-500 hover:bg-gray-50 rounded transition-colors text-[16px] leading-none"
+        className="flex items-center justify-center w-full h-full text-[var(--ink-4)] hover:text-[var(--brand)] hover:bg-[var(--surface-2)] rounded-sm transition-colors text-[16px] leading-none"
         title="Agregar columna"
       >+</button>
 
@@ -643,10 +643,10 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
         <div
           ref={panelRef}
           style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56"
+          className="bg-[var(--bg)] border border-[var(--border)] rounded-sm shadow-lg p-3 w-56"
           onMouseDown={e => e.stopPropagation()}
         >
-          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Nueva columna</p>
+          <p className="text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide mb-2">Nueva columna</p>
           <input
             ref={inputRef}
             value={name}
@@ -656,9 +656,9 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
               if (e.key === 'Escape') { e.preventDefault(); handleClose() }
             }}
             placeholder="Nombre de columna"
-            className="w-full text-[13px] border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400 mb-2"
+            className="w-full text-[13px] border border-[var(--border)] rounded-sm px-2 py-1.5 outline-none focus:border-[var(--brand-soft)] focus:ring-[var(--brand-soft)] mb-2 bg-[var(--surface)] text-[var(--ink)]"
           />
-          <div className="border border-gray-200 rounded overflow-y-auto mb-3" style={{ maxHeight: 180 }}>
+          <div className="border border-[var(--border)] rounded-sm overflow-y-auto mb-3" style={{ maxHeight: 180 }}>
             {ADD_COL_KINDS.map(k => (
               <button
                 key={k.value}
@@ -666,24 +666,24 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
                 onClick={() => setKind(k.value)}
                 className={`w-full text-left text-[13px] px-2 py-1.5 transition-colors ${
                   kind === k.value
-                    ? 'bg-indigo-50 text-indigo-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-50'
+                    ? 'bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)] text-[var(--brand-deep)] font-medium'
+                    : 'text-[var(--ink)] hover:bg-[var(--surface-2)]'
                 }`}
               >{k.label}</button>
             ))}
           </div>
           {error && (
-            <p className="text-[11px] text-red-600 mb-2">{error}</p>
+            <p className="text-[11px] text-[var(--stage-lost)] mb-2">{error}</p>
           )}
           <div className="flex gap-2">
             <button
               onClick={handleClose}
-              className="flex-1 text-[12px] px-2 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors"
+              className="flex-1 text-[12px] px-2 py-1.5 border border-[var(--border)] rounded-sm text-[var(--ink-2)] hover:bg-[var(--surface-2)] transition-colors"
             >Cancelar</button>
             <button
               onClick={handleSubmit}
               disabled={!name.trim() || saving}
-              className="flex-1 text-[12px] px-2 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              className="flex-1 text-[12px] px-2 py-1.5 bg-[var(--brand)] text-[var(--brand-ink)] rounded-sm hover:bg-[var(--brand-deep)] disabled:opacity-50 transition-colors"
             >{saving ? '...' : 'Crear'}</button>
           </div>
         </div>,

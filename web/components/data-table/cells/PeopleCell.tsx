@@ -29,23 +29,23 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      <div className="flex items-center gap-1.5 w-full h-full px-2 py-1 cursor-default" onClick={isReadOnly ? undefined : onStartEdit}>
+      <div className="flex items-center gap-1.5 w-full h-full px-2.5 py-1.5 cursor-default" onClick={isReadOnly ? undefined : onStartEdit}>
         {selected ? (
           <>
             <Avatar name={selected.label} />
-            <span className="text-[13px] text-gray-700 truncate">{selected.label}</span>
+            <span className="text-[13px] text-[var(--ink)] truncate">{selected.label}</span>
           </>
         ) : (
-          <span className="text-[13px] text-gray-300">—</span>
+          <span className="text-[13px] text-[var(--ink-3)]">—</span>
         )}
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 mt-0.5 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
-          <div className="px-2 py-1 border-b border-gray-100">
+        <div className="absolute top-full left-0 mt-0.5 w-52 bg-[var(--bg)] border border-[var(--border)] rounded-sm shadow-lg z-50 py-1">
+          <div className="px-2 py-1 border-b border-[var(--border)]">
             <input
               ref={searchRef}
-              className="w-full text-[12px] outline-none text-gray-700 placeholder:text-gray-300"
+              className="w-full text-[12px] outline-none text-[var(--ink)] placeholder:text-[var(--ink-4)] bg-[var(--surface)]"
               placeholder="Buscar persona..."
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -56,13 +56,13 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            <button className="w-full text-left px-3 py-1.5 text-[12px] text-gray-400 hover:bg-gray-50" onClick={() => { onCommit(null); closeDropdown() }}>
+            <button className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--ink-3)] hover:bg-[var(--surface-2)]" onClick={() => { onCommit(null); closeDropdown() }}>
               Sin asignar
             </button>
             {filtered.map(opt => (
-              <button key={opt.value} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2" onClick={() => { onCommit(opt.value); closeDropdown() }}>
+              <button key={opt.value} className="w-full text-left px-3 py-1.5 hover:bg-[var(--surface-2)] flex items-center gap-2" onClick={() => { onCommit(opt.value); closeDropdown() }}>
                 <Avatar name={opt.label} />
-                <span className="text-[12px] text-gray-700">{opt.label}</span>
+                <span className="text-[12px] text-[var(--ink)]">{opt.label}</span>
               </button>
             ))}
           </div>

@@ -10,7 +10,7 @@ export function RollupCell({ value }: CellProps) {
   })()
 
   return (
-    <span className={`block w-full px-2 py-1 text-[13px] font-medium truncate ${value == null ? 'text-gray-300' : 'text-teal-600'}`}>
+    <span className={`block w-full px-2.5 py-1.5 text-[13px] font-medium truncate font-[family-name:var(--font-geist-mono)] tabular-nums ${value == null ? 'text-[var(--ink-3)]' : 'text-[var(--ink)]'}`}>
       {displayValue}
     </span>
   )

@@ -30,10 +30,10 @@ export function NumberCell({ value, isEditing, column, onStartEdit, onCommit, on
   if (!isEditing) {
     return (
       <span
-        className="block w-full px-2 py-1 truncate cursor-default text-[13px] text-gray-800 select-none text-right"
+        className="block w-full px-2.5 py-1.5 truncate cursor-default text-[13px] text-[var(--ink)] select-none text-right font-[family-name:var(--font-geist-mono)] tabular-nums"
         onDoubleClick={onStartEdit}
       >
-        {value != null && value !== '' ? formatDisplay(value, column.settings.format) : <span className="text-gray-300">—</span>}
+        {value != null && value !== '' ? formatDisplay(value, column.settings.format) : <span className="text-[var(--ink-3)]">—</span>}
       </span>
     )
   }
@@ -42,7 +42,7 @@ export function NumberCell({ value, isEditing, column, onStartEdit, onCommit, on
     <input
       ref={inputRef}
       type="number"
-      className="w-full px-2 py-1 text-[13px] text-gray-800 bg-transparent outline-none text-right"
+      className="w-full px-2.5 py-1.5 text-[13px] text-[var(--ink)] bg-[var(--surface)] border border-[var(--brand-soft)] rounded-sm outline-none focus:border-[var(--brand)] text-right font-[family-name:var(--font-geist-mono)]"
       value={draft}
       onChange={e => setDraft(e.target.value)}
       onBlur={() => onCommit(draft === '' ? null : Number(draft))}

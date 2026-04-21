@@ -38,23 +38,23 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
     <div ref={containerRef} className="relative w-full h-full">
       {/* Display */}
       <div
-        className="flex items-center w-full h-full px-2 py-1 cursor-default"
+        className="flex items-center w-full h-full px-2.5 py-1.5 cursor-default"
         onClick={onStartEdit}
       >
         {selected ? (
           <Badge option={selected} />
         ) : (
-          <span className="text-[13px] text-gray-300">—</span>
+          <span className="text-[13px] text-[var(--ink-3)]">—</span>
         )}
       </div>
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute top-full left-0 mt-0.5 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 overflow-hidden">
-          <div className="px-2 py-1 border-b border-gray-100">
+        <div className="absolute top-full left-0 mt-0.5 w-48 bg-[var(--bg)] border border-[var(--border)] rounded-sm shadow-lg z-50 py-1 overflow-hidden">
+          <div className="px-2 py-1 border-b border-[var(--border)]">
             <input
               ref={searchRef}
-              className="w-full text-[12px] outline-none text-gray-700 placeholder:text-gray-300"
+              className="w-full text-[12px] outline-none text-[var(--ink)] placeholder:text-[var(--ink-4)] bg-[var(--surface)]"
               placeholder="Buscar..."
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -69,7 +69,7 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
           <div className="max-h-48 overflow-y-auto">
             {/* Clear option */}
             <button
-              className="w-full text-left px-3 py-1.5 text-[12px] text-gray-400 hover:bg-gray-50 transition-colors"
+              className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--ink-3)] hover:bg-[var(--surface-2)] transition-colors"
               onClick={() => { onCommit(null); closeDropdown() }}
             >
               Sin valor
@@ -77,14 +77,14 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
             {filtered.map(opt => (
               <button
                 key={opt.value}
-                className="w-full text-left px-3 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 hover:bg-[var(--surface-2)] transition-colors flex items-center gap-2"
                 onClick={() => { onCommit(opt.value); closeDropdown() }}
               >
                 <Badge option={opt} />
               </button>
             ))}
             {filtered.length === 0 && (
-              <p className="px-3 py-2 text-[12px] text-gray-300">Sin resultados</p>
+              <p className="px-3 py-2 text-[12px] text-[var(--ink-3)]">Sin resultados</p>
             )}
           </div>
         </div>
@@ -96,8 +96,8 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
 function Badge({ option }: { option: SelectOption }) {
   return (
     <span
-      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-white"
-      style={{ backgroundColor: option.color ?? '#94a3b8' }}
+      className="inline-flex items-center px-2 py-0.5 rounded-sm text-[11px] font-medium text-white"
+      style={{ backgroundColor: option.color ?? 'var(--ink)' }}
     >
       {option.label}
     </span>

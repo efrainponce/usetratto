@@ -18,10 +18,10 @@ export function TextCell({ value, isEditing, onStartEdit, onCommit, onCancel, on
   if (!isEditing) {
     return (
       <span
-        className="block w-full px-2 py-1 truncate cursor-default text-[13px] text-gray-800 select-none"
+        className="block w-full px-2.5 py-1.5 truncate cursor-default text-[13px] text-[var(--ink)] select-none"
         onDoubleClick={onStartEdit}
       >
-        {value != null && value !== '' ? String(value) : <span className="text-gray-300">—</span>}
+        {value != null && value !== '' ? String(value) : <span className="text-[var(--ink-3)]">—</span>}
       </span>
     )
   }
@@ -29,7 +29,7 @@ export function TextCell({ value, isEditing, onStartEdit, onCommit, onCancel, on
   return (
     <input
       ref={inputRef}
-      className="w-full px-2 py-1 text-[13px] text-gray-800 bg-transparent outline-none"
+      className="w-full px-2.5 py-1.5 text-[13px] text-[var(--ink)] bg-[var(--surface)] border border-[var(--brand-soft)] rounded-sm outline-none focus:border-[var(--brand)]"
       value={draft}
       onChange={e => setDraft(e.target.value)}
       onBlur={() => onCommit(draft)}

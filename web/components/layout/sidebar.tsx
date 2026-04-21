@@ -26,28 +26,6 @@ type Props = {
 
 // ─── Icon map per system_key ──────────────────────────────────────────────────
 
-function BoardIcon({ board, pathname, workspaceSid }: { board: SidebarBoard; pathname: string; workspaceSid: number }) {
-  const active =
-    pathname === `/app/w/${workspaceSid}/b/${board.sid}` ||
-    pathname.startsWith(`/app/w/${workspaceSid}/b/${board.sid}/`)
-
-  return (
-    <Tooltip label={board.name} side="right">
-      <Link
-        href={`/app/w/${workspaceSid}/b/${board.sid}`}
-        className={[
-          'w-8 h-8 rounded-lg flex items-center justify-center transition-all',
-          active
-            ? 'bg-gray-900 text-white'
-            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700',
-        ].join(' ')}
-      >
-        <BoardSvgIcon systemKey={board.system_key} name={board.name} />
-      </Link>
-    </Tooltip>
-  )
-}
-
 function BoardSvgIcon({ systemKey, name }: { systemKey: string | null; name: string }) {
   switch (systemKey) {
     case 'opportunities':
@@ -102,12 +80,14 @@ function BoardSvgIcon({ systemKey, name }: { systemKey: string | null; name: str
   }
 }
 
-// ─── Main sidebar ─────────────────────────────────────────────────────────────
+// ─── Utility ──────────────────────────────────────────────────────────────────
 
 function initial(name: string | null) {
   if (!name) return '?'
   return name.charAt(0).toUpperCase()
 }
+
+// ─── Main sidebar ─────────────────────────────────────────────────────────────
 
 export default function Sidebar({ boards, user, workspaceName, workspaceSid }: Props) {
   const pathname = usePathname()
@@ -123,94 +103,148 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
   const customBoards = boards.filter(b => b.system_key === null)
 
   return (
-    <aside className="w-[52px] flex-none flex flex-col h-screen bg-white border-r border-gray-100 items-center py-3 gap-0.5">
+    <aside className="w-[232px] flex-none flex flex-col h-screen bg-[var(--bg-2)] border-r border-[var(--border)] px-[10px] py-[14px] gap-1">
 
-      {/* Logo */}
-      <Tooltip label={workspaceName} side="right">
-        <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center flex-none mb-3 cursor-default">
-          <span className="text-white text-[12px] font-bold select-none">T</span>
+      {/* Brand section */}
+      <div className="flex items-center gap-[10px] px-[10px] pb-4">
+        <div className="w-[30px] h-[30px] flex-none flex items-center justify-center bg-[var(--brand)] text-[var(--brand-ink)] rounded-[var(--radius)] font-bold text-[13px]">
+          T
         </div>
-      </Tooltip>
+        <div className="font-mono-tabular font-bold text-[17px] tracking-[0.04em] uppercase text-[var(--ink)] leading-none">
+          TRATTO
+        </div>
+      </div>
 
-      {/* System boards */}
-      {systemBoards.map(board => (
-        <BoardIcon key={board.id} board={board} pathname={pathname} workspaceSid={workspaceSid} />
-      ))}
+      {/* Workspace label */}
+      <div className="label-caps px-[10px] pt-[10px] pb-1">
+        Espacio
+      </div>
 
-      {/* Divider before custom boards */}
-      {customBoards.length > 0 && (
-        <div className="w-5 h-px bg-gray-200 my-2" />
-      )}
-
-      {customBoards.map(board => (
-        <BoardIcon key={board.id} board={board} pathname={pathname} workspaceSid={workspaceSid} />
-      ))}
-
-      {/* Empty state hint */}
-      {boards.length === 0 && (
-        <Tooltip label="No hay boards" side="right">
-          <div className="w-8 h-8 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-gray-300">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M9 3v18" />
-            </svg>
+      {/* Workspace chip */}
+      <div className="flex items-center gap-[10px] px-[10px] py-2 mx-0 mb-1.5 rounded-[var(--radius)] bg-[var(--surface-2)] border border-[var(--border)]">
+        <div className="w-[28px] h-[28px] flex-none flex items-center justify-center bg-[var(--brand)] text-[var(--brand-ink)] rounded-[var(--radius)] font-bold text-[12px]">
+          {initial(workspaceName)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-semibold text-[var(--ink)] leading-tight truncate">
+            {workspaceName}
           </div>
-        </Tooltip>
-      )}
+          <div className="text-[11px] text-[var(--ink-3)] font-normal mt-0.5 leading-tight truncate">
+            {user.role} · workspace
+          </div>
+        </div>
+      </div>
 
+      {/* Boards label */}
+      <div className="label-caps px-[10px] pt-[10px] pb-1">
+        Boards
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex flex-col gap-px">
+        {boards.length === 0 ? (
+          <div className="flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] text-[13.5px] text-[var(--ink-4)] opacity-50 cursor-default">
+            Sin boards
+          </div>
+        ) : (
+          <>
+            {systemBoards.map(board => (
+              <BoardNavItem
+                key={board.id}
+                board={board}
+                pathname={pathname}
+                workspaceSid={workspaceSid}
+              />
+            ))}
+
+            {customBoards.length > 0 && systemBoards.length > 0 && (
+              <div className="h-px bg-[var(--border)] my-1" />
+            )}
+
+            {customBoards.map(board => (
+              <BoardNavItem
+                key={board.id}
+                board={board}
+                pathname={pathname}
+                workspaceSid={workspaceSid}
+              />
+            ))}
+          </>
+        )}
+      </nav>
+
+      {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Settings */}
-      <Tooltip label="Configuración" side="right">
+      {/* Footer section */}
+      <div className="flex flex-col gap-1">
+        {/* Settings */}
         <Link
           href={`/app/w/${workspaceSid}/settings`}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          className="flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] text-[13.5px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] transition-colors"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="flex-none">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
+          <span>Configuración</span>
         </Link>
-      </Tooltip>
 
-      {/* User avatar + logout */}
-      <Tooltip label={`${user.name ?? 'Usuario'} · Cerrar sesión`} side="right">
+        {/* Divider */}
+        <div className="h-px bg-[var(--border)] my-1" />
+
+        {/* User section */}
         <button
           onClick={logout}
-          className="w-8 h-8 mt-0.5 rounded-full bg-gray-100 flex items-center justify-center text-[11px] font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
+          className="flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] hover:bg-[var(--surface-2)] transition-colors w-full text-left"
         >
-          {initial(user.name)}
+          <div className="w-[28px] h-[28px] flex-none flex items-center justify-center bg-[var(--ink-3)] text-[var(--bg)] rounded-full font-semibold text-[11px]">
+            {initial(user.name)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12.5px] font-medium text-[var(--ink)] leading-tight truncate">
+              {user.name ?? 'Usuario'}
+            </div>
+            <div className="text-[11px] text-[var(--ink-4)] font-normal mt-0.5 leading-tight truncate">
+              {user.role}
+            </div>
+          </div>
         </button>
-      </Tooltip>
+      </div>
 
     </aside>
   )
 }
 
-// ─── Tooltip ──────────────────────────────────────────────────────────────────
+// ─── Board nav item ──────────────────────────────────────────────────────────
 
-function Tooltip({
-  children,
-  label,
-  side = 'right',
+function BoardNavItem({
+  board,
+  pathname,
+  workspaceSid,
 }: {
-  children: React.ReactNode
-  label:    string
-  side?:   'right' | 'left'
+  board: SidebarBoard
+  pathname: string
+  workspaceSid: number
 }) {
+  const active =
+    pathname === `/app/w/${workspaceSid}/b/${board.sid}` ||
+    pathname.startsWith(`/app/w/${workspaceSid}/b/${board.sid}/`)
+
   return (
-    <div className="relative group flex items-center">
-      {children}
-      <div
-        className={[
-          'pointer-events-none absolute z-50 whitespace-nowrap',
-          'px-2 py-1 bg-gray-900 text-white text-[11px] rounded-md',
-          'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
-          side === 'right' ? 'left-full ml-2' : 'right-full mr-2',
-        ].join(' ')}
-      >
-        {label}
+    <Link
+      href={`/app/w/${workspaceSid}/b/${board.sid}`}
+      className={[
+        'flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] text-[13.5px] transition-colors',
+        active
+          ? 'bg-[var(--surface)] text-[var(--ink)] border border-[var(--border)] shadow-[var(--shadow-sm)]'
+          : 'text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]',
+      ].join(' ')}
+    >
+      <div className={`flex-none ${active ? 'text-[var(--brand)]' : 'text-[var(--ink-3)]'}`}>
+        <BoardSvgIcon systemKey={board.system_key} name={board.name} />
       </div>
-    </div>
+      <span className="flex-1 truncate">{board.name}</span>
+    </Link>
   )
 }

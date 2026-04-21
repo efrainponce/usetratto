@@ -1,26 +1,112 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Taller theme — default */
+  --bg:           #F7F6F3;
+  --bg-2:         #EFEDE8;
+  --surface:      #FFFFFF;
+  --surface-2:    #FAF9F6;
+  --border:       #E4E1DB;
+  --border-2:     #CFCAC0;
+  --ink:          #161513;
+  --ink-2:        #3D3A35;
+  --ink-3:        #6B665E;
+  --ink-4:        #9A958C;
+  --brand:        #1F4D3F;
+  --brand-ink:    #F7F6F3;
+  --brand-soft:   #C8D8D0;
+  --brand-deep:   #0E2A22;
+  --stage-new:    #6B7280;
+  --stage-quote:  #B45309;
+  --stage-sent:   #166534;
+  --stage-neg:    #854D0E;
+  --stage-won:    #14532D;
+  --stage-lost:   #991B1B;
+  --radius:       2px;
+  --radius-lg:    4px;
+  --shadow-sm:    0 0 0 1px rgba(22, 21, 19, 0.04);
+  --shadow-md:    0 1px 3px rgba(22, 21, 19, 0.06), 0 0 0 1px rgba(22, 21, 19, 0.04);
+  --shadow-lg:    0 12px 28px rgba(22, 21, 19, 0.10), 0 2px 6px rgba(22, 21, 19, 0.04);
+}
+
+:root[data-theme="taller"] {
+  --bg:           #F7F6F3;
+  --bg-2:         #EFEDE8;
+  --surface:      #FFFFFF;
+  --surface-2:    #FAF9F6;
+  --border:       #E4E1DB;
+  --border-2:     #CFCAC0;
+  --ink:          #161513;
+  --ink-2:        #3D3A35;
+  --ink-3:        #6B665E;
+  --ink-4:        #9A958C;
+  --brand:        #1F4D3F;
+  --brand-ink:    #F7F6F3;
+  --brand-soft:   #C8D8D0;
+  --brand-deep:   #0E2A22;
+  --stage-new:    #6B7280;
+  --stage-quote:  #B45309;
+  --stage-sent:   #166534;
+  --stage-neg:    #854D0E;
+  --stage-won:    #14532D;
+  --stage-lost:   #991B1B;
+  --radius:       2px;
+  --radius-lg:    4px;
+  --shadow-sm:    0 0 0 1px rgba(22, 21, 19, 0.04);
+  --shadow-md:    0 1px 3px rgba(22, 21, 19, 0.06), 0 0 0 1px rgba(22, 21, 19, 0.04);
+  --shadow-lg:    0 12px 28px rgba(22, 21, 19, 0.10), 0 2px 6px rgba(22, 21, 19, 0.04);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-2: var(--border-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-deep: var(--brand-deep);
+  --color-stage-new: var(--stage-new);
+  --color-stage-quote: var(--stage-quote);
+  --color-stage-sent: var(--stage-sent);
+  --color-stage-neg: var(--stage-neg);
+  --color-stage-won: var(--stage-won);
+  --color-stage-lost: var(--stage-lost);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-geist-mono);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius-lg);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans);
+  background: var(--bg);
+  color: var(--ink);
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-mono-tabular {
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.label-caps {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-4);
+}
+
+.hairline {
+  border-color: var(--border);
 }

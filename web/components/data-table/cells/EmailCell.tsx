@@ -17,17 +17,17 @@ export function EmailCell({ value, isEditing, onStartEdit, onCommit, onCancel, o
 
   if (!isEditing) {
     return (
-      <div className="flex items-center w-full px-2 py-1" onDoubleClick={onStartEdit}>
+      <div className="flex items-center w-full px-2.5 py-1.5" onDoubleClick={onStartEdit}>
         {value ? (
           <a
             href={`mailto:${value}`}
-            className="text-[13px] text-blue-600 hover:underline truncate"
+            className="text-[13px] text-[var(--brand)] hover:underline truncate"
             onClick={e => e.stopPropagation()}
           >
             {String(value)}
           </a>
         ) : (
-          <span className="text-[13px] text-gray-300 cursor-default select-none">—</span>
+          <span className="text-[13px] text-[var(--ink-3)] cursor-default select-none">—</span>
         )}
       </div>
     )
@@ -37,7 +37,7 @@ export function EmailCell({ value, isEditing, onStartEdit, onCommit, onCancel, o
     <input
       ref={inputRef}
       type="email"
-      className="w-full px-2 py-1 text-[13px] text-gray-800 bg-transparent outline-none"
+      className="w-full px-2.5 py-1.5 text-[13px] text-[var(--ink)] bg-[var(--surface)] border border-[var(--brand-soft)] rounded-sm outline-none focus:border-[var(--brand)]"
       value={draft}
       onChange={e => setDraft(e.target.value)}
       onBlur={() => onCommit(draft || null)}

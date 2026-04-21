@@ -24,7 +24,7 @@ export default async function AppLayout({
   ])
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    <div className="flex h-screen bg-[var(--bg)] overflow-hidden">
       <Sidebar
         boards={(boards ?? []) as SidebarBoard[]}
         user={{ name: user.name, role: user.role }}

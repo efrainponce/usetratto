@@ -144,12 +144,12 @@ export function ButtonCell({ column, rowId, row, allColumns }: CellProps) {
         onClick={handleClick}
         disabled={loading}
         className={[
-          'text-[11px] px-2.5 py-1 rounded font-medium transition-colors duration-150 w-full',
+          'text-[11px] px-2.5 py-1 rounded-sm font-medium transition-colors duration-150 w-full',
           success
-            ? 'bg-green-600 text-white'
+            ? 'bg-[var(--stage-won)] text-white'
             : failedMessages.length > 0
-            ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
-            : 'bg-indigo-600 text-white hover:bg-indigo-700',
+            ? 'bg-[color-mix(in_oklab,var(--stage-lost)_10%,var(--surface)_90%)] text-[var(--stage-lost)] ring-1 ring-[var(--stage-lost)]'
+            : 'bg-[var(--brand)] text-[var(--brand-ink)] hover:bg-[var(--brand-deep)]',
           loading ? 'opacity-50 cursor-not-allowed' : '',
         ].join(' ')}
       >
@@ -158,7 +158,7 @@ export function ButtonCell({ column, rowId, row, allColumns }: CellProps) {
 
       {/* Validation failure list — shown inline below the button */}
       {failedMessages.length > 0 && (
-        <div className="w-full text-[10px] text-red-600 leading-tight space-y-0.5 max-h-20 overflow-y-auto">
+        <div className="w-full text-[10px] text-[var(--stage-lost)] leading-tight space-y-0.5 max-h-20 overflow-y-auto">
           {failedMessages.map((msg, i) => (
             <div key={i} className="truncate" title={msg}>{msg}</div>
           ))}

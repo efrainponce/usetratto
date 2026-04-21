@@ -107,13 +107,13 @@ function PreviewModal({ entry, rowId, colKey, onClose }: PreviewProps) {
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className={`bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden ${wide ? 'w-full max-w-4xl' : 'w-80'}`}>
+      <div className={`bg-[var(--bg)] rounded-sm shadow-2xl flex flex-col overflow-hidden ${wide ? 'w-full max-w-4xl' : 'w-80'}`}>
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
           <span className="text-lg">{fileIcon(entryMime(entry))}</span>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium text-gray-800 truncate">{entry.name}</p>
-            <p className="text-[11px] text-gray-400">{formatFileSize(entry.size)}</p>
+            <p className="text-[13px] font-medium text-[var(--ink)] truncate">{entry.name}</p>
+            <p className="text-[11px] text-[var(--ink-3)]">{formatFileSize(entry.size)}</p>
           </div>
           <div className="flex items-center gap-1">
             {url && (
@@ -121,26 +121,26 @@ function PreviewModal({ entry, rowId, colKey, onClose }: PreviewProps) {
                 href={url}
                 download={entry.name}
                 onClick={e => e.stopPropagation()}
-                className="text-[11px] px-2 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors"
+                className="text-[11px] px-2 py-1 border border-[var(--border)] rounded-sm text-[var(--ink-2)] hover:bg-[var(--surface-2)] transition-colors"
                 title="Descargar"
               >↓ Descargar</a>
             )}
             <button
               onClick={onClose}
-              className="ml-1 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 text-[16px] leading-none"
+              className="ml-1 w-7 h-7 flex items-center justify-center rounded-sm text-[var(--ink-3)] hover:bg-[var(--surface-2)] text-[16px] leading-none"
             >×</button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto bg-gray-50 flex items-center justify-center min-h-32">
+        <div className="flex-1 overflow-auto bg-[var(--surface)] flex items-center justify-center min-h-32">
           {loading && (
-            <svg className="w-6 h-6 animate-spin text-gray-300" fill="none" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 animate-spin text-[var(--ink-3)]" fill="none" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" opacity="0.25"/>
               <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
             </svg>
           )}
-          {error && <p className="text-[13px] text-red-500 p-4">{error}</p>}
+          {error && <p className="text-[13px] text-[var(--stage-lost)] p-4">{error}</p>}
           {url && !loading && (
             <>
               {isImg && (
@@ -164,11 +164,11 @@ function PreviewModal({ entry, rowId, colKey, onClose }: PreviewProps) {
               {!isImg && !isPDF && !isVid && (
                 <div className="flex flex-col items-center gap-3 p-8 text-center">
                   <span className="text-5xl">{fileIcon(entryMime(entry))}</span>
-                  <p className="text-[13px] text-gray-500">Vista previa no disponible para este tipo de archivo.</p>
+                  <p className="text-[13px] text-[var(--ink-3)]">Vista previa no disponible para este tipo de archivo.</p>
                   <a
                     href={url}
                     download={entry.name}
-                    className="text-[12px] px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                    className="text-[12px] px-3 py-1.5 bg-[var(--brand)] text-[var(--brand-ink)] rounded-sm hover:bg-[var(--brand-deep)] transition-colors"
                   >↓ Descargar {entry.name}</a>
                 </div>
               )}

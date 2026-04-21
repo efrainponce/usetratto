@@ -51,10 +51,10 @@ export function DateCell({ value, isEditing, onStartEdit, onCommit, onCancel, on
     const isReadOnly = settings?.read_only === true
     return (
       <span
-        className="block w-full px-2 py-1 truncate cursor-default text-[13px] text-gray-800 select-none"
+        className="block w-full px-2.5 py-1.5 truncate cursor-default text-[13px] text-[var(--ink)] select-none font-[family-name:var(--font-geist-mono)] tabular-nums"
         onDoubleClick={isReadOnly ? undefined : onStartEdit}
       >
-        {displayValue === '—' ? <span className="text-gray-300">—</span> : displayValue}
+        {displayValue === '—' ? <span className="text-[var(--ink-3)]">—</span> : displayValue}
       </span>
     )
   }
@@ -63,7 +63,7 @@ export function DateCell({ value, isEditing, onStartEdit, onCommit, onCancel, on
     <input
       ref={inputRef}
       type="date"
-      className="w-full px-2 py-1 text-[13px] text-gray-800 bg-transparent outline-none"
+      className="w-full px-2.5 py-1.5 text-[13px] text-[var(--ink)] bg-[var(--surface)] border border-[var(--brand-soft)] rounded-sm outline-none focus:border-[var(--brand)] font-[family-name:var(--font-geist-mono)]"
       value={draft}
       onChange={e => setDraft(e.target.value)}
       onBlur={() => onCommit(draft || null)}

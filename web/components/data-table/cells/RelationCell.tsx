@@ -17,16 +17,16 @@ export function RelationCell({ value, column, onCommit }: CellProps) {
   return (
     <>
       <div
-        className={`flex items-center gap-1 w-full px-2 py-1 ${canPick ? 'cursor-pointer hover:bg-gray-50' : 'cursor-default'}`}
+        className={`flex items-center gap-1 w-full px-2.5 py-1.5 ${canPick ? 'cursor-pointer hover:bg-[var(--surface-2)]' : 'cursor-default'}`}
         onClick={() => { if (canPick) openPicker() }}
       >
         {label ? (
-          <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[12px] font-medium text-gray-700 truncate max-w-full">
-            {isRef && <span className="text-amber-500 text-[10px] leading-none">↪</span>}
+          <span className="inline-flex items-center gap-1 rounded-sm border border-[var(--border)] bg-[var(--surface-2)] px-1.5 py-0.5 text-[12px] font-medium text-[var(--ink-2)] truncate max-w-full hover:border-[var(--brand-soft)]">
+            {isRef && <span className="text-[var(--stage-quote)] text-[10px] leading-none">↪</span>}
             <span className="truncate">{label}</span>
           </span>
         ) : (
-          <span className="text-[13px] text-gray-300">{canPick ? 'Elegir…' : '—'}</span>
+          <span className="text-[13px] text-[var(--ink-3)]">{canPick ? 'Elegir…' : '—'}</span>
         )}
       </div>
       {showPicker && canPick && targetBoardId && (
