@@ -1083,7 +1083,10 @@ export function BoardView({
         <SourceColumnMapper
           boardId={boardId}
           viewId={mapperViewId}
-          currentSourceBoardId={sourceBoardId}
+          currentSourceBoardId={
+            (subItemViews.find(v => v.id === mapperViewId)?.config?.source_board_id as string | undefined)
+              ?? sourceBoardId
+          }
           currentColumns={subItemColumns}
           onClose={() => setShowMapper(false)}
           onSaved={(newSourceId, newCols) => {
