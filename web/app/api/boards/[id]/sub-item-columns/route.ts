@@ -80,5 +80,72 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (error) return jsonError(error.message, 500)
+
+  // Backfill: if the new column is mapped to a source col, copy values for all
+  // existing sub_items of this view that have a source_item_id set.
+  // Avoids the "new column shows empty until user clicks ↻" UX papercut.
+  if (data && body.source_col_key && body.view_id) {
+    try {
+      const { data: subs } = await supabase
+        .from('sub_items')
+        .select('id, source_item_id')
+        .eq('view_id', body.view_id)
+        .not('source_item_id', 'is', null)
+
+      const sourceItemIds = (subs ?? []).map(s => s.source_item_id).filter(Boolean) as string[]
+
+      if (sourceItemIds.length > 0) {
+        const { data: sourceItem } = await supabase
+          .from('items')
+          .select('board_id')
+          .eq('id', sourceItemIds[0])
+          .single()
+
+        if (sourceItem) {
+          const { data: sourceCol } = await supabase
+            .from('board_columns')
+            .select('id, kind')
+            .eq('board_id', sourceItem.board_id)
+            .eq('col_key', body.source_col_key)
+            .maybeSingle()
+
+          if (sourceCol) {
+            const { data: sourceVals } = await supabase
+              .from('item_values')
+              .select('item_id, value_text, value_number, value_date, value_json')
+              .eq('column_id', sourceCol.id)
+              .in('item_id', sourceItemIds)
+
+            const valsByItem: Record<string, { value_text: string | null; value_number: number | null; value_date: string | null; value_json: unknown }> = {}
+            for (const v of sourceVals ?? []) {
+              valsByItem[v.item_id] = v
+            }
+
+            const rows = (subs ?? []).flatMap(s => {
+              if (!s.source_item_id) return []
+              const v = valsByItem[s.source_item_id]
+              if (!v) return []
+              return [{
+                sub_item_id: s.id,
+                column_id: data.id,
+                value_text:   v.value_text,
+                value_number: v.value_number,
+                value_date:   v.value_date,
+                value_json:   v.value_json,
+              }]
+            })
+
+            if (rows.length > 0) {
+              await supabase.from('sub_item_values').insert(rows)
+            }
+          }
+        }
+      }
+    } catch (backfillErr) {
+      console.error('[POST sub-item-columns] backfill error:', backfillErr)
+      // do not fail the request — column is created, user can refresh manually
+    }
+  }
+
   return jsonOk(data, 201)
 }
