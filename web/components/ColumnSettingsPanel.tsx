@@ -772,7 +772,7 @@ const [savingButton,    setSavingButton]    = useState(false)
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-80 bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="fixed right-0 top-0 h-full w-[40rem] bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
