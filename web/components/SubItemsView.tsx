@@ -84,12 +84,12 @@ export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCo
 
   if (!activeView) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-[13px] text-gray-400">
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-[13px] text-[var(--ink-3)]">
         <span className="italic">Sin vistas configuradas</span>
         {onAddView && isBoardAdmin && (
           <button
             onClick={onAddView}
-            className="px-3 py-1.5 text-[12px] font-medium text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors flex items-center gap-1.5"
+            className="px-3 py-1.5 text-[12px] font-medium text-[var(--brand)] border border-[var(--brand-soft)] rounded hover:bg-[var(--brand-soft)] transition-colors flex items-center gap-1.5"
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
@@ -104,22 +104,22 @@ export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCo
   return (
     <div className="flex flex-col h-full">
       {/* ── View tabs ────────────────────────────────────────────────────── */}
-      <div className="flex items-center border-b border-gray-100 px-3 flex-none gap-0.5">
+      <div className="flex items-center gap-0.5 border-b border-[var(--border)] px-3 pt-1.5 flex-none">
         {views.map(v => {
           const isActive = activeViewId === v.id
           return (
-            <div key={v.id} className="flex items-center group/tab -mb-px">
+            <div key={v.id} className="flex items-center group/tab">
               <button
                 onClick={() => setActiveViewId(v.id)}
-                className={`px-2.5 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+                className={`px-3 py-2 text-[12.5px] border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                   isActive
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'border-[var(--brand)] text-[var(--brand)]'
+                    : 'border-transparent text-[var(--ink-3)] hover:text-[var(--ink-2)]'
                 }`}
               >
                 {v.name}
                 {v.type !== 'native' && (
-                  <span className="ml-1.5 text-[10px] text-blue-400 font-normal">ref</span>
+                  <em className="not-italic font-[family-name:var(--font-geist-mono)] text-[10.5px] px-1.5 py-0 bg-[var(--bg)] text-[var(--ink-4)] rounded-lg font-normal">ref</em>
                 )}
               </button>
               {/* ⚙ config button — only on active native tab, board admin only */}
@@ -127,7 +127,7 @@ export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCo
                 <button
                   onClick={() => onConfigureColumns(v.id)}
                   title="Configurar columnas"
-                  className="text-gray-400 hover:text-indigo-600 transition-colors p-0.5 rounded"
+                  className="text-[var(--ink-4)] hover:text-[var(--brand)] transition-colors p-0.5 rounded"
                 >
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
                     <path d="M2 4h8M2 8h5" strokeWidth="1.5" strokeLinecap="round"/>
@@ -141,7 +141,7 @@ export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCo
                 <button
                   onClick={e => { e.stopPropagation(); onDeleteView(v.id) }}
                   title="Eliminar vista"
-                  className="opacity-0 group-hover/tab:opacity-100 transition-opacity text-gray-300 hover:text-red-500 ml-0.5 p-0.5 rounded text-[13px] leading-none"
+                  className="opacity-0 group-hover/tab:opacity-100 transition-opacity text-[var(--ink-4)] hover:text-[var(--stage-lost)] ml-0.5 p-0.5 rounded text-[13px] leading-none"
                 >
                   ×
                 </button>
@@ -154,7 +154,7 @@ export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCo
           <button
             onClick={onAddView}
             title="Nueva vista"
-            className="ml-1 px-2 py-1.5 text-[12px] text-gray-400 hover:text-indigo-600 transition-colors flex items-center gap-1"
+            className="ml-1 px-2 py-1.5 text-[12px] text-[var(--ink-4)] hover:text-[var(--brand)] transition-colors flex items-center gap-1"
           >
             <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
@@ -227,6 +227,48 @@ function NativeRenderer({
   const [colSettings,  setColSettings]  = useState<SubItemColumn | null>(null)
   const [rollupTarget, setRollupTarget] = useState<{ colId: string; colKey: string; colName: string; colKind?: string; closedValues?: string[]; currentAggregate?: string; currentBoardColId?: string } | null>(null)
   const [savingRollup, setSavingRollup] = useState(false)
+  const [templates,    setTemplates]    = useState<Array<{ id: string; name: string }>>([])
+  const [generating,   setGenerating]   = useState(false)
+  const [generateErrors, setGenerateErrors] = useState<string[]>([])
+
+  // Templates that target the parent board — enable "Generar cotización" CTA at the bottom of the card
+  useEffect(() => {
+    if (!boardId) return
+    fetch(`/api/document-templates?target_board_id=${boardId}&status=active`)
+      .then(r => r.ok ? r.json() : { templates: [] })
+      .then(d => {
+        const list = Array.isArray(d) ? d : (d.templates ?? d.data ?? [])
+        setTemplates(list.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })))
+      })
+      .catch(() => setTemplates([]))
+  }, [boardId])
+
+  const generateDoc = useCallback(async () => {
+    const tpl = templates[0]
+    if (!tpl) return
+    setGenerating(true)
+    setGenerateErrors([])
+    try {
+      const res = await fetch('/api/documents/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: tpl.id, source_item_id: itemId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (Array.isArray(data.errors)) {
+          setGenerateErrors(data.errors)
+          return
+        }
+        alert(`Error: ${data.error ?? res.statusText}`)
+        return
+      }
+      if (data.pdf_url) window.open(data.pdf_url, '_blank')
+      window.dispatchEvent(new CustomEvent('document-generated'))
+    } finally {
+      setGenerating(false)
+    }
+  }, [templates, itemId])
 
   // Column widths — resizable
   const [colWidths, setColWidths] = useState<Record<string, number>>({
@@ -645,8 +687,8 @@ function NativeRenderer({
     <div className="flex flex-col h-full">
       {/* ── Battery ───────────────────────────────────────────────────── */}
       {battery && (
-        <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 flex-none">
-          <div className="flex flex-1 h-2 rounded-full overflow-hidden bg-gray-100">
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] flex-none">
+          <div className="flex flex-1 h-2 rounded-full overflow-hidden bg-[var(--surface-2)]">
             {battery.segments.map(seg => (
               <div
                 key={seg.value ?? '__null'}
@@ -655,24 +697,24 @@ function NativeRenderer({
               />
             ))}
           </div>
-          <span className="flex-none text-[12px] text-gray-500 whitespace-nowrap">
+          <span className="flex-none text-[12px] text-[var(--ink-3)] whitespace-nowrap">
             {battery.done}/{battery.total} · {battery.pct}% completado
           </span>
         </div>
       )}
       {/* ── Column header ─────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide select-none flex-none">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide select-none flex-none">
         <div className="flex-none" style={{ width: cw('__expand') }} />
         <div className="relative flex-none" style={{ width: cw('__sid') }}>
           #
           <div onMouseDown={e => startResize('__sid', 64, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
-            <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+            <div className="h-4 w-px rounded-full bg-[var(--border)] group-hover/resizer:bg-[var(--brand-soft)] transition-colors" />
           </div>
         </div>
         <div className="relative flex-none" style={{ width: cw('__name') }}>
           Nombre
           <div onMouseDown={e => startResize('__name', 160, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
-            <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+            <div className="h-4 w-px rounded-full bg-[var(--border)] group-hover/resizer:bg-[var(--brand-soft)] transition-colors" />
           </div>
         </div>
         {displayCols.map(c => {
@@ -691,19 +733,19 @@ function NativeRenderer({
                       setRollupTarget({ colId: c.id, colKey: c.col_key, colName: c.name, colKind: c.kind, closedValues: opts?.filter(o => o.is_closed).map(o => o.value), currentAggregate: ru?.aggregate, currentBoardColId: ru?.board_col_id })
                     }}
                     title={hasRollup ? 'Resumen activo — click para editar' : 'Agregar resumen al item'}
-                    className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-teal-500' : 'opacity-0 group-hover/col:opacity-100 text-gray-400 hover:text-teal-500'}`}
+                    className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-[var(--brand)]' : 'opacity-0 group-hover/col:opacity-100 text-[var(--ink-4)] hover:text-[var(--brand)]'}`}
                   >↑</button>
                 )}
                 {isBoardAdmin && (
                   <button
                     onClick={e => { e.stopPropagation(); setColSettings(c) }}
                     title="Configurar columna"
-                    className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                    className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-[var(--ink-4)] hover:text-[var(--brand)] transition-opacity px-0.5"
                   >⋯</button>
                 )}
               </div>
               <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
-                <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+                <div className="h-4 w-px rounded-full bg-[var(--border)] group-hover/resizer:bg-[var(--brand-soft)] transition-colors" />
               </div>
             </div>
           )
@@ -711,7 +753,7 @@ function NativeRenderer({
         {formulaCols.map(c => {
           const hasRollup = !!(c.settings as Record<string, unknown>)?.rollup_up
           return (
-            <div key={c.id} className="relative flex-none text-indigo-500 group/col" style={{ width: cw(c.id) }}>
+            <div key={c.id} className="relative flex-none text-[var(--brand)] group/col" style={{ width: cw(c.id) }}>
               <div className="flex items-center gap-1 overflow-hidden pr-3">
                 <span className="flex-1 truncate min-w-0">{c.name}</span>
                 <button
@@ -721,18 +763,18 @@ function NativeRenderer({
                     setRollupTarget({ colId: c.id, colKey: c.col_key, colName: c.name, colKind: c.kind, currentAggregate: ru?.aggregate, currentBoardColId: ru?.board_col_id })
                   }}
                   title={hasRollup ? 'Resumen activo — click para editar' : 'Agregar resumen al item'}
-                  className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-teal-500' : 'opacity-0 group-hover/col:opacity-100 text-gray-400 hover:text-teal-500'}`}
+                  className={`shrink-0 text-[11px] leading-none transition-opacity px-0.5 font-bold ${hasRollup ? 'text-[var(--brand)]' : 'opacity-0 group-hover/col:opacity-100 text-[var(--ink-4)] hover:text-[var(--brand)]'}`}
                 >↑</button>
                 {isBoardAdmin && (
                   <button
                     onClick={e => { e.stopPropagation(); setColSettings(c) }}
                     title="Configurar columna"
-                    className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-gray-400 hover:text-indigo-500 transition-opacity px-0.5"
+                    className="opacity-0 group-hover/col:opacity-100 shrink-0 text-[14px] leading-none text-[var(--ink-4)] hover:text-[var(--brand)] transition-opacity px-0.5"
                   >⋯</button>
                 )}
               </div>
               <div onMouseDown={e => startResize(c.id, 96, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
-                <div className="h-4 w-px rounded-full bg-gray-200 group-hover/resizer:bg-indigo-400 transition-colors" />
+                <div className="h-4 w-px rounded-full bg-[var(--border)] group-hover/resizer:bg-[var(--brand-soft)] transition-colors" />
               </div>
             </div>
           )
@@ -754,7 +796,7 @@ function NativeRenderer({
           <button
             onClick={() => setAddingCol(true)}
             title="Agregar columna"
-            className="w-7 flex-none flex items-center justify-center text-gray-300 hover:text-indigo-500 transition-colors normal-case font-normal tracking-normal"
+            className="w-7 flex-none flex items-center justify-center text-[var(--ink-4)] hover:text-[var(--brand)] transition-colors normal-case font-normal tracking-normal"
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
@@ -767,7 +809,7 @@ function NativeRenderer({
       {/* ── Rows ──────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         {rows.length === 0 && (
-          <div className="flex items-center justify-center py-10 text-[13px] text-gray-400 italic">
+          <div className="flex items-center justify-center py-10 text-[13px] text-[var(--ink-3)] italic">
             Sin sub-items
           </div>
         )}
@@ -825,10 +867,10 @@ function NativeRenderer({
 
       {/* ── Aggregate footer row ─────────────────────────────────────────── */}
       {rows.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-1 border-t border-gray-100 bg-gray-50 flex-none text-[11px] select-none">
+        <div className="flex items-center gap-2 px-4 py-1 border-t border-[var(--border)] bg-[var(--surface-2)] flex-none text-[11px] select-none">
           <div className="flex-none" style={{ width: cw('__expand') }} />
           <div className="flex-none" style={{ width: cw('__sid') }} />
-          <div className="flex-none text-gray-400 italic" style={{ width: cw('__name') }}>Totales</div>
+          <div className="flex-none text-[var(--ink-4)] italic" style={{ width: cw('__name') }}>Totales</div>
           {displayCols.map(col => {
             if (col.kind !== 'number') return <div key={col.id} className="flex-none" style={{ width: cw(col.id) }} />
             const fn = colAggregates[col.id] ?? null
@@ -842,12 +884,12 @@ function NativeRenderer({
                 title={fn ? `${fn} — click para cambiar` : 'Click para agregar totales'}
               >
                 {fn ? (
-                  <span className="text-gray-600 font-medium">
-                    <span className="text-gray-400 mr-1">{AGG_LABEL[fn]}</span>
+                  <span className="text-[var(--ink-2)] font-medium">
+                    <span className="text-[var(--ink-4)] mr-1">{AGG_LABEL[fn]}</span>
                     {val != null ? val.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
                   </span>
                 ) : (
-                  <span className="text-gray-300 group-hover:text-gray-400 transition-colors">+</span>
+                  <span className="text-[var(--ink-4)] opacity-40 group-hover:opacity-100 transition-opacity">+</span>
                 )}
               </div>
             )
@@ -864,12 +906,12 @@ function NativeRenderer({
                 title={fn ? `${fn} — click para cambiar` : 'Click para agregar totales'}
               >
                 {fn ? (
-                  <span className="text-indigo-600 font-medium">
-                    <span className="text-indigo-300 mr-1">{AGG_LABEL[fn]}</span>
+                  <span className="text-[var(--brand)] font-medium">
+                    <span className="text-[var(--brand-soft)] mr-1">{AGG_LABEL[fn]}</span>
                     {val != null ? val.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
                   </span>
                 ) : (
-                  <span className="text-gray-300 group-hover:text-gray-400 transition-colors">+</span>
+                  <span className="text-[var(--ink-4)] opacity-40 group-hover:opacity-100 transition-opacity">+</span>
                 )}
               </div>
             )
@@ -889,12 +931,12 @@ function NativeRenderer({
                 title={fn ? `${fn} — click para cambiar` : 'Click para agregar totales'}
               >
                 {fn ? (
-                  <span className="text-teal-600 font-medium">
-                    <span className="text-teal-300 mr-1">{AGG_LABEL[fn]}</span>
+                  <span className="text-[var(--brand)] font-medium">
+                    <span className="text-[var(--brand-soft)] mr-1">{AGG_LABEL[fn]}</span>
                     {val != null ? val.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
                   </span>
                 ) : (
-                  <span className="text-gray-300 group-hover:text-gray-400 transition-colors">+</span>
+                  <span className="text-[var(--ink-4)] opacity-40 group-hover:opacity-100 transition-opacity">+</span>
                 )}
               </div>
             )
@@ -904,11 +946,11 @@ function NativeRenderer({
       )}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <div className="flex-none border-t border-gray-100 px-4 py-2">
+      <div className="flex-none border-t border-[var(--border)] px-4 py-2">
         {sourceBoardId ? (
           <button
             onClick={() => setShowPicker(true)}
-            className="flex items-center gap-1.5 text-[13px] text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
+            className="flex items-center gap-1.5 text-[13px] text-[var(--brand)] hover:text-[var(--brand-deep)] font-medium transition-colors"
           >
             <span className="text-lg leading-none">+</span>
             Agregar desde fuente
@@ -917,6 +959,43 @@ function NativeRenderer({
           <InlineAddButton onAdd={name => createL1(name)} />
         )}
       </div>
+
+      {/* ── Generar cotización CTA (cuando existe template para el board) ── */}
+      {templates.length > 0 && (
+        <div className="flex-none border-t border-[var(--border)] px-4 py-3 flex items-center gap-2.5 bg-[var(--surface-2)]">
+          <button
+            onClick={generateDoc}
+            disabled={generating}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            {generating ? 'Generando…' : 'Abrir cotización en editor'}
+          </button>
+          <button
+            onClick={generateDoc}
+            disabled={generating}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] hover:bg-[var(--surface)] rounded-sm disabled:opacity-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            Generar PDF
+          </button>
+          <span className="flex-1 text-right text-[11.5px] text-[var(--ink-4)]">
+            Bloques drag-and-drop · firma en canvas · estampa al PDF
+          </span>
+        </div>
+      )}
+      {generateErrors.length > 0 && (
+        <div className="flex-none border-t border-[var(--stage-lost)] px-4 py-2 bg-[color-mix(in_oklab,var(--stage-lost)_8%,var(--surface)_92%)] text-[11.5px] text-[var(--stage-lost)] space-y-0.5">
+          {generateErrors.map((err, i) => (
+            <div key={i}>❌ {err}</div>
+          ))}
+        </div>
+      )}
 
       {showPicker && sourceBoardId && (
         <ProductPicker
@@ -1001,32 +1080,32 @@ function BoardItemsRenderer({ itemId, viewId, viewName, compact }: { itemId: str
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50 flex-none">
-        <div className="flex-1 flex items-center gap-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wide select-none">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] flex-none">
+        <div className="flex-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide select-none">
           <div className="w-16 flex-none">#</div>
           <div className="w-40 flex-none">Nombre</div>
           {columns.slice(0, 5).map(c => <div key={c.id} className="w-24 flex-none text-right">{c.name}</div>)}
         </div>
-        <span className="flex-none text-[10px] bg-blue-50 text-blue-500 border border-blue-100 px-1.5 py-0.5 rounded-full font-medium">
+        <span className="flex-none text-[10px] bg-[var(--brand-soft)] text-[var(--brand)] border border-[var(--brand-soft)] px-1.5 py-0.5 rounded-full font-medium">
           {boardName} · ref
         </span>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
-          <div className="flex items-center justify-center py-10 text-[13px] text-gray-400 italic">
+          <div className="flex items-center justify-center py-10 text-[13px] text-[var(--ink-3)] italic">
             Sin registros relacionados
           </div>
         ) : (
           items.map(item => (
-            <div key={item.id} className="flex items-center gap-2 px-4 py-1.5 border-b border-gray-50 hover:bg-gray-50 transition-colors">
-              <div className="w-16 flex-none text-[12px] text-gray-400 font-mono">{item.sid}</div>
-              <div className="w-40 flex-none text-[13px] text-gray-800 font-medium truncate">{item.name || '—'}</div>
+            <div key={item.id} className="flex items-center gap-2 px-4 py-1.5 border-b border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors">
+              <div className="w-16 flex-none text-[12px] text-[var(--ink-3)] font-mono">{item.sid}</div>
+              <div className="w-40 flex-none text-[13px] text-[var(--ink)] font-medium truncate">{item.name || '—'}</div>
               {columns.slice(0, 5).map(col => {
                 const val = item.item_values?.find(v => v.column_id === col.id)
                 const display = val?.value_text ?? (val?.value_number != null ? String(val.value_number) : null)
                 return (
-                  <div key={col.id} className="w-24 flex-none text-[12px] text-gray-600 truncate text-right">
+                  <div key={col.id} className="w-24 flex-none text-[12px] text-[var(--ink-2)] truncate text-right">
                     {display ?? '—'}
                   </div>
                 )
@@ -1062,32 +1141,32 @@ function BoardSubItemsRenderer({ itemId, viewId, viewName, compact, isBoardAdmin
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50 flex-none">
-        <div className="flex-1 flex items-center gap-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wide select-none">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] flex-none">
+        <div className="flex-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide select-none">
           <div className="w-16 flex-none">#</div>
           <div className="w-40 flex-none">Nombre</div>
           {columns.slice(0, 4).map(c => <div key={c.id} className="w-24 flex-none text-right">{c.name}</div>)}
         </div>
-        <span className="flex-none text-[10px] bg-purple-50 text-purple-500 border border-purple-100 px-1.5 py-0.5 rounded-full font-medium">
+        <span className="flex-none text-[10px] bg-[var(--brand-soft)] text-[var(--brand)] border border-[var(--brand-soft)] px-1.5 py-0.5 rounded-full font-medium">
           {viewName} · ref
         </span>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
-          <div className="flex items-center justify-center py-10 text-[13px] text-gray-400 italic">
+          <div className="flex items-center justify-center py-10 text-[13px] text-[var(--ink-3)] italic">
             Sin sub-items relacionados
           </div>
         ) : (
           items.map(item => (
-            <div key={item.id} className="flex items-center gap-2 px-4 py-1.5 border-b border-gray-50 hover:bg-gray-50 transition-colors">
-              <div className="w-16 flex-none text-[12px] text-gray-400 font-mono">{item.sid}</div>
-              <div className="w-40 flex-none text-[13px] text-gray-800 truncate">{item.name || '—'}</div>
+            <div key={item.id} className="flex items-center gap-2 px-4 py-1.5 border-b border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors">
+              <div className="w-16 flex-none text-[12px] text-[var(--ink-3)] font-mono">{item.sid}</div>
+              <div className="w-40 flex-none text-[13px] text-[var(--ink)] truncate">{item.name || '—'}</div>
               {columns.slice(0, 4).map(col => {
                 const val = item.values.find(v => v.column_id === col.id)
                 const display = val?.value_text ?? (val?.value_number != null ? String(val.value_number) : null)
                 return (
-                  <div key={col.id} className="w-24 flex-none text-[12px] text-gray-600 truncate text-right">
+                  <div key={col.id} className="w-24 flex-none text-[12px] text-[var(--ink-2)] truncate text-right">
                     {display ?? '—'}
                   </div>
                 )
@@ -1134,22 +1213,22 @@ function NativeRow({
   }
 
   return (
-    <div className={`flex items-center gap-2 px-4 py-1 hover:bg-gray-50 group border-b border-gray-50 ${indent}`}>
+    <div className={`flex items-center gap-2 px-4 py-1 hover:bg-[var(--surface-2)] group border-b border-[var(--border)] ${indent}`}>
       {/* Chevron */}
       <div className="flex-none flex items-center justify-center" style={{ width: w('__expand', 20) }}>
         {depth === 0 ? (
-          <button onClick={onToggleExpand} className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded">
+          <button onClick={onToggleExpand} className="text-[var(--ink-3)] hover:text-[var(--ink-2)] transition-colors p-0.5 rounded">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d={isExpanded ? 'M2 4l4 4 4-4' : 'M4 2l4 4-4 4'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         ) : (
-          <span className="text-gray-300 text-[10px]">└</span>
+          <span className="text-[var(--ink-4)] text-[10px]">└</span>
         )}
       </div>
 
       {/* SID */}
-      <div className="flex-none text-[12px] text-gray-400 font-mono" style={{ width: w('__sid', 64) }}>{row.sid}</div>
+      <div className="flex-none text-[12px] text-[var(--ink-3)] font-mono" style={{ width: w('__sid', 64) }}>{row.sid}</div>
 
       {/* Name */}
       <div className="flex-none" style={{ width: w('__name', 160) }}>
@@ -1166,9 +1245,9 @@ function NativeRow({
         const access = col.user_access
 
         if (access === null || access === undefined) {
-          // No permission: render empty gray cell
+          // No permission: render empty cell
           return (
-            <div key={col.id} className="flex-none bg-gray-50 h-full w-full" style={{ width: w(col.id, 96) }} title="Sin permiso" />
+            <div key={col.id} className="flex-none bg-[var(--surface-2)] h-full w-full" style={{ width: w(col.id, 96) }} title="Sin permiso" />
           )
         }
 
@@ -1244,7 +1323,7 @@ function NativeRow({
           try { return !evaluateCondition({ ...colValidation.condition as FormulaCondition, col: condCol }, evalRow) } catch { return false }
         })()
         return (
-          <div key={col.id} className="relative flex-none text-right text-[13px] text-indigo-700 font-medium" style={{ width: w(col.id, 96) }}>
+          <div key={col.id} className="relative flex-none text-right text-[13px] text-[var(--brand)] font-medium" style={{ width: w(col.id, 96) }}>
             {result != null ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
             {isInvalid && (
               <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
@@ -1268,7 +1347,7 @@ function NativeRow({
           try { return !evaluateCondition({ ...colValidation.condition as FormulaCondition, col: condCol }, evalRow) } catch { return false }
         })()
         return (
-          <div key={col.id} className="relative flex-none text-right text-[13px] text-teal-700 font-medium" style={{ width: w(col.id, 96) }}>
+          <div key={col.id} className="relative flex-none text-right text-[13px] text-[var(--brand)] font-medium" style={{ width: w(col.id, 96) }}>
             {result != null ? result.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
             {isInvalid && (
               <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
@@ -1286,21 +1365,21 @@ function NativeRow({
           <a
             href={`/app/w/${workspaceSid}/b/${row.source_board_sid}/${row.source_item_sid}`}
             title="Ver en catálogo"
-            className="text-gray-400 hover:text-indigo-600 transition-colors"
+            className="text-[var(--ink-3)] hover:text-[var(--brand)] transition-colors"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </a>
         ) : (
-          <button onClick={onOpenDetail} title="Abrir detalle" className="text-gray-400 hover:text-indigo-600 transition-colors">
+          <button onClick={onOpenDetail} title="Abrir detalle" className="text-[var(--ink-3)] hover:text-[var(--brand)] transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
         )}
         {depth === 0 && row.source_item_id && onImportChildren && (
-          <button onClick={onImportChildren} title="Jalar sub-items del catálogo" className="text-gray-400 hover:text-blue-500 transition-colors">
+          <button onClick={onImportChildren} title="Jalar sub-items del catálogo" className="text-[var(--ink-3)] hover:text-[var(--brand)] transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M6 2v7M3 6l3 3 3-3M2 10h8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -1311,7 +1390,7 @@ function NativeRow({
             onClick={isLocked ? undefined : onRefresh}
             title={isLocked ? 'Terminado — no se puede refrescar' : 'Refrescar valores del catálogo'}
             disabled={isLocked}
-            className={`transition-colors ${isLocked ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-green-600'}`}
+            className={`transition-colors ${isLocked ? 'text-[var(--ink-4)] cursor-not-allowed' : 'text-[var(--ink-3)] hover:text-[var(--brand)]'}`}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M10 6A4 4 0 1 1 7 2.1M10 2v3H7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1319,16 +1398,16 @@ function NativeRow({
           </button>
         )}
         {depth === 0 && (
-          <button onClick={onAddChild} title="Agregar L2" className="text-gray-400 hover:text-indigo-600 transition-colors">
+          <button onClick={onAddChild} title="Agregar L2" className="text-[var(--ink-3)] hover:text-[var(--brand)] transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
               <path d="M6 2v8M2 6h8" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         )}
         {depth === 0 && onExpandVariants && (
-          <button onClick={onExpandVariants} title="Explotar variantes" className="text-gray-400 hover:text-yellow-500 transition-colors text-[10px]">⚡</button>
+          <button onClick={onExpandVariants} title="Explotar variantes" className="text-[var(--ink-3)] hover:text-[var(--brand)] transition-colors text-[10px]">⚡</button>
         )}
-        <button onClick={onDelete} title="Eliminar" className="text-gray-400 hover:text-red-500 transition-colors">
+        <button onClick={onDelete} title="Eliminar" className="text-[var(--ink-3)] hover:text-[var(--stage-lost)] transition-colors">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
             <path d="M2 2l8 8M10 2l-8 8" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
@@ -1370,7 +1449,7 @@ function EditableCell({
   return (
     <div
       onClick={onStartEdit}
-      className={`text-[13px] px-1 py-0.5 rounded cursor-text hover:bg-gray-100 transition-colors truncate ${align === 'right' ? 'text-right' : ''} ${isEmpty ? 'text-gray-400' : 'text-gray-800'}`}
+      className={`text-[13px] px-1 py-0.5 rounded cursor-text hover:bg-[var(--surface-2)] transition-colors truncate ${align === 'right' ? 'text-right' : ''} ${isEmpty ? 'text-[var(--ink-3)]' : 'text-[var(--ink)]'}`}
     >
       {isEmpty ? '—' : display}
     </div>
@@ -1427,12 +1506,12 @@ function RollupUpPopup({
     <div className="fixed inset-0 z-50 flex items-start justify-center pointer-events-none">
       <div
         ref={ref}
-        className="pointer-events-auto mt-24 bg-white border border-gray-200 rounded-xl shadow-xl w-52 overflow-hidden"
+        className="pointer-events-auto mt-24 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-52 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-3 py-2.5 border-b border-gray-100">
-          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Resumen → item</p>
-          <p className="text-[12px] text-gray-700 truncate mt-0.5">"{target.colName}"</p>
+        <div className="px-3 py-2.5 border-b border-[var(--border)]">
+          <p className="text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide">Resumen → item</p>
+          <p className="text-[12px] text-[var(--ink)] truncate mt-0.5">"{target.colName}"</p>
         </div>
         <div className="py-1">
           {(target.colKind === 'select' ? ROLLUP_OPTIONS_SELECT : ROLLUP_OPTIONS_NUMBER).map(opt => (
@@ -1440,26 +1519,26 @@ function RollupUpPopup({
               key={opt.value}
               onClick={() => !saving && onSelect(opt.value)}
               disabled={saving}
-              className={`w-full text-left px-3 py-1.5 text-[13px] hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center justify-between ${target.currentAggregate === opt.value ? 'text-teal-600 font-semibold' : 'text-gray-700'}`}
+              className={`w-full text-left px-3 py-1.5 text-[13px] hover:bg-[var(--surface-2)] hover:text-[var(--brand)] transition-colors flex items-center justify-between ${target.currentAggregate === opt.value ? 'text-[var(--brand)] font-semibold' : 'text-[var(--ink)]'}`}
             >
               {opt.label}
-              {target.currentAggregate === opt.value && <span className="text-teal-500 text-[10px]">activo</span>}
+              {target.currentAggregate === opt.value && <span className="text-[var(--brand)] text-[10px]">activo</span>}
             </button>
           ))}
         </div>
         {onRemove && (
-          <div className="border-t border-gray-100 py-1">
+          <div className="border-t border-[var(--border)] py-1">
             <button
               onClick={() => !saving && onRemove()}
               disabled={saving}
-              className="w-full text-left px-3 py-1.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors"
+              className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--stage-lost)] hover:bg-red-50 transition-colors"
             >
               Quitar resumen
             </button>
           </div>
         )}
         {saving && (
-          <div className="px-3 py-2 text-[11px] text-gray-400 text-center border-t border-gray-100">Guardando…</div>
+          <div className="px-3 py-2 text-[11px] text-[var(--ink-4)] text-center border-t border-[var(--border)]">Guardando…</div>
         )}
       </div>
     </div>
@@ -1697,10 +1776,10 @@ function DrawerEditField({
 
 function InlineAddRow({ depth, onAdd, onCancel }: { depth: number; onAdd: (n: string) => void; onCancel: () => void }) {
   return (
-    <div className={`flex items-center gap-2 px-4 py-1 border-b border-gray-50 ${depth === 1 ? 'pl-10' : 'pl-7'}`}>
+    <div className={`flex items-center gap-2 px-4 py-1 border-b border-[var(--border)] ${depth === 1 ? 'pl-10' : 'pl-7'}`}>
       <input
         autoFocus placeholder="Nombre..."
-        className="flex-1 text-[13px] border border-indigo-400 rounded px-2 py-0.5 outline-none"
+        className="flex-1 text-[13px] border border-[var(--brand)] rounded px-2 py-0.5 outline-none"
         onKeyDown={e => {
           if (e.key === 'Enter' && e.currentTarget.value.trim()) onAdd(e.currentTarget.value.trim())
           if (e.key === 'Escape') onCancel()
@@ -1716,7 +1795,7 @@ function InlineAddRow({ depth, onAdd, onCancel }: { depth: number; onAdd: (n: st
 function InlineAddButton({ onAdd }: { onAdd: (n: string) => void }) {
   const [adding, setAdding] = useState(false)
   if (!adding) return (
-    <button onClick={() => setAdding(true)} className="flex items-center gap-1.5 text-[13px] text-indigo-600 hover:text-indigo-800 font-medium transition-colors">
+    <button onClick={() => setAdding(true)} className="flex items-center gap-1.5 text-[13px] text-[var(--brand)] hover:text-[var(--brand-deep)] font-medium transition-colors">
       <span className="text-lg leading-none">+</span> Agregar sub-item
     </button>
   )
@@ -1834,7 +1913,7 @@ function AddColumnInline({
           onChange={e => setName(e.target.value)}
           placeholder="Nombre..."
           disabled={saving}
-          className="w-28 text-[12px] border border-indigo-400 rounded px-1.5 py-0.5 outline-none bg-white"
+          className="w-28 text-[12px] border border-[var(--brand)] rounded px-1.5 py-0.5 outline-none bg-white"
           onKeyDown={e => {
             if (e.key === 'Enter') save()
             if (e.key === 'Escape') onCancel()
@@ -1846,7 +1925,7 @@ function AddColumnInline({
           type="button"
           disabled={saving}
           onClick={openKindPanel}
-          className="text-[11px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-700 hover:border-indigo-400 whitespace-nowrap"
+          className="text-[11px] border border-[var(--border)] rounded px-1.5 py-0.5 bg-white text-[var(--ink)] hover:border-[var(--brand)] whitespace-nowrap"
         >
           {currentKindLabel} ▾
         </button>
@@ -1858,7 +1937,7 @@ function AddColumnInline({
             disabled={saving}
             onMouseDown={e => e.stopPropagation()}
             title="Vincular a columna del board fuente (opcional)"
-            className="text-[11px] border border-gray-200 rounded px-1 py-0.5 outline-none bg-white text-gray-500 max-w-[90px]"
+            className="text-[11px] border border-[var(--border)] rounded px-1 py-0.5 outline-none bg-white text-[var(--ink-3)] max-w-[90px]"
           >
             <option value="">Sin vínculo</option>
             {sourceCols.map(c => (
@@ -1869,13 +1948,13 @@ function AddColumnInline({
         <button
           onClick={save}
           disabled={saving}
-          className="text-indigo-600 hover:text-indigo-800 transition-colors text-[13px] leading-none px-0.5"
+          className="text-[var(--brand)] hover:text-[var(--brand-deep)] transition-colors text-[13px] leading-none px-0.5"
         >
           ✓
         </button>
         <button
           onClick={onCancel}
-          className="text-gray-400 hover:text-gray-600 transition-colors text-[14px] leading-none px-0.5"
+          className="text-[var(--ink-3)] hover:text-[var(--ink-2)] transition-colors text-[14px] leading-none px-0.5"
         >
           ×
         </button>
@@ -1886,7 +1965,7 @@ function AddColumnInline({
         <div
           ref={kindPanelRef}
           style={{ position: 'fixed', top: kindPanelPos.top, left: kindPanelPos.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-36"
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-lg py-1 w-36"
           onMouseDown={e => e.stopPropagation()}
         >
           {COL_KIND_OPTIONS.map(o => (
@@ -1896,8 +1975,8 @@ function AddColumnInline({
               onClick={() => { setKind(o.value); setKindPanelPos(null) }}
               className={`w-full text-left text-[12px] px-3 py-1 transition-colors ${
                 kind === o.value
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  ? 'bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
+                  : 'text-[var(--ink)] hover:bg-[var(--surface-2)]'
               }`}
             >{o.label}</button>
           ))}
@@ -1912,7 +1991,7 @@ function AddColumnInline({
 
 function LoadingState() {
   return (
-    <div className="flex items-center justify-center py-12 text-[13px] text-gray-400">Cargando...</div>
+    <div className="flex items-center justify-center py-12 text-[13px] text-[var(--ink-3)]">Cargando...</div>
   )
 }
 
