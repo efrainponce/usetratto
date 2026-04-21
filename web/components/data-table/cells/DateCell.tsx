@@ -34,6 +34,26 @@ function formatRelative(val: string | number | boolean | null | string[]): strin
   return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
 }
 
+function getRelativeSubline(val: string | number | boolean | null | string[]): string | null {
+  if (!val || typeof val !== 'string') return null
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return null
+  const now = new Date()
+  const diffMs = d.getTime() - now.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (Math.abs(diffDays) > 30) return null
+
+  if (diffDays > 0) {
+    if (diffDays === 1) return 'mañana'
+    return `en ${diffDays} días`
+  } else if (diffDays < 0) {
+    if (diffDays === -1) return 'ayer'
+    return `hace ${Math.abs(diffDays)} días`
+  }
+  return 'hoy'
+}
+
 export function DateCell({ value, isEditing, onStartEdit, onCommit, onCancel, onNavigate, settings }: CellProps & { settings?: { display?: 'relative' | 'absolute'; read_only?: boolean } }) {
   const [draft, setDraft] = useState(toInputValue(value))
   const inputRef = useRef<HTMLInputElement>(null)
@@ -47,15 +67,46 @@ export function DateCell({ value, isEditing, onStartEdit, onCommit, onCancel, on
   }, [isEditing, value])
 
   if (!isEditing) {
-    const displayValue = settings?.display === 'relative' ? formatRelative(value) : (value ? formatDisplay(value) : '—')
     const isReadOnly = settings?.read_only === true
+
+    if (settings?.display === 'relative') {
+      const displayValue = formatRelative(value)
+      return (
+        <span
+          className="block w-full px-2.5 py-1.5 truncate cursor-default text-[13px] text-[var(--ink)] select-none font-[family-name:var(--font-geist-mono)] tabular-nums"
+          onDoubleClick={isReadOnly ? undefined : onStartEdit}
+        >
+          {displayValue === '—' ? <span className="text-[var(--ink-3)]">—</span> : displayValue}
+        </span>
+      )
+    }
+
+    if (!value) {
+      return (
+        <span
+          className="block w-full px-2.5 py-1.5 cursor-default text-[13px] text-[var(--ink-3)] select-none"
+          onDoubleClick={isReadOnly ? undefined : onStartEdit}
+        >
+          —
+        </span>
+      )
+    }
+
+    const absolute = formatDisplay(value)
+    const relative = getRelativeSubline(value)
+
     return (
-      <span
-        className="block w-full px-2.5 py-1.5 truncate cursor-default text-[13px] text-[var(--ink)] select-none font-[family-name:var(--font-geist-mono)] tabular-nums"
+      <div
+        className="flex flex-col justify-center w-full px-2.5 py-1.5 cursor-default select-none"
         onDoubleClick={isReadOnly ? undefined : onStartEdit}
       >
-        {displayValue === '—' ? <span className="text-[var(--ink-3)]">—</span> : displayValue}
-      </span>
+        <span className="text-[12.5px] text-[var(--ink)] leading-tight">{absolute}</span>
+        {relative && (
+          <span className="font-[family-name:var(--font-geist-mono)] text-[11px] text-[var(--ink-4)] leading-tight mt-0.5">
+            {relative}
+          </span>
+        )}
+      </div>
     )
   }
 

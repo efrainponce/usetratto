@@ -13,6 +13,7 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
 
   const options: SelectOption[] = column.settings.options ?? []
   const selected = options.find(o => o.value === value)
+  const isStage = column.settings.role === 'primary_stage' || column.key === 'stage'
 
   useEffect(() => {
     if (isEditing) {
@@ -38,11 +39,15 @@ export function SelectCell({ value, isEditing, column, onStartEdit, onCommit, on
     <div ref={containerRef} className="relative w-full h-full">
       {/* Display */}
       <div
-        className="flex items-center w-full h-full px-2.5 py-1.5 cursor-default"
+        className="flex items-center w-full h-full px-2.5 py-2 cursor-default"
         onClick={onStartEdit}
       >
         {selected ? (
-          <Badge option={selected} />
+          isStage ? (
+            <StageProgress options={options} selectedValue={value} />
+          ) : (
+            <Badge option={selected} />
+          )
         ) : (
           <span className="text-[13px] text-[var(--ink-3)]">—</span>
         )}
@@ -101,5 +106,35 @@ function Badge({ option }: { option: SelectOption }) {
     >
       {option.label}
     </span>
+  )
+}
+
+function StageProgress({ options, selectedValue }: { options: SelectOption[]; selectedValue: any }) {
+  const idx = options.findIndex(o => o.value === selectedValue)
+  const selected = idx >= 0 ? options[idx] : null
+  const isLost = selected && (selected.label.toLowerCase().includes('perd') || selected.label.toLowerCase().includes('lost'))
+  const N = Math.max(options.length, 1)
+
+  return (
+    <div className="flex flex-col gap-1 w-full">
+      <div className="grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${N}, 1fr)` }}>
+        {options.map((opt, i) => {
+          const done = selected && !isLost && i <= idx
+          const bg = isLost ? 'var(--stage-lost)' : (done ? (opt.color ?? 'var(--stage-new)') : 'var(--border)')
+          return <span key={opt.value} className="h-[3px] rounded-[2px]" style={{ background: bg }} />
+        })}
+      </div>
+      {selected && (
+        <span
+          className="font-[family-name:var(--font-geist-mono)] text-[10.5px] uppercase tracking-[0.04em] font-semibold"
+          style={{ color: isLost ? 'var(--stage-lost)' : (selected.color ?? 'var(--ink-2)') }}
+        >
+          {selected.label}
+        </span>
+      )}
+      {!selected && (
+        <span className="text-[var(--ink-4)] text-[11px]">—</span>
+      )}
+    </div>
   )
 }

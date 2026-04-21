@@ -29,11 +29,11 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      <div className="flex items-center gap-1.5 w-full h-full px-2.5 py-1.5 cursor-default" onClick={isReadOnly ? undefined : onStartEdit}>
+      <div className="flex items-center gap-2 w-full h-full px-2.5 py-1.5 cursor-default" onClick={isReadOnly ? undefined : onStartEdit}>
         {selected ? (
           <>
             <Avatar name={selected.label} />
-            <span className="text-[13px] text-[var(--ink)] truncate">{selected.label}</span>
+            <span className="text-[12.5px] text-[var(--ink)] truncate">{selected.label}</span>
           </>
         ) : (
           <span className="text-[13px] text-[var(--ink-3)]">—</span>
@@ -74,12 +74,22 @@ export function PeopleCell({ value, isEditing, column, onStartEdit, onCommit, on
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
-  // Deterministic color from name
-  const hue = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+  const PALETTE = [
+    '#B8461E', // terracota
+    '#7A4E2E', // marrón
+    '#4A6B4F', // oliva
+    '#8B6B1F', // ámbar oscuro
+    '#2D5A3D', // verde bosque
+    '#6B4F2E', // café tierra
+    '#9B3A2A', // rojo ladrillo
+    '#5A6B7E', // azul pizarra
+  ]
+  const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+  const color = PALETTE[hash % PALETTE.length]
   return (
     <div
-      className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-none"
-      style={{ backgroundColor: `hsl(${hue}, 55%, 50%)` }}
+      className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[9.5px] font-semibold tracking-[0.02em] text-white flex-none"
+      style={{ backgroundColor: color }}
     >
       {initials}
     </div>
