@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-type Step = 'input' | 'otp'
+type Step = 'input' | 'otp' | 'email_sent'
 type Method = 'email' | 'phone'
 
 export default function LoginPage() {
@@ -31,7 +31,7 @@ export default function LoginPage() {
     if (error) {
       setError(error.message)
     } else {
-      setStep('otp')
+      setStep(method === 'email' ? 'email_sent' : 'otp')
     }
     setLoading(false)
   }
@@ -79,7 +79,30 @@ export default function LoginPage() {
           </div>
         )}
 
-        {step === 'input' ? (
+        {step === 'email_sent' ? (
+          <div className="space-y-5 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-2xl">
+              ✉️
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900 mb-1">Revisa tu correo</p>
+              <p className="text-sm text-gray-500">
+                Enviamos un enlace a <span className="font-medium text-gray-700">{email}</span>.
+                Haz click para ingresar.
+              </p>
+            </div>
+            <p className="text-xs text-gray-400">
+              Puede tardar hasta 1 minuto. Revisa spam si no lo ves.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setStep('input'); setError(null) }}
+              className="w-full text-sm text-gray-500 hover:text-gray-700"
+            >
+              Cambiar correo
+            </button>
+          </div>
+        ) : step === 'input' ? (
           <form onSubmit={sendOtp} className="space-y-4">
             {method === 'email' ? (
               <div>
@@ -123,7 +146,7 @@ export default function LoginPage() {
               disabled={loading || (method === 'email' ? !email : !phone)}
               className="w-full bg-gray-900 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Enviando...' : 'Enviar código'}
+              {loading ? 'Enviando...' : method === 'email' ? 'Enviar enlace' : 'Enviar código'}
             </button>
           </form>
         ) : (
