@@ -187,20 +187,29 @@ mentions (id, workspace_id, message_id, mentioned_user_id, notified, replied, re
 item_activity (id, workspace_id, item_id, sub_item_id, actor_id, action, old_value, new_value, metadata, created_at)
   -- Alimentado 100% por triggers de DB
 
--- ─── QUOTES ───
-quote_templates (id, workspace_id, board_id, name, stage_id, template_html, header_fields, line_columns, footer_fields, show_prices, created_at)
-quotes (id, workspace_id, item_id, template_id, generated_by, pdf_url, status, created_at)
+-- ─── DOCUMENT TEMPLATES ───
+document_templates (id, sid, workspace_id, name, target_board_id, body_json, style_json,
+                    signature_config, pre_conditions, folio_format, status, created_by,
+                    created_at, updated_at)
+  -- body_json: array de blocks (heading/text/field/image/columns/spacer/divider/
+  --            repeat/subitems_table/total/signature) — ver lib/document-blocks/types.ts
+  -- Templates apuntan a cualquier target_board. Docs generados = items en system board 'quotes'.
+
+document_audit_events (id, document_item_id, workspace_id, event_type, actor_id, metadata, created_at)
 ```
 
 ### System boards (auto-creados por workspace)
 
 | system_key     | type     | Propósito |
 |----------------|----------|-----------|
-| `opportunities`| pipeline | Ventas, pipeline principal |
-| `contacts`     | table    | Personas (phone + email como columnas de sistema) |
-| `accounts`     | table    | Empresas/organizaciones |
+| `opportunities`| pipeline | Ventas, pipeline principal — stages Nueva/Cotización/Presentada/Cerrada |
+| `contacts`     | table    | Personas (phone + email + institucion como cols de sistema) |
+| `accounts`     | table    | Organizaciones (display: "Instituciones") |
 | `vendors`      | table    | Proveedores |
-| `catalog`      | table    | Catálogo de productos |
+| `catalog`      | table    | Catálogo de productos (name + descripcion + foto + unit_price) |
+| `quotes`       | pipeline | Cotizaciones generadas — stages Borrador/Enviada/Pendiente firma/Firmada/Anulada |
+
+**Opinionated knowledge graph:** cada system board trae `sub_item_views` por defecto (ver Fase 18.5 en plan.md). Ej: Oportunidades → {Catálogo, Cotizaciones}. Contactos → {Oportunidades, Cotizaciones}. System boards NO se pueden borrar.
 
 Estos boards se crean con `seed_system_boards(workspace_id)` al crear un workspace. Cada uno tiene sus `board_columns` de sistema pre-configuradas.
 
@@ -220,9 +229,9 @@ deadline (date, is_system)
 -- Board contacts:
 phone (phone, is_system)
 email (email, is_system)
-account (relation → accounts board, is_system)
+institucion (relation → accounts board, is_system)
 
--- Board accounts:
+-- Board accounts (display: "Instituciones"):
 type (select, is_system)
 
 -- Board vendors:
@@ -443,13 +452,21 @@ api/
 
 ## Auth
 
-**Supabase Phone Auth** con OTP SMS via Twilio.
+**Supabase Auth** con 2 métodos: email magic link (default) + phone OTP SMS via Twilio.
 
 ```
+Email (default):
+1. signInWithOtp({ email })  → magic link via email (Resend/Supabase SMTP)
+2. Click link → /auth/callback → JWT, cookies automáticas
+3. Login page muestra "Revisa tu correo" (NO input OTP)
+
+Phone:
 1. signInWithOtp({ phone })     → SMS vía Twilio
-2. verifyOtp({ phone, token })  → JWT, cookies automáticas
-3. Middleware refresca JWT       → auth.uid() funciona en RLS
-4. Trigger handle_new_auth_user → auto-provisioning en primer login
+2. verifyOtp({ phone, token })  → JWT
+
+Común:
+- proxy.ts refresca JWT por request + extiende cookie maxAge a 30d
+- Trigger handle_new_auth_user → auto-provisioning en primer login
 ```
 
 **Dev:** Número `+521234567890` / código `123456` (test OTP en Supabase Dashboard).
@@ -519,11 +536,13 @@ whatsapp-outbound   → Sender genérico
 
 ---
 
-## Roadmap
+## Roadmap (resumen — detalle completo en plan.md)
 
-**Fase 0 (AHORA):** Schema limpio + Auth + Board/Item CRUD + Tabla funcional
-**Fase 1:** Sub-items + Import wizard + Catálogo
-**Fase 2:** Canales + Activity log + Mentions
-**Fase 3:** WhatsApp integration (Edge Functions)
-**Fase 4:** Quote Engine (templates + PDF)
-**Fase 5:** Permisos granulares (board_members, column_permissions, territories)
+**Done (Fases 0–18):** Schema+Auth · Layout · BoardView · ItemDetail · Sub-items · Import · Channels+Activity · Settings · Permisos granulares · ColumnSettings · Files/Buttons/Signature · Variantes L2 · Formula · Rollup · Stage gates · Column perm inheritance · System cols + metatags · Ref cols · Invites + Email auth · Perf + consolidation · **Document Templates + Opinionated Knowledge Graph (quotes pipeline + default sub_item_views + default template + button)**
+
+**Backlog:**
+- **Fase 19:** Tratto AI Agent + Sidebar Chat
+- **Fase 20:** WhatsApp Integration (Edge Functions)
+- **Fase 21:** Filter / Sort / Group en vistas
+- **Fase 22:** Bidirectional Graph Editing (drawer lateral para editar item relacionado desde relation chip)
+- **Fase 23:** ItemDetailView UX Redesign (Attio-style: breadcrumb + tabs + sidebar accordion)

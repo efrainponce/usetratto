@@ -2,6 +2,13 @@
 
 ## 2026-04-21
 
+**~sesión 11 — Polish + fixes post knowledge graph (dummy data + bugs + UX)**
+- Migration `20260421000002_dummy_data_seed.sql`: 20 rows × 5 boards (Instituciones/Contactos/Proveedores/Catálogo/Oportunidades) con nombres mexicanos + fotos picsum + relations cruzadas
+- Migration `20260421000003_drop_opp_institucion.sql`: dropped `institucion` col de Oportunidades (vive solo en Contactos). Generate route ahora resuelve quote.institucion vía chain `opp.contacto → contact.institucion`. Sub_item_view "Oportunidades" removida de Instituciones (llega vía Contactos→Oportunidades)
+- Fixes: FileCell null-safe en `mime` + soporte URLs externas; SourceColumnMapper lee `source_board_id` del view activo (no del board legacy); auto-backfill de values al crear sub_item_column con `source_col_key` (eliminó UX papercut del ↻ manual); ColumnSettingsPanel doble ancho (w-[40rem])
+- Auth UX: proxy.ts extiende maxAge de cookies Supabase a 30d (sobrevive restart dev); login email ahora muestra "Revisa tu correo" (magic link) en vez de input OTP
+- start.md sincronizado: quotes agregado a system boards table, document_templates schema documentado, auth dual (email + phone), roadmap actualizado a Fases 0-18 done + backlog 19-23
+
 **~sesión 10 — Fase 18.5/18.6/18.7 — Opinionated Knowledge Graph (quotes pipeline + default relations)**
 - Pivot de diseño: `documents` system board → `cotizaciones` (quotes) pipeline. Rationale: Tratto NO es Monday — viene opinionado. Cada board de sistema trae relations + sub_item_views por defecto, cero config.
 - Migration `20260421000001_quotes_opinionated_graph.sql`: wipe CMP + rewrite `seed_system_boards()` + re-seed. Usa `SET session_replication_role=replica` para saltar triggers `log_sub_item_activity`/`log_sub_item_deleted` durante el wipe (cascade → trigger → INSERT a item_activity que luego viola FK al borrar sub_items)
