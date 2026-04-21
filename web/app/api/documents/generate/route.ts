@@ -411,7 +411,7 @@ export async function POST(req: Request) {
       colKeyToId[col.col_key] = col.id
     }
 
-    // Fetch columns from source opp board to get source_contacto_id, source_institucion_id, source_monto
+    // Fetch columns from source opp board to get source_contacto_id, source_monto
     const { data: oppBoardCols } = await service
       .from('board_columns')
       .select('id, col_key')
@@ -422,30 +422,66 @@ export async function POST(req: Request) {
       oppColKeyToId[col.col_key] = col.id
     }
 
-    // Read source opp item_values for contacto, institucion, monto
+    // Read source opp item_values for contacto, monto
     let sourceContactoId: string | null = null
     let sourceInstitucionId: string | null = null
     let sourceMontoValue: number | null = null
 
-    if (oppColKeyToId['contacto'] && oppColKeyToId['institucion'] && oppColKeyToId['monto']) {
+    if (oppColKeyToId['contacto'] && oppColKeyToId['monto']) {
       const { data: sourceValues } = await service
         .from('item_values')
         .select('column_id, value_text, value_number')
         .eq('item_id', source_item_id)
         .in('column_id', [
           oppColKeyToId['contacto'],
-          oppColKeyToId['institucion'],
           oppColKeyToId['monto']
         ]) as any
 
       for (const iv of sourceValues ?? []) {
         if (iv.column_id === oppColKeyToId['contacto']) {
           sourceContactoId = iv.value_text
-        } else if (iv.column_id === oppColKeyToId['institucion']) {
-          sourceInstitucionId = iv.value_text
         } else if (iv.column_id === oppColKeyToId['monto']) {
           sourceMontoValue = iv.value_number
         }
+      }
+    }
+
+    // Resolve institucion from contacto via chain lookup
+    if (sourceContactoId) {
+      try {
+        // Find Contacts board
+        const { data: contactsBoard } = await service
+          .from('boards')
+          .select('id')
+          .eq('workspace_id', auth.workspaceId)
+          .eq('system_key', 'contacts')
+          .maybeSingle()
+
+        if (contactsBoard) {
+          // Find institucion column in Contacts board
+          const { data: institucionCol } = await service
+            .from('board_columns')
+            .select('id')
+            .eq('board_id', contactsBoard.id)
+            .eq('col_key', 'institucion')
+            .maybeSingle()
+
+          if (institucionCol) {
+            // Get institucion value from contact item
+            const { data: contactInstitucionValue } = await service
+              .from('item_values')
+              .select('value_text')
+              .eq('item_id', sourceContactoId)
+              .eq('column_id', institucionCol.id)
+              .maybeSingle()
+
+            if (contactInstitucionValue?.value_text) {
+              sourceInstitucionId = contactInstitucionValue.value_text
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[documents/generate] Error resolving institucion from contacto:', err)
       }
     }
 
