@@ -308,7 +308,7 @@ Toda tabla tiene `workspace_id`. RLS garantiza aislamiento total. Un workspace =
 - Row selection + shift-click
 - Column pinning (sticky first column)
 - Row expansion — el `>` de Monday (`getExpandedRowModel`, `subRows` field en data)
-- Base para virtual scrolling (TanStack Virtual — instalado, activación en Fase 17.5)
+- Base para virtual scrolling (TanStack Virtual — activo en `GenericDataTable` desde Fase 17.5)
 
 **Siempre DIY encima:**
 - Cell types (TextCell, SelectCell, etc.) — dependen de nuestros column kinds

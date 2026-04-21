@@ -1,5 +1,14 @@
 # log
 
+## 2026-04-20
+
+**~sesión 8 — Fase 17.5 CLOSED (auditoría retroactiva + migration push)**
+- Retomé proyecto tras 5 días off; descubrí que Fase 17.5 entera ya estaba implementada en código (commit 6c59785 del 16-abr) pero nunca loggeada ni marcada en plan.md
+- Auditoría confirmó 11/11 tareas done: virtual scrolling activo (`useVirtualizer` GenericDataTable:303), 4 modales lazy (BoardView:11-14 `next/dynamic`), `Promise.all` en refColsMeta (BoardView:514,532), `useMemo(()=>createClient(),[])` (BoardView:91), 12+ callbacks memoizados, hooks compartidos (`useAsyncData/useDisclosure/useClickOutside`), helpers (`lib/api-helpers.ts`, `lib/column-permissions-handler.ts`, `lib/auth/resolve-profile.ts`), dup `SubItemColumn` borrada
+- Migration `20260416000001_db_indexes.sql` (7 CREATE INDEX en FKs frecuentes) estaba committed local pero NO aplicada en remote Supabase — `supabase db push --linked` aplicada hoy; `supabase migration list` confirma versión remota actualizada
+- Build verde 73+ rutas, plan.md actualizado con todos los `[x]`, Fase 17.5 marcada CLOSED
+- `.claude/commands/start.md` restaurado desde git (commit cb1d37b) — había quedado vacío
+
 ## 2026-04-16
 
 **~sesión 7 — Audit completo + Fase 17.5 Performance plan**
