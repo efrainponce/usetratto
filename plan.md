@@ -1495,3 +1495,54 @@ Knowledge graph real: los system boards están conectados por defecto (Fase 18.5
 
 ---
 
+## Fase 23 — ItemDetailView UX Redesign (Attio-style)
+
+**Goal:** Detail view menos flat, más rico. Referencia: Attio/Affinity — breadcrumb + header con acción primaria + chips de relaciones + activity feed con rich cards por tipo + right sidebar con accordion de secciones de info. Aplicable a TODOS los boards (genérico, no solo oportunidades).
+
+**Idea capturada del screenshot Attio (company detail):** breadcrumb `Companies > Cosme ⭐`, header grande con logo + botones "Compose email" + acciones, tag row con relations principales (owner + parent), tab strip con counts (Activity·Emails·Calls·Team·Associated deals·Notes·Tasks·Files), activity feed agrupado por fecha (2025 > This week > March) con cards ricas (meeting con recording player embebido, note con preview, email con subject), right panel accordion: Record Details (description truncada + categorías como pills) + Enriched Firmographics (foundation date, employee range, ARR) + Location + Social Media Links.
+
+### Scope
+
+**Header (universal):**
+- [ ] **23.1** Breadcrumb: `{Board name} > {Item name}`
+- [ ] **23.2** Icono del board + nombre item grande editable inline
+- [ ] **23.3** Star favorito (nueva tabla `item_favorites` o col en `users`)
+- [ ] **23.4** Action buttons: primary action configurable por board (ej: "Generar cotización" en opps, "Compose email" en contactos si hay email col); secundarios: `...` menu con archivar/duplicar/eliminar
+- [ ] **23.5** Tag row: chips de relaciones principales (owner + relations principales auto-detectadas por settings.primary_relations)
+
+**Tabs row con counts:**
+- [ ] **23.6** Auto-tabs por board config: Activity · Sub-items (por view) · Channels · Files · Notes · Tasks. Counts en badges.
+- [ ] **23.7** Tabs dinámicos según capacidades: si board tiene sub_item_views → tab por cada view; si board tiene document templates → tab Documents; si tiene canales → Channels
+
+**Activity feed rich:**
+- [ ] **23.8** Grouping por fecha (Today / This week / This month / YYYY)
+- [ ] **23.9** Rich cards por `action`: meeting → card con título+fecha+duración+player; email → subject+preview+sender; note → título+snippet con markdown; attribute_change → diff visual; sub_item_*→ inline card con info del sub-item
+- [ ] **23.10** Lazy load más antiguos (infinite scroll o "Load more")
+- [ ] **23.11** Avatares de actor + timestamp relativo (hace X)
+
+**Right sidebar (accordion):**
+- [ ] **23.12** Secciones configurables por board en `boards.settings.detail_sections` (jsonb). Cada sección = { title, col_keys[] } o preset ("record_details", "enrichment", "location", "social")
+- [ ] **23.13** Accordion colapsable con estado persistido en localStorage
+- [ ] **23.14** "Show all values" para secciones largas (truncar a 5 cols visibles)
+- [ ] **23.15** Inline edit en cada field (reusa ColumnCell) — mismo patrón que row
+
+**Presets por board de sistema:**
+- [ ] **23.16** Contactos: Record Details (phone/email/owner/institucion) + Social (linkedin/twitter col opcionales) + Activity
+- [ ] **23.17** Oportunidades: Record Details (stage/monto/owner/deadline) + Related (contacto/institucion como chips) + Products (sub-item view Catálogo embed) + Quotes (sub-item view Cotizaciones embed) + Activity
+- [ ] **23.18** Instituciones: Record Details + Enrichment (industry/size/founded cols, opcional) + People (sub-item view Contactos) + Activity
+- [ ] **23.19** Cotizaciones: Record Details (folio/monto/stage/signatures status) + Line items (sub-items native) + PDF preview embed + Audit log
+
+### Verificación
+- [ ] Click item en cualquier board → detail view con header + tabs + sidebar (no flat row)
+- [ ] Activity feed agrupa por fecha sin loading jank
+- [ ] Accordion states persisten entre sesiones
+- [ ] Misma estructura en todos los boards (config via detail_sections)
+- [ ] Responsive: mobile colapsa sidebar a drawer
+
+### Referencias
+- Attio (company/contact detail) — activity feed + right sidebar accordion
+- Affinity — breadcrumb + chip row
+- Notion — inline editable fields
+
+---
+
