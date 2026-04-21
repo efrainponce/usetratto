@@ -43,7 +43,7 @@ export type ColumnSettings = {
   max_files?:       number
   // button
   label?:           string
-  action?:          'change_stage' | 'create_quote' | 'run_automation'
+  action?:          'change_stage' | 'create_quote' | 'run_automation' | 'generate_document'
   target_stage_id?: string           // change_stage target
   stage_id?:        string           // legacy alias
   template_id?:     string

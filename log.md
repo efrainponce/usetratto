@@ -1,5 +1,21 @@
 # log
 
+## 2026-04-21
+
+**~sesión 9 — Fase 18 Document Templates CLOSED (rediseño completo + implementación autónoma)**
+- Rediseño: Fase 18 cambió de "Quote Engine" CMP-específico a sistema genérico de plantillas (más fácil que Eledo). Templates apuntan a cualquier target_board, body = array de blocks JSON portable. Stack: `@react-pdf/renderer` + custom block list con `@dnd-kit/sortable` (en vez de TipTap/Chromium)
+- Migration `20260420000001_document_templates.sql`: `document_templates`, `document_audit_events`, `seed_system_boards` extendida con board `documents` (system_key='documents', 9 cols: template_id/source_item_id/pdf_url/folio/status/signatures/generated_by + 3 system). Backfill al workspace CMP. Fix: `ON CONFLICT DO NOTHING` en backfill porque `trg_boards_inject_system_cols` ya inyecta los 3 system cols
+- `lib/document-blocks/`: types.ts (11 block types, RenderContext, DocumentMeta), resolver.ts (formatValue/resolveField/resolveTemplate/withRepeatScope, formatters es-MX nativos Intl, 0 deps), pdf-renderer.tsx (DocumentPdf, 442 LOC), html-preview.tsx (DocumentHtmlPreview para editor live preview, 438 LOC), validator.ts (validatePreConditions con scope root/sub_items_all/sub_items_any), sample-context.ts (dummy data para preview)
+- Block types v1: heading · text (con inline markdown `**bold**` `*italic*`) · field · image · columns · spacer · divider · **repeat** (killer feature: loop sub_items/relation con inner blocks, scope switch dentro) · subitems_table · total · signature. `{{col_key|formatter}}` placeholders, `{{parent.col_key}}` escapa scope en repeat
+- Template editor UI en `components/templates/`: BlockCanvas (dnd-kit sortable, expand/collapse inline), BlockPalette (11 botones + defaults), SlashMenu (popover de fields filtrable con hook `useSlashMenu`), 11 editores específicos en `blocks/` (uno por tipo)
+- Página editor `/app/w/[workspaceSid]/settings/boards/[boardId]/templates/[tplId]`: layout 3-panel (palette | canvas | preview live), auto-save debounced 1.5s
+- Tab "Documentos" en board settings: lista templates del board, CRUD inline con navegación al editor
+- API: `/api/document-templates` GET/POST + `/api/document-templates/[id]` GET/PATCH/DELETE (RLS + admin check workspace O target_board), `/api/documents/generate` POST (valida → resuelve valores relations/people/select a labels → render PDF server-side con React-PDF renderToBuffer → upload bucket `documents` → crea item + audit event), `/api/documents/[id]/sign` POST (decode base64 → upload bucket `signatures` → re-render PDF con firma stampada → update pdf_url + signatures, auto-status 'signed' si todas required listas), `/api/documents?source_item_id=X` GET (lista docs generados desde item)
+- Wiring: ButtonCell action `'generate_document'` (pre-conditions errors inline, abre PDF new tab, dispatch `document-generated` event), SignatureDrawModal (canvas HTML5 mouse+touch, base64 → sign API), DocumentsTab en ItemDetailView (lista con "Ver PDF"/"Firmar"/"Eliminar", listeners `document-generated`/`document-signed`)
+- Delegación: 6 agentes Haiku paralelos en 4 layers (types/validator/API → renderers → editor UI → wiring) + orquestación Sonnet. ~3,500 LOC netos
+- Build verde 80+ rutas, typecheck limpio
+- Verificación manual de flujo end-to-end pendiente (crear template, agregar repeat+image block, generar PDF, firmar)
+
 ## 2026-04-20
 
 **~sesión 8 — Fase 17.5 CLOSED (auditoría retroactiva + migration push)**

@@ -67,8 +67,8 @@ const PRESET_COLORS = [
 ]
 
 
-export default function BoardSettingsPage({ params }: { params: Promise<{ boardId: string }> }) {
-  const { boardId } = use(params)
+export default function BoardSettingsPage({ params }: { params: Promise<{ boardId: string; workspaceSid: string }> }) {
+  const { boardId, workspaceSid } = use(params)
   const router = useRouter()
 
   const [board, setBoard] = useState<Board | null>(null)
@@ -79,8 +79,8 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const [loading, setLoading] = useState(true)
 
   const searchParams = useSearchParams()
-  const initialTab = (searchParams.get('tab') as 'etapas' | 'columnas' | 'acceso' | 'sub-items' | null) ?? 'etapas'
-  const [activeTab, setActiveTab] = useState<'etapas' | 'columnas' | 'acceso' | 'sub-items'>(initialTab)
+  const initialTab = (searchParams.get('tab') as 'etapas' | 'columnas' | 'acceso' | 'sub-items' | 'documentos' | null) ?? 'etapas'
+  const [activeTab, setActiveTab] = useState<'etapas' | 'columnas' | 'acceso' | 'sub-items' | 'documentos'>(initialTab)
   const [editingStageId, setEditingStageId] = useState<string | null>(null)
   const [editingStageName, setEditingStageName] = useState('')
   const [newStageName, setNewStageName] = useState('')
@@ -92,6 +92,23 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const [isSaving, setIsSaving] = useState(false)
 
   const [colSettingsId, setColSettingsId] = useState<string | null>(null)
+
+  // Templates state
+  type DocumentTemplate = {
+    id: string
+    sid: number
+    name: string
+    target_board_id: string
+    status: 'draft' | 'active' | 'archived'
+    created_at: string
+    body_json: unknown
+    style_json: unknown
+  }
+
+  const [templates, setTemplates] = useState<DocumentTemplate[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState('')
+  const [showNewTemplateForm, setShowNewTemplateForm] = useState(false)
 
   // ── Sub-item views state ─────────────────────────────────────────────
   type SubItemViewType = 'native' | 'board_items' | 'board_sub_items'
@@ -148,6 +165,22 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
     else if (res.status === 400) alert('No puedes eliminar la última vista')
   }
 
+  // Fetch templates for this board
+  async function fetchTemplates() {
+    setTemplatesLoading(true)
+    try {
+      const res = await fetch(`/api/document-templates?target_board_id=${boardId}`)
+      const data = await res.json()
+      if (res.ok && data.templates) {
+        setTemplates(data.templates as DocumentTemplate[])
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error)
+    } finally {
+      setTemplatesLoading(false)
+    }
+  }
+
   // Fetch data on mount
   useEffect(() => {
     async function fetchData() {
@@ -182,6 +215,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
     }
 
     fetchData()
+    fetchTemplates()
     fetch('/api/users/me').then(r => r.ok ? r.json() : {}).then((d: { role?: string }) => {
       // If workspace admin, allow access
       if (d.role === 'admin' || d.role === 'superadmin') {
@@ -419,6 +453,62 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
     return handleUpdateMember(memberId, { access: newAccess })
   }
 
+  // ─── Template handlers ──────────────────────────────────────────
+
+  async function handleCreateTemplate(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (!newTemplateName.trim()) return
+
+    setIsSaving(true)
+    try {
+      const res = await fetch('/api/document-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newTemplateName.trim(),
+          target_board_id: boardId,
+          body_json: [],
+          style_json: {},
+        }),
+      })
+
+      if (res.ok) {
+        const template = await res.json()
+        setTemplates((prev) => [...prev, template])
+        setNewTemplateName('')
+        setShowNewTemplateForm(false)
+        // Navigate to template editor
+        router.push(
+          `/app/w/${workspaceSid}/settings/boards/${boardId}/templates/${template.id}`
+        )
+      }
+    } catch (error) {
+      console.error('Error creating template:', error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function handleDeleteTemplate(templateId: string) {
+    if (!confirm('¿Eliminar este template? Esta acción es irreversible.')) return
+
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/document-templates/${templateId}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        setTemplates((prev) => prev.filter((t) => t.id !== templateId))
+      }
+    } catch (error) {
+      console.error('Error deleting template:', error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
 
   if (loading) {
     return (
@@ -503,6 +593,18 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
           ].join(' ')}
         >
           Sub-items
+        </button>
+
+        <button
+          onClick={() => setActiveTab('documentos')}
+          className={[
+            'pb-3 text-sm font-medium transition-colors',
+            activeTab === 'documentos'
+              ? 'border-b-2 border-gray-900 text-gray-900'
+              : 'text-gray-500 hover:text-gray-700',
+          ].join(' ')}
+        >
+          Documentos
         </button>
       </div>
 
@@ -1044,6 +1146,109 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                 </p>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* ─── Tab: Documentos ────────────────────────────────────────────── */}
+      {activeTab === 'documentos' && (
+        <div className="space-y-4">
+          {/* Templates List */}
+          {!templatesLoading && templates.length > 0 && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden mb-6">
+              {templates.map((template) => (
+                <div
+                  key={template.id}
+                  className="flex items-center justify-between gap-4 py-3 px-4 border-b border-gray-100 last:border-b-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{template.name}</p>
+                    <p className="text-xs text-gray-500 font-mono">{template.sid}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className={[
+                      'text-xs px-2 py-0.5 rounded-full',
+                      template.status === 'draft' ? 'bg-gray-100 text-gray-600' :
+                      template.status === 'active' ? 'bg-green-100 text-green-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    ].join(' ')}>
+                      {template.status === 'draft' ? 'Borrador' : template.status === 'active' ? 'Activo' : 'Archivado'}
+                    </span>
+
+                    <button
+                      onClick={() => {
+                        router.push(
+                          `/app/w/${workspaceSid}/settings/boards/${boardId}/templates/${template.id}`
+                        )
+                      }}
+                      className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      Editar
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteTemplate(template.id)}
+                      disabled={isSaving}
+                      className="text-gray-400 hover:text-red-600 text-lg leading-none disabled:opacity-50"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!templatesLoading && templates.length === 0 && !showNewTemplateForm && (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-500 mb-4">No hay templates aún</p>
+            </div>
+          )}
+
+          {/* New Template Form */}
+          {showNewTemplateForm ? (
+            <form onSubmit={handleCreateTemplate} className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre del template
+                </label>
+                <input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  placeholder="Ej. Contrato Estándar"
+                  className="w-full border border-gray-200 rounded-md px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                  disabled={isSaving}
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={isSaving || !newTemplateName.trim()}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  {isSaving ? 'Creando...' : 'Crear'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowNewTemplateForm(false)}
+                  className="px-4 py-2 border border-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowNewTemplateForm(true)}
+              className="px-4 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              + Nuevo template
+            </button>
           )}
         </div>
       )}

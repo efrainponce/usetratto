@@ -744,215 +744,79 @@ user_trusted_devices (
 
 ---
 
-## Fase 18 — Quote Engine
+## Fase 18 — Document Templates ✅ CLOSED (2026-04-21)
 
-**Goal:** Generación de cotizaciones PDF desde items del pipeline. Los datos viven en el item (oportunidad) + sus sub-items (productos). El board `quotes` es tracking e historial, no fuente de datos.
+**Goal:** Sistema generico de plantillas de documentos (cotizaciones, contratos, fichas técnicas, cualquier cosa), más fácil que Eledo. Template apunta a cualquier target_board, body = array de blocks JSON (heading, text, field, image, columns, repeat, signature, etc). Generar crea item en system board `documents` con PDF generado vía `@react-pdf/renderer`. Firma estampa PDF y dispara re-render. Killer feature: `repeat` block con imagen por sub-item (producto con foto + desc + precio).
 
-### Arquitectura
+### Stack
+- **PDF:** `@react-pdf/renderer` (pure JS, sin chromium, `runtime='nodejs'`)
+- **Editor:** custom block list + `@dnd-kit/sortable` — cada block es un form, slash-menu `/` solo en text/heading blocks
+- **Storage:** Supabase storage buckets `documents` + `signatures` (auto-created on first use, public)
+- **Firma externa:** diferida (backlog — solo users registrados en v1)
+- **Re-generar:** crea item nuevo en board `documents` (v2 = distinto, no reemplaza)
 
-```
-Generación (N veces por oportunidad — v1, v2... v8):
-  Oportunidad (item)
-    └── Sub-items en vista "Catálogo" — costeados y validados por compras
-    └── Botón "Generar cotización" (ButtonCell, action: 'generate_quote')
-          ↓
-       validatePreConditions()   ← bloquea si faltan datos
-          ↓
-       SNAPSHOT: copia sub-items de la vista fuente (sub_item_view_id)
-       al nuevo quote item — mismo engine que Fase 5 (source_item_id)
-          ↓
-       Item creado en board 'quotes'
-            - Relation → esta oportunidad
-            - Relation → contacto
-            - Sub-items propios = snapshot de los sub-items copiados
-              (editables independientemente: markup, descuentos, ajustes)
-            - Columna firma (signature, vacía)
-            - Stage: Borrador
-            - version = count previos + 1
-          ↓
-       Edge Function generate-quote
-       lee sub-items DEL QUOTE ITEM (no de la oportunidad)
-          ↓
-       PDF sin firma → Supabase Storage → columna file del quote item
-
-Firma electrónica (después de generar):
-  Quote item (en board 'quotes')
-    └── Columna 'firma' (kind='signature')
-    └── settings.on_sign: { regenerate_pdf: true, change_stage_to: 'Aceptada' }
-          ↓
-       Cliente/vendedor hace click en "Firmar"
-          ↓
-       OTP captura firma → guarda en columna signature
-          ↓
-       Trigger automático: regenera PDF con firma embebida (watermark)
-          ↓
-       Columna 'pdf' del quote item actualizada con nuevo PDF firmado
-          ↓
-       Stage avanza automáticamente a 'Aceptada'
-
-Tracking (board 'quotes', system_key='quotes'):
-  stages:  Borrador → Enviada → Aceptada → Rechazada → Facturada
-  columns: oportunidad (relation), contacto (relation), monto (number),
-           pdf (file), firma (signature), fecha (date),
-           generado_por (people), version (number)
-  sub-items: snapshot de las líneas copiadas — precios BLOQUEADOS para vendedor
-             columns:
-               producto    (relation→catalog) — view only para todos
-               qty         (number)           — vendedor puede editar
-               precio_unit (number)           — solo equipo Compras puede editar
-               descuento   (number)           — solo admin/Compras
-               subtotal    (formula: qty * precio_unit * (1 - descuento/100)) — read-only
-
-  column_permissions en sub_item_columns del board 'quotes' (seed default):
-    precio_unit → equipo 'compras': edit | vendedor: view
-    descuento   → equipo 'compras': edit | vendedor: view
-    producto    → todos: view (inmutable post-snapshot)
-    qty         → todos: edit
-```
-
-**Flujo correcto de precios:**
-- Compras valida y captura `precio_unit` en la vista fuente (catálogo/cotización de la oportunidad)
-- El vendedor genera el quote → snapshot copia sub-items con precios congelados
-- El vendedor solo puede cambiar `qty` (cantidades) — no precios ni descuentos
-- Si el cliente pide descuento → el vendedor lo solicita a compras/admin
-- Compras edita `precio_unit` o `descuento` en el quote item → vendedor regenera el PDF (nueva versión)
-- v1 a v8: cada versión refleja negociaciones reales (precio inicial, precio con descuento, etc.)
-- El PDF siempre se genera desde los sub-items del QUOTE con los permisos ya aplicados
-
-**No hay tabla `quotes` separada** — reemplazada por el board de sistema `quotes`. Cada PDF generado = un item en ese board. Las relaciones a contactos, cuentas y productos son columnas `relation` estándar.
-
+### Modelo de datos
 ```sql
--- Solo queda una tabla nueva:
-quote_templates (id, workspace_id, board_id, name,
-                 sub_item_view_id uuid REFERENCES sub_item_views(id),
-                                        -- ← CUÁL vista usamos como fuente de líneas
-                 header_fields jsonb,   -- col_keys del item → encabezado PDF
-                 line_columns jsonb,    -- col_keys de ESA vista → filas PDF
-                 footer_fields jsonb,   -- col_keys del item → pie (totales, impuestos)
-                 show_prices boolean DEFAULT true,
-                 pre_conditions jsonb DEFAULT '[]',
-                 created_at timestamptz)
+document_templates (id, sid, workspace_id, name, target_board_id, body_json,
+                    style_json, signature_config, pre_conditions, folio_format,
+                    status, created_by, created_at, updated_at)
+document_audit_events (id, document_item_id, workspace_id, event_type,
+                       actor_id, metadata, created_at)
+documents system board (auto-seeded):
+  columns: name, template_id, source_item_id, pdf_url, folio, status,
+           signatures, generated_by, + 3 system cols
 ```
 
-- **`sub_item_view_id`**: FK a `sub_item_views` de la oportunidad — la vista FUENTE cuyos sub-items se copian (snapshot) al nuevo quote item. Obligatorio. Ej: vista "Catálogo" (costeada por compras). No es la vista del quote — es de dónde se copia.
-- `line_columns`: col_keys de los sub-items del QUOTE (destino del snapshot) que aparecen como columnas en el PDF. El board `quotes` tiene sus propias sub_item_columns estándar (producto, qty, precio_unit, descuento, subtotal).
-- `header_fields`: col_keys del item que van en encabezado (cliente, fecha, folio)
-- `footer_fields`: col_keys del item para pie (rollups de totales, impuestos, descuento global)
-- **`signature_col_key`**: col_key de la columna `kind='signature'` en el board `quotes`. Si está configurado, el PDF generado inicialmente va sin firma; cuando esa columna se firma → PDF se regenera con la firma embebida.
-- PDF generado con `@react-pdf/renderer` en Edge Function, guardado en Supabase Storage
+### Block types v1 (11)
+`heading` · `text` · `field` · `image` · `columns` · `spacer` · `divider` · `repeat` · `subitems_table` · `total` · `signature`
 
-**Configuración de firma en `board_columns.settings` (columna `kind='signature'` en board quotes):**
-```typescript
-{
-  on_sign: {
-    regenerate_pdf: true,           // regenera el PDF del quote con la firma embebida
-    pdf_col_key: 'pdf',             // col_key de la columna file donde actualizar el PDF
-    change_stage_to: 'stage_uuid'   // avanza etapa automáticamente al firmar (ej: Aceptada)
-  }
-}
-```
-
-**En la UI del template editor:** el selector de `line_columns` solo muestra columnas de la vista elegida en `sub_item_view_id`. Si cambia la vista → se limpia `line_columns` para forzar reconfiguración.
-
-**Vista "Cotización" es una `sub_item_view` normal** — no hay tipo especial. El `quote_template.sub_item_view_id` simplemente apunta a ella. El vendedor edita los sub-items en esa vista igual que en cualquier otra. Si al configurar el primer template el board aún no tiene vistas de sub-items, la UI ofrece crear una vista "Cotización" con columnas default (producto relation, qty number, precio_unit number, descuento number, subtotal formula); si ya tiene vistas, solo elige cuál usar.
-- Si item tiene columna `kind='signature'` firmada → watermark en footer del PDF
-
-### Pre-condiciones para generar cotización (validaciones cruzadas)
-
-Antes de permitir generar el PDF, el template puede requerir que ciertas columnas estén en estado específico. Estas condiciones van en `quote_templates.pre_conditions` (jsonb array):
-
-```typescript
-// quote_templates.pre_conditions
-[
-  // Condición sobre columna del item
-  { level: 'item', col_key: 'estado_aprobacion', operator: '=', value: 'Aprobado',
-    message: 'La oportunidad debe estar aprobada antes de cotizar' },
-
-  // Condición sobre columna de status del sub-item (requiere que TODOS o AL MENOS UNO cumplan)
-  { level: 'subitem', col_key: 'status', operator: '!=', value: 'Sin precio',
-    match: 'all',   // 'all' | 'any'
-    message: 'Todos los productos deben tener precio asignado' },
-
-  // Condición sobre columna de sub-item (ej: rollup suma > 0)
-  { level: 'item', col_key: 'total_cotizacion', operator: '>', value: 0,
-    message: 'La cotización no puede ser de $0' },
-]
-```
-
-**Flujo al clickear "Generar cotización":**
-1. Evalúa cada `pre_condition` contra el item + sus sub-items actuales
-2. Si alguna falla → lista de mensajes bloqueantes, sin generar PDF (igual que stage gates)
-3. Si todas pasan → genera PDF
-
-**Columnas disponibles para condiciones:**
-- Cualquier `col_key` del item (incluyendo fórmulas y rollups)
-- Cualquier `col_key` de sub_item_columns del board (para condiciones a nivel sub-item)
-- El operador `level: 'subitem'` con `match: 'all'` exige que todos los sub-items cumplan; `match: 'any'` basta con uno
-
-### Campos adicionales del board `quotes` y del PDF
-
-```
-board 'quotes' — columnas extra:
-  folio        (autonumber) ← COT-2024-001, requerido B2G
-  vigencia     (date)       ← fecha de expiración de la cotización
-  iva_pct      (number)     ← % IVA, default 16; configurable por workspace/template
-  moneda       (select)     ← MXN por defecto; USD si aplica
-  notas        (text)       ← condiciones generales, tiempo de entrega, etc.
-
-PDF — secciones:
-  Header:  logo del workspace + datos fiscales + folio + fecha + vigencia
-  Datos:   cliente, institución, vendedor, referencia (oportunidad)
-  Tabla:   líneas (producto, qty, precio_unit, descuento%, subtotal)
-  Footer:  subtotal sin IVA | IVA (16%) | TOTAL | vigencia | notas
-           [firma digital si existe]
-```
-
-**Folio:** columna `autonumber` en el board `quotes` — usa el engine de autonumber que ya existe. Formato configurable en `workspaces.settings.quote_folio_prefix` (ej: `"COT-{YYYY}-{N}"` → `COT-2024-001`).
+`{{col_key}}` placeholders resueltos por `lib/document-blocks/resolver.ts`. Formatters: `date` · `datetime` · `money` · `number` · `percent` · `relative` · `upper` · `lower`. Scope switching dentro de `repeat`: `{{col_key}}` apunta al item iterado, `{{parent.col_key}}` escapa al root.
 
 ### Tareas
-- [ ] **18.1** Migration: `quote_templates`; agregar `system_key='quotes'` a `seed_system_boards` con:
-  - stages: Borrador/Enviada/Aceptada/Rechazada/Facturada
-  - board_columns: oportunidad(relation), contacto(relation), monto(number), pdf(file), firma(signature), folio(autonumber), vigencia(date), iva_pct(number, default 16), moneda(select: MXN/USD), notas(text), generado_por(people), version(number)
-  - sub_item_columns: producto(relation→catalog), qty(number), precio_unit(number), descuento(number), subtotal(formula)
-  - column_permissions seed: precio_unit/descuento → solo equipo `compras` edita; qty → todos editan; producto → view only
-- [ ] **18.2** `workspaces.settings.quote_folio_prefix` — campo en Settings → Workspace para configurar el formato del folio (ej: `COT-{YYYY}-{N}`)
-- [ ] **18.3** Settings → Boards → tab "Cotizaciones": CRUD de templates
-  - **Paso 1 — Vista fuente**: dropdown de `sub_item_views` del board (vista de donde se copian los sub-items); cambiar vista limpia `line_columns`
-  - **Paso 2 — Columnas PDF**: header_fields (col_keys del item), line_columns (col_keys de la vista fuente), footer_fields (col_keys del item: subtotales, IVA, total)
-  - **Paso 3 — Condiciones**: pre_conditions con level picker, col_key, operator, value, match, mensaje
-  - Preview con datos ficticios + logo del workspace
-- [ ] **18.4** `lib/quote-validator.ts`: `validatePreConditions(template, item, subItems)` → `{ ok, errors[] }`; reutiliza `evaluateCondition` de formula-engine
-- [ ] **18.5** Edge Function `generate-quote`:
-  - Input: `{ item_id, template_id, user_id, signature_data_url? }`
-  - Fetch item + sub-items de la vista fuente (`sub_item_view_id`) + valores + logo del workspace
-  - Snapshot: copia sub-items al nuevo quote item (respeta Fase 16 column permissions)
-  - Calcula `subtotal`, `iva`, `total` en servidor antes de pasar al PDF
-  - Render PDF con `@react-pdf/renderer` incluyendo logo, folio, vigencia, IVA, firma si viene
-  - Upload → Supabase Storage → URL
-  - Crea item en board `quotes`: folio auto, relations, version++, pdf en columna file
-  - Retorna `{ pdf_url, quote_item_sid, folio }`
-- [ ] **18.6** `ButtonCell` `action: 'generate_quote'`: corre `validatePreConditions`; si falla → errores inline; si ok → llama `POST /api/generate-quote`
-- [ ] **18.7** `POST /api/generate-quote`: `requireAuthApi()` → `validatePreConditions` → Edge Function → retorna `{ pdf_url, folio, quote_item_sid }`
-- [ ] **18.8** `SignatureCell` `settings.on_sign`: al firmar, llama `POST /api/generate-quote/[quoteItemId]/sign` → regenera PDF con firma embebida → actualiza columna `pdf` del quote → avanza stage si `change_stage_to` configurado
-- [ ] **18.9** Tab "Cotizaciones" en ItemDetailView:
-  - Lista: folio, fecha, vigencia, versión, stage badge, ✍️ si firmada, monto total
-  - Botón "Nueva cotización" (genera nueva versión sin pisar las anteriores)
-  - Click en quote → preview PDF en modal + descarga + link compartible
-  - Botón "Firmar" si `signature_col_key` configurado y aún no firmada
-  - Indicador visual si la vigencia ya expiró (fecha pasada → badge rojo "Expirada")
+- [x] **18.1** Migration `20260420000001_document_templates.sql`: `document_templates` + `document_audit_events` + extensión `seed_system_boards` con board `documents`
+- [x] **18.2** `lib/document-blocks/types.ts` — 11 block types + `RenderContext` + `DocumentMeta` (173 LOC)
+- [x] **18.2** `lib/document-blocks/resolver.ts` — `formatValue`, `resolveField`, `resolveTemplate`, `withRepeatScope` (196 LOC)
+- [x] **18.3** `lib/document-blocks/pdf-renderer.tsx` — `DocumentPdf` component, blocks → `@react-pdf/renderer` primitives (442 LOC)
+- [x] **18.4** `lib/document-blocks/html-preview.tsx` — `DocumentHtmlPreview` para preview live en editor (438 LOC)
+- [x] **18.5** Template editor page `/app/w/[workspaceSid]/settings/boards/[boardId]/templates/[tplId]` — layout 3-panel (palette | canvas | preview) con auto-save debounced
+- [x] **18.5** `sample-context.ts` — `buildSampleContext()` genera RenderContext con datos dummy para preview
+- [x] **18.6** `components/templates/BlockCanvas.tsx` — dnd-kit sortable con expand/collapse inline de editores
+- [x] **18.6** `components/templates/BlockPalette.tsx` — sidebar con 11 botones + defaults
+- [x] **18.7** `components/templates/blocks/*.tsx` — 11 editores (uno por block type) con forms inline
+- [x] **18.8** `components/templates/SlashMenu.tsx` + hook `useSlashMenu` — popover de fields en text/heading blocks
+- [x] **18.9** `lib/document-blocks/validator.ts` — `validatePreConditions()` con scope root/sub_items_all/sub_items_any + `extractUsedColKeys()`
+- [x] **18.10** `POST /api/documents/generate` — valida → render PDF server-side → upload storage → crea item en `documents` board + audit event
+- [x] **18.10** `GET /api/documents?source_item_id=X` — lista docs generados desde un item
+- [x] **18.10** `/api/document-templates` CRUD (GET/POST) + `/api/document-templates/[id]` (GET/PATCH/DELETE) — solo workspace admin o board admin del target puede escribir
+- [x] **18.11** `ButtonCell` action `'generate_document'`: POST generate + open PDF in new tab + dispatch `document-generated` event; pre-condition errors mostrados inline
+- [x] **18.11** `ColumnSettings.action` union extendido con `'generate_document'`
+- [x] **18.12** `POST /api/documents/[id]/sign` — decode base64 → upload signature image → re-render PDF con firma stampada → update item pdf_url + signatures; status → 'signed' si todas las required ya firmadas
+- [x] **18.12** `components/templates/SignatureDrawModal.tsx` — canvas HTML5 para dibujar firma (mouse + touch), POST sign
+- [x] **18.13** `DocumentsTab` en `ItemDetailView` — tab "Documentos" lista docs del item con folio + status + "Ver PDF" / "Firmar" / "Eliminar" buttons; listens `document-generated`/`document-signed` events
+
+### Folio format
+`folio_format` en template (ej `'COT-{YYYY}-{N}'`): `{YYYY}` → año actual, `{N}` → counter 0-padded 4 dígitos basado en count de docs previos con mismo `template_id`. `null` = sin folio.
 
 ### Verificación
-- [ ] Cotización bloqueada si sub-item tiene `status = 'Sin precio'` y `match: 'all'`
-- [ ] Cotización bloqueada si `total_cotizacion = 0` (rollup)
-- [ ] PDF generado desde oportunidad con sub-items (L1+L2) → filas desglosadas por talla
-- [ ] Al generar → item aparece automáticamente en board `quotes` con relation a la oportunidad y al contacto
-- [ ] Versiones: generar 3 veces desde la misma oportunidad → v1, v2, v3 independientes en el historial
-- [ ] Firmar quote → PDF se regenera con firma embebida; stage avanza a Aceptada automáticamente
-- [ ] PDF sin firma ≠ PDF con firma — el link del PDF en el quote item apunta siempre a la versión más reciente
-- [ ] Stage del quote actualizable manualmente desde el board `quotes` (Borrador → Enviada → etc.)
+- [x] Migration aplicada en remote, board `documents` existe en CMP workspace
+- [x] `npx tsc --noEmit` pasa sin errores
+- [x] `npm run build` genera 80+ rutas, incluye `/api/documents/generate`, `/api/documents/[id]/sign`, `/api/documents`, `/api/document-templates`, `/api/document-templates/[id]`, `/settings/boards/[boardId]/templates/[tplId]`
+- [ ] Crear template con `repeat sub_items` + image col → PDF muestra 1 bloque por producto con foto real (verificación manual pendiente)
+- [ ] Columns dentro de repeat → layout foto-izq texto-der en PDF (pendiente manual)
+- [ ] Slash-menu en text block inserta chip `{{descripcion}}` (pendiente manual)
+- [ ] Preview live refleja cambios al reordenar blocks (pendiente manual)
+- [ ] 2x "Generar" → 2 items distintos en board `documents` (pendiente manual)
+- [ ] Firmar → PDF re-renderizado con signature image embebida + audit event (pendiente manual)
+- [ ] Pre-condition `total > 0` falla → muestra error inline, no genera (pendiente manual)
+
+### Diferido (18.B backlog)
+- Firma externa via magic link a email no-user
+- Versiones explícitas (link v1↔v2↔v3 en UI)
+- Multi-party signing flow con notificaciones automáticas
+- Template style panel completo (font picker, color scheme)
+- Preview "con item real" (dropdown de items del target_board)
 
 ---
-
 
 ## Fase 19 — Tratto AI Agent + Sidebar Chat
 

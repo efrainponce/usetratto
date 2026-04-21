@@ -93,6 +93,37 @@ export function ButtonCell({ column, rowId, row, allColumns }: CellProps) {
         setSuccess(true)
         setTimeout(() => setSuccess(false), 600)
         // Realtime will sync the table
+      } else if (action === 'generate_document') {
+        const templateId = column.settings.template_id
+        if (!templateId) {
+          alert('Error: template_id no configurado en este botón')
+          return
+        }
+
+        const response = await fetch('/api/documents/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ template_id: templateId, source_item_id: rowId }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          if (response.status === 400 && data.errors) {
+            setFailedMessages(data.errors.map((err: string) => `❌ ${err}`))
+            return
+          }
+          alert(`Error al generar documento: ${data.error ?? response.statusText}`)
+          return
+        }
+
+        // Success — open PDF in new tab
+        window.open(data.pdf_url, '_blank')
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 600)
+
+        // Dispatch custom event for DocumentsTab to refetch
+        window.dispatchEvent(new CustomEvent('document-generated'))
       } else if (action === 'create_quote') {
         alert('Quote Engine disponible en Fase 17')
       } else if (action === 'run_automation') {

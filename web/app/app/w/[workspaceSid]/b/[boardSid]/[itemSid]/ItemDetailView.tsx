@@ -7,6 +7,7 @@ import { ColumnSettingsPanel } from '@/components/ColumnSettingsPanel'
 import { SubItemsView } from '@/components/SubItemsView'
 import { ItemChannels } from '@/components/ItemChannels'
 import { ActivityFeed } from '@/components/ActivityFeed'
+import { DocumentsTab } from './DocumentsTab'
 import type { ColumnDef, CellValue, CellKind, ColumnSettings, NavDirection } from '@/components/data-table/types'
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemView } from '@/lib/boards'
 import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
@@ -21,7 +22,7 @@ function getItemsFieldMap(stageColKey: string, ownerColKey: string): Record<stri
   }
 }
 
-type Tab = 'subitems' | 'channels' | 'activity'
+type Tab = 'subitems' | 'channels' | 'activity' | 'documents'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -261,7 +262,7 @@ export function ItemDetailView({
         {/* ── Tabs area ────────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center border-b border-gray-100 px-4 flex-none">
-            {(['subitems', 'channels', 'activity'] as Tab[]).map(tab => (
+            {(['subitems', 'channels', 'activity', 'documents'] as Tab[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -271,7 +272,7 @@ export function ItemDetailView({
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {tab === 'subitems' ? 'Sub-items' : tab === 'channels' ? 'Canales' : 'Actividad'}
+                {tab === 'subitems' ? 'Sub-items' : tab === 'channels' ? 'Canales' : tab === 'activity' ? 'Actividad' : 'Documentos'}
               </button>
             ))}
           </div>
@@ -296,6 +297,12 @@ export function ItemDetailView({
             )}
             {activeTab === 'activity' && (
               <ActivityFeed itemId={item.id} />
+            )}
+            {activeTab === 'documents' && (
+              <DocumentsTab
+                itemId={item.id}
+                workspaceSid={workspaceSid}
+              />
             )}
           </div>
         </div>
