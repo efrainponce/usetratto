@@ -1,6 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Force Supabase auth cookies to stick for 30 days on the browser so dev-server
+// restarts (and long idle periods in prod) don't log users out. The JWT itself
+// still expires on its own schedule — middleware refreshes on each request.
+const LONG_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -20,7 +25,10 @@ export async function proxy(request: NextRequest) {
           )
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              maxAge: LONG_COOKIE_MAX_AGE,
+            })
           )
         },
       },
