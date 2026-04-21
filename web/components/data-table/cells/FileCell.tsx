@@ -6,10 +6,24 @@ import type { CellProps } from '../types'
 
 type FileEntry = {
   name: string
-  path: string
+  path?: string
+  url?: string
   size: number
-  mime: string
-  uploaded_at: string
+  mime?: string
+  type?: string
+  uploaded_at?: string
+}
+
+function entryMime(e: FileEntry): string {
+  return e.mime ?? e.type ?? ''
+}
+
+function entryKey(e: FileEntry): string {
+  return e.path ?? e.url ?? e.name
+}
+
+function isExternalUrl(u: string | undefined): boolean {
+  return !!u && (u.startsWith('http://') || u.startsWith('https://'))
 }
 
 function formatFileSize(bytes: number): string {
@@ -32,7 +46,8 @@ function pickFile(): Promise<File | null> {
   })
 }
 
-function fileIcon(mime: string): string {
+function fileIcon(mime: string | undefined): string {
+  if (!mime) return '📄'
   if (mime.startsWith('image/'))       return '🖼'
   if (mime === 'application/pdf')      return '📕'
   if (mime.startsWith('video/'))       return '🎬'
@@ -43,9 +58,9 @@ function fileIcon(mime: string): string {
   return '📄'
 }
 
-function isImage(mime: string) { return mime.startsWith('image/') }
-function isPdf(mime: string)   { return mime === 'application/pdf' }
-function isVideo(mime: string) { return mime.startsWith('video/') }
+function isImage(mime: string | undefined) { return !!mime && mime.startsWith('image/') }
+function isPdf(mime: string | undefined)   { return mime === 'application/pdf' }
+function isVideo(mime: string | undefined) { return !!mime && mime.startsWith('video/') }
 
 // ── Preview modal ────────────────────────────────────────────────────────────
 
@@ -61,8 +76,18 @@ function PreviewModal({ entry, rowId, colKey, onClose }: PreviewProps) {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
 
-  // Fetch signed URL on mount
+  // If entry has external URL (seed data or external source), use directly. Else fetch signed URL from storage.
   useState(() => {
+    if (isExternalUrl(entry.url)) {
+      setUrl(entry.url!)
+      setLoading(false)
+      return
+    }
+    if (!entry.path) {
+      setError('Sin ruta')
+      setLoading(false)
+      return
+    }
     fetch(`/api/items/${rowId}/files?${new URLSearchParams({ path: entry.path, column_id: colKey })}`)
       .then(r => r.ok ? r.json() : Promise.reject('Error al cargar'))
       .then(({ url }: { url: string }) => setUrl(url))
@@ -70,9 +95,10 @@ function PreviewModal({ entry, rowId, colKey, onClose }: PreviewProps) {
       .finally(() => setLoading(false))
   })
 
-  const isImg = isImage(entry.mime)
-  const isPDF = isPdf(entry.mime)
-  const isVid = isVideo(entry.mime)
+  const mime = entryMime(entry)
+  const isImg = isImage(mime)
+  const isPDF = isPdf(mime)
+  const isVid = isVideo(mime)
 
   const wide = isImg || isPDF || isVid
 
@@ -84,7 +110,7 @@ function PreviewModal({ entry, rowId, colKey, onClose }: PreviewProps) {
       <div className={`bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden ${wide ? 'w-full max-w-4xl' : 'w-80'}`}>
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-          <span className="text-lg">{fileIcon(entry.mime)}</span>
+          <span className="text-lg">{fileIcon(entryMime(entry))}</span>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-medium text-gray-800 truncate">{entry.name}</p>
             <p className="text-[11px] text-gray-400">{formatFileSize(entry.size)}</p>
@@ -137,7 +163,7 @@ function PreviewModal({ entry, rowId, colKey, onClose }: PreviewProps) {
               )}
               {!isImg && !isPDF && !isVid && (
                 <div className="flex flex-col items-center gap-3 p-8 text-center">
-                  <span className="text-5xl">{fileIcon(entry.mime)}</span>
+                  <span className="text-5xl">{fileIcon(entryMime(entry))}</span>
                   <p className="text-[13px] text-gray-500">Vista previa no disponible para este tipo de archivo.</p>
                   <a
                     href={url}
@@ -191,15 +217,23 @@ export function FileCell({ column, value, rowId, onCommit }: CellProps) {
 
   const handleDelete = async (e: React.MouseEvent, entry: FileEntry) => {
     e.stopPropagation()
-    setDeleting(entry.path)
+    const key = entryKey(entry)
+    setDeleting(key)
     try {
+      // External entries (seed dummy data) — remove from list only, no storage roundtrip
+      if (isExternalUrl(entry.url) || !entry.path) {
+        const newFiles = files.filter(f => entryKey(f) !== key)
+        setFiles(newFiles)
+        ;(onCommit as (v: unknown) => void)(newFiles)
+        return
+      }
       const res = await fetch(`/api/items/${rowId}/files`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ column_id: column.key, path: entry.path }),
       })
       if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? 'Error') }
-      const newFiles = files.filter(f => f.path !== entry.path)
+      const newFiles = files.filter(f => entryKey(f) !== key)
       setFiles(newFiles)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(onCommit as (v: any) => void)(newFiles)
@@ -219,15 +253,15 @@ export function FileCell({ column, value, rowId, onCommit }: CellProps) {
 
         {files.map(entry => (
           <div
-            key={entry.path}
+            key={entryKey(entry)}
             onClick={e => { e.stopPropagation(); setPreview(entry) }}
             className="group/chip relative bg-gray-100 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 rounded-md w-7 h-6 flex items-center justify-center cursor-pointer transition-colors flex-shrink-0"
             title={entry.name}
           >
-            <span className="text-[14px] leading-none">{fileIcon(entry.mime)}</span>
+            <span className="text-[14px] leading-none">{fileIcon(entryMime(entry))}</span>
             <button
               onClick={e => handleDelete(e, entry)}
-              disabled={deleting === entry.path}
+              disabled={deleting === entryKey(entry)}
               className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-white border border-gray-200 rounded-full flex items-center justify-center opacity-0 group-hover/chip:opacity-100 text-gray-400 hover:text-red-500 hover:border-red-300 disabled:opacity-30 transition-all text-[9px] leading-none"
               title="Eliminar"
             >
