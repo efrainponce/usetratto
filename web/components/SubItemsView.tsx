@@ -702,6 +702,33 @@ function NativeRenderer({
           </span>
         </div>
       )}
+
+      {/* ── Card wrapper ─────────────────────────────────────────────── */}
+      <div className={[
+        'flex flex-col flex-1 min-h-0 bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden',
+        compact ? 'mx-3 my-2' : 'mx-4 my-3',
+      ].join(' ')}>
+
+        {/* Sub-header: "Partidas" label + count + acciones */}
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border)] flex-none">
+          <span className="label-caps text-[var(--ink-3)]">Partidas</span>
+          <span className="font-[family-name:var(--font-geist-mono)] text-[10.5px] px-1.5 py-0 bg-[var(--bg)] text-[var(--ink-3)] rounded-lg font-normal">
+            {rows.length}
+          </span>
+          <div className="flex-1" />
+          {sourceBoardId && (
+            <button
+              onClick={() => setShowPicker(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] rounded-sm transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Desde catálogo
+            </button>
+          )}
+        </div>
+
       {/* ── Column header ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide select-none flex-none">
         <div className="flex-none" style={{ width: cw('__expand') }} />
@@ -960,42 +987,45 @@ function NativeRenderer({
         )}
       </div>
 
-      {/* ── Generar cotización CTA (cuando existe template para el board) ── */}
-      {templates.length > 0 && (
-        <div className="flex-none border-t border-[var(--border)] px-4 py-3 flex items-center gap-2.5 bg-[var(--surface-2)]">
-          <button
-            onClick={generateDoc}
-            disabled={generating}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-50 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            {generating ? 'Generando…' : 'Abrir cotización en editor'}
-          </button>
-          <button
-            onClick={generateDoc}
-            disabled={generating}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] hover:bg-[var(--surface)] rounded-sm disabled:opacity-50 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
-            Generar PDF
-          </button>
-          <span className="flex-1 text-right text-[11.5px] text-[var(--ink-4)]">
-            Bloques drag-and-drop · firma en canvas · estampa al PDF
-          </span>
-        </div>
-      )}
+      {/* ── Generar cotización CTA ─────────────────────────────────────── */}
+      <div className="flex-none border-t border-[var(--border)] px-4 py-3 flex items-center gap-2.5 bg-[var(--surface-2)]">
+        <button
+          onClick={generateDoc}
+          disabled={generating || templates.length === 0 || rows.length === 0}
+          title={templates.length === 0 ? 'No hay plantilla de cotización configurada' : rows.length === 0 ? 'Añade al menos una partida' : undefined}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          {generating ? 'Generando…' : 'Abrir cotización en editor'}
+        </button>
+        <button
+          onClick={generateDoc}
+          disabled={generating || templates.length === 0 || rows.length === 0}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] hover:bg-[var(--surface)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Generar PDF
+        </button>
+        <span className="flex-1 text-right text-[11.5px] text-[var(--ink-4)]">
+          {templates.length === 0 ? 'Configura una plantilla en Configuración → Boards' : 'Bloques drag-and-drop · firma en canvas · estampa al PDF'}
+        </span>
+      </div>
+      {/* preserve variable reference */}
+      {false && templates[0]?.name}
       {generateErrors.length > 0 && (
         <div className="flex-none border-t border-[var(--stage-lost)] px-4 py-2 bg-[color-mix(in_oklab,var(--stage-lost)_8%,var(--surface)_92%)] text-[11.5px] text-[var(--stage-lost)] space-y-0.5">
           {generateErrors.map((err, i) => (
-            <div key={i}>❌ {err}</div>
+            <div key={i}>{err}</div>
           ))}
         </div>
       )}
+
+      </div>{/* /card wrapper */}
 
       {showPicker && sourceBoardId && (
         <ProductPicker

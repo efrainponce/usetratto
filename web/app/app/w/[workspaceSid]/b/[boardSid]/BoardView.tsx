@@ -444,7 +444,7 @@ export function BoardView({
     } : undefined
 
     return (
-      <div className="max-h-56 overflow-y-auto">
+      <div className="max-h-[32rem] overflow-y-auto">
         <SubItemsView
           workspaceSid={workspaceSid}
           itemId={rowId}
