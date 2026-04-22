@@ -1,18 +1,9 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { userCanAccessItem } from '@/lib/permissions'
+import type { SubItemData } from '@/lib/boards/types'
 import { NextResponse } from 'next/server'
-
-type SubItemData = {
-  id: string
-  sid: number
-  parent_id: string | null
-  depth: number
-  name: string
-  source_item_id: string | null
-  position: number
-  values: []
-}
+import { jsonError } from '@/lib/api-helpers'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -31,34 +22,28 @@ export async function POST(_req: Request, { params }: Ctx) {
     .single()
 
   if (loadError || !subItem) {
-    return NextResponse.json({ error: 'Sub-item not found' }, { status: 400 })
+    return jsonError('Sub-item not found', 400)
   }
 
   // 16.13: Verify workspace_id matches
   if (subItem.workspace_id !== auth.workspaceId) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return jsonError('Not found', 404)
   }
 
   // 16.10: Verify item access
   const canAccess = await userCanAccessItem(subItem.item_id, auth.userId, auth.workspaceId, auth.role)
   if (!canAccess) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return jsonError('Forbidden', 403)
   }
 
   // Check if depth is 0 (L1)
   if (subItem.depth !== 0) {
-    return NextResponse.json(
-      { error: 'Solo sub-items de profundidad 0 pueden importar' },
-      { status: 400 }
-    )
+    return jsonError('Solo sub-items de profundidad 0 pueden importar', 400)
   }
 
   // Check if source_item_id exists
   if (!subItem.source_item_id) {
-    return NextResponse.json(
-      { error: 'Sub-item sin fuente' },
-      { status: 400 }
-    )
+    return jsonError('Sub-item sin fuente', 400)
   }
 
   // Load source item's sub-items (depth=0)
@@ -70,10 +55,7 @@ export async function POST(_req: Request, { params }: Ctx) {
     .order('position', { ascending: true })
 
   if (sourceError) {
-    return NextResponse.json(
-      { error: sourceError.message },
-      { status: 500 }
-    )
+    return jsonError(sourceError.message, 500)
   }
 
   // If no source sub-items, return empty result
@@ -96,10 +78,7 @@ export async function POST(_req: Request, { params }: Ctx) {
     .eq('depth', 1)
 
   if (existingError) {
-    return NextResponse.json(
-      { error: existingError.message },
-      { status: 500 }
-    )
+    return jsonError(existingError.message, 500)
   }
 
   const existingNames = new Set(
@@ -139,10 +118,7 @@ export async function POST(_req: Request, { params }: Ctx) {
       .single()
 
     if (insertError) {
-      return NextResponse.json(
-        { error: insertError.message },
-        { status: 500 }
-      )
+      return jsonError(insertError.message, 500)
     }
 
     if (inserted) {

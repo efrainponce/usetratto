@@ -1,5 +1,14 @@
 # log
 
+## 2026-04-22
+
+**~sesión 1 — optimización velocidad + modularización (2 pasadas)**
+- Pasada 1 (plan 4 fases): `next.config.ts` con `optimizePackageImports` (@dnd-kit/*, @tanstack/*) + `poweredByHeader:false`; `lib/boards/types.ts` centraliza `SubItemValue`/`SubItemData`/`ColPermission`/`SourceItem` (elimina 14 declaraciones duplicadas en 8 archivos); 44 API routes unificadas con `jsonError()` (191 replacements `NextResponse.json({error},{status})` → `jsonError(msg,status)`); 3 settings pages a Server Components (profile/workspace/superadmin) — 580→420 LOC con subcomponente form; `lib/sub-items/tree.ts` extrae `findInTree`/`patchTree`/`patchValueInTree` (dedupe vs `InlineSubItems`); `dynamic()` con `loading:` fallback en 5 modales (ColumnSettingsPanel, SubItemViewWizard, SourceColumnMapper, ImportWizard, QuoteEditorModal).
+- Pasada 2 (split profundo): cleanup 17 imports huérfanos `NextResponse` post-refactor + restauración en 15 archivos que usaban `instanceof`; `SubItemsView.tsx` split a `components/sub-items/` — `types.ts`, `LoadingState`, `BoardItemsRenderer`, `BoardSubItemsRenderer`, `SubItemDetailDrawer`+`DrawerEditField`, `RollupUpPopup`, `AddColumnInline`; `ColumnSettingsPanel.tsx` split — `column-settings/constants.ts` (PRESET_COLORS/KIND_OPTIONS/NUMBER_FORMATS) + `PermissionsTab.tsx` (encapsula 4 useState, 1 useEffect, 4 handlers, ~200 LOC JSX).
+- Métricas: `SubItemsView` 2067→1372 LOC (-34%); `ColumnSettingsPanel` 1910→1570 LOC (-18%); settings pages -160 LOC; API routes -150 LOC por `jsonError`. Typecheck limpio, `npm run build` compila en 2.2s con Turbopack (30 pages generadas).
+- Skippeado con justificación: `React.memo(ColumnCell)` no aporta porque callbacks inline en `GenericDataTable.tsx:224` (`handleCommit`, `handleStartEdit`, etc.) cambian cada render — requiere refactor del contrato cells o profiling real con React DevTools Profiler antes de decidir. Split por `kind` completo de `ColumnSettingsPanel` (KindSelect, KindFormula, KindRelation, etc.) queda como followup — necesita testing manual por tipo. `typedRoutes:true` desactivado — falla en `SettingsNav.tsx` con hrefs dinámicos, requeriría cast `as Route` en 10+ Links.
+- Pendiente siguiente sesión: probar en browser (drawer de sub-item, tab Permisos, 5 modales con Suspense), medir con React DevTools Profiler en `BoardView` + `SubItemsView` con 100+ items para decidir si refactor de cells vale la pena.
+
 ## 2026-04-21
 
 **~sesión 12 — UX revamp Taller completo (shell + board + cells + cotización editor)**

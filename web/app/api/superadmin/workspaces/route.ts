@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET() {
   const auth = await requireAuthApi()
@@ -8,10 +9,7 @@ export async function GET() {
 
   // Check if user is superadmin
   if (auth.role !== 'superadmin') {
-    return NextResponse.json(
-      { error: 'Solo superadministradores pueden acceder a esto' },
-      { status: 403 }
-    )
+    return jsonError('Solo superadministradores pueden acceder a esto', 403)
   }
 
   const supabase = createServiceClient()
@@ -23,10 +21,7 @@ export async function GET() {
     .order('created_at', { ascending: false })
 
   if (workspacesError) {
-    return NextResponse.json(
-      { error: workspacesError.message },
-      { status: 500 }
-    )
+    return jsonError(workspacesError.message, 500)
   }
 
   if (!workspacesData || workspacesData.length === 0) {

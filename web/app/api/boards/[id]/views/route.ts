@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -19,7 +20,7 @@ export async function GET(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!board) return jsonError('Not found', 404)
 
   // Get existing views
   const { data: views, error: viewsError } = await supabase
@@ -28,7 +29,7 @@ export async function GET(req: Request, { params }: Context) {
     .eq('board_id', id)
     .order('position')
 
-  if (viewsError) return NextResponse.json({ error: viewsError.message }, { status: 500 })
+  if (viewsError) return jsonError(viewsError.message, 500)
 
   // Auto-create "Default" view if none exist
   if (!views || views.length === 0) {
@@ -44,7 +45,7 @@ export async function GET(req: Request, { params }: Context) {
       .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width), board_view_members(id, user_id, team_id, users(id, sid, name), teams(id, sid, name))`)
       .single()
 
-    if (createError) return NextResponse.json({ error: createError.message }, { status: 500 })
+    if (createError) return jsonError(createError.message, 500)
     return NextResponse.json(newView ? [newView] : [])
   }
 
@@ -60,17 +61,11 @@ export async function POST(req: Request, { params }: Context) {
 
   // Validate name
   if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
-    return NextResponse.json(
-      { error: 'Name must be a non-empty string' },
-      { status: 400 }
-    )
+    return jsonError('Name must be a non-empty string', 400)
   }
 
   if (body.name.length > 50) {
-    return NextResponse.json(
-      { error: 'Name must be 50 characters or less' },
-      { status: 400 }
-    )
+    return jsonError('Name must be 50 characters or less', 400)
   }
 
   const supabase = await createClient()
@@ -83,7 +78,7 @@ export async function POST(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  if (!board) return jsonError('Board not found', 404)
 
   // Get max position
   const { data: lastView } = await supabase
@@ -109,6 +104,6 @@ export async function POST(req: Request, { params }: Context) {
     .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width), board_view_members(id, user_id, team_id, users(id, sid, name), teams(id, sid, name))`)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(view, { status: 201 })
 }

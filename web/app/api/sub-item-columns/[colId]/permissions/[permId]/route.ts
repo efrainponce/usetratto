@@ -1,9 +1,9 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
+import { NextResponse } from 'next/server'
 import { requireBoardAdmin, getBoardIdForSubItemColumn } from '@/lib/permissions'
 import { createServiceClient } from '@/lib/supabase/service'
 import { jsonError, jsonOk, verifyBoardAccess } from '@/lib/api-helpers'
 import { createPermissionHandlers } from '@/lib/column-permissions-handler'
-import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ colId: string; permId: string }> }
 

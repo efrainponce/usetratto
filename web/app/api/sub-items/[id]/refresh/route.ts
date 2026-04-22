@@ -2,6 +2,7 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { userCanAccessItem, userCanViewColumn } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -20,34 +21,28 @@ export async function POST(_req: Request, { params }: Context) {
     .single()
 
   if (!subItem) {
-    return NextResponse.json({ error: 'Sub-item not found' }, { status: 404 })
+    return jsonError('Sub-item not found', 404)
   }
 
   // 16.13: Verify workspace_id matches
   if (subItem.workspace_id !== auth.workspaceId) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return jsonError('Not found', 404)
   }
 
   // 16.10: Verify item access
   const canAccess = await userCanAccessItem(subItem.item_id, auth.userId, auth.workspaceId, auth.role)
   if (!canAccess) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return jsonError('Forbidden', 403)
   }
 
   // Check depth is 0
   if (subItem.depth !== 0) {
-    return NextResponse.json(
-      { error: 'Solo sub-items de profundidad 0 pueden refrescarse' },
-      { status: 400 }
-    )
+    return jsonError('Solo sub-items de profundidad 0 pueden refrescarse', 400)
   }
 
   // Check source_item_id is not null
   if (!subItem.source_item_id) {
-    return NextResponse.json(
-      { error: 'Sub-item sin fuente' },
-      { status: 400 }
-    )
+    return jsonError('Sub-item sin fuente', 400)
   }
 
   // 2. Status check (locked guard)
@@ -59,7 +54,7 @@ export async function POST(_req: Request, { params }: Context) {
     .single()
 
   if (!parentItem) {
-    return NextResponse.json({ error: 'Parent item not found' }, { status: 404 })
+    return jsonError('Parent item not found', 404)
   }
 
   // Load board settings
@@ -70,7 +65,7 @@ export async function POST(_req: Request, { params }: Context) {
     .single()
 
   if (!board) {
-    return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+    return jsonError('Board not found', 404)
   }
 
   const boardSettings = board.settings as Record<string, unknown> || {}
@@ -99,10 +94,7 @@ export async function POST(_req: Request, { params }: Context) {
           { value: string; is_closed?: boolean }[] | undefined ?? []
         const selectedOpt = opts.find(o => o.value === statusValue.value_text)
         if (selectedOpt?.is_closed === true) {
-          return NextResponse.json(
-            { error: 'Sub-item terminado — no se puede refrescar', locked: true },
-            { status: 409 }
-          )
+          return NextResponse.json({ error: 'Sub-item terminado — no se puede refrescar', locked: true }, { status: 409 })
         }
       }
     }
@@ -128,7 +120,7 @@ export async function POST(_req: Request, { params }: Context) {
     .single()
 
   if (!sourceItem) {
-    return NextResponse.json({ error: 'Source item not found' }, { status: 404 })
+    return jsonError('Source item not found', 404)
   }
 
   // For each sub_item_column with source_col_key, copy values

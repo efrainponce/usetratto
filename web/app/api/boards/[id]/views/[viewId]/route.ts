@@ -1,7 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { jsonError, jsonOk, verifyBoardAccess } from '@/lib/api-helpers'
-import { NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ id: string; viewId: string }> }
 

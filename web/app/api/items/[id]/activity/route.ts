@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuthApi()
@@ -20,6 +21,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     .order('created_at', { ascending: false })
     .limit(100)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json({ activity: data ?? [] })
 }

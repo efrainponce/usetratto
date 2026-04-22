@@ -2,13 +2,14 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET(req: Request) {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const boardId = new URL(req.url).searchParams.get('boardId')
-  if (!boardId) return NextResponse.json({ error: 'boardId required' }, { status: 400 })
+  if (!boardId) return jsonError('boardId required', 400)
 
   const idsParam = new URL(req.url).searchParams.get('ids')
   const format = new URL(req.url).searchParams.get('format')
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await query.order('position')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
 
   const items = (data ?? []) as Array<any & { sub_items_rollup?: Record<string, number | null> }>
 
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { board_id, name } = body as { board_id?: string; name?: string }
   if (!board_id || !name) {
-    return NextResponse.json({ error: 'board_id and name required' }, { status: 400 })
+    return jsonError('board_id and name required', 400)
   }
 
   const supabase = await createClient()
@@ -183,7 +184,7 @@ export async function POST(req: Request) {
     .select('id, sid, name, stage_id, owner_id, territory_id, deadline, position')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
 
   // Apply default_value from board_columns
   const svc = createServiceClient()

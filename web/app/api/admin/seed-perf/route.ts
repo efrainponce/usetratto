@@ -7,6 +7,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 const WS = 'aaaaaaaa-0000-0000-0000-000000000001'
 
@@ -15,7 +16,7 @@ export async function POST() {
   if (isAuthError(auth)) return auth
 
   if (auth.role !== 'admin' && auth.role !== 'superadmin') {
-    return NextResponse.json({ error: 'Solo admins' }, { status: 403 })
+    return jsonError('Solo admins', 403)
   }
 
   const supabase = createServiceClient()
@@ -38,10 +39,7 @@ export async function POST() {
   const accountsBoardId = boardMap['cuentas']
 
   if (!oppBoardId) {
-    return NextResponse.json(
-      { error: 'Board oportunidades not found — run /api/admin/seed first' },
-      { status: 400 }
-    )
+    return jsonError('Board oportunidades not found — run /api/admin/seed first', 400)
   }
 
   // ── 2. Get stages for opportunities ───────────────────────────────────────

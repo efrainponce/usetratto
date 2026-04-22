@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string; viewId: string }> }
 
@@ -20,10 +21,7 @@ export async function PUT(req: Request, { params }: Context) {
 
   // Validate columns array
   if (!Array.isArray(body.columns)) {
-    return NextResponse.json(
-      { error: 'Columns must be an array' },
-      { status: 400 }
-    )
+    return jsonError('Columns must be an array', 400)
   }
 
   const supabase = await createClient()
@@ -36,7 +34,7 @@ export async function PUT(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!board) return jsonError('Not found', 404)
 
   // Verify view belongs to board
   const { data: view } = await supabase
@@ -46,7 +44,7 @@ export async function PUT(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!view) return NextResponse.json({ error: 'View not found' }, { status: 404 })
+  if (!view) return jsonError('View not found', 404)
 
   // Upsert columns
   const upsertData = body.columns.map((col) => ({
@@ -62,6 +60,6 @@ export async function PUT(req: Request, { params }: Context) {
     .upsert(upsertData, { onConflict: 'view_id,column_id' })
     .select('id, column_id, is_visible, position, width')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(updated ?? [])
 }

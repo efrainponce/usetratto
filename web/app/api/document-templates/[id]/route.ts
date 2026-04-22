@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server'
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createServiceClient } from '@/lib/supabase/service'

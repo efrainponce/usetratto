@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -18,7 +19,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
+    return jsonError('nothing to update', 400)
   }
 
   const supabase = await createClient()
@@ -31,7 +32,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     .select('id, sid, parent_id, depth, name, source_item_id, position')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }
 
@@ -55,6 +56,6 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return new NextResponse(null, { status: 204 })
 }

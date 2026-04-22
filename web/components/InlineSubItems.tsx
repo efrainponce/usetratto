@@ -3,30 +3,9 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { useDisclosure } from '../hooks/useDisclosure'
 import type { SubItemColumn } from '@/lib/boards'
+import type { SubItemData } from '@/lib/boards/types'
+import { patchTree } from '@/lib/sub-items/tree'
 import { ProductPicker } from './ProductPicker'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type SubItemValue = {
-  column_id: string
-  col_key: string
-  value_text: string | null
-  value_number: number | null
-  value_date: string | null
-  value_json: unknown
-}
-
-type SubItemData = {
-  id: string
-  sid: number
-  parent_id: string | null
-  depth: 0 | 1
-  name: string
-  source_item_id: string | null
-  position: number
-  values: SubItemValue[]
-  children?: SubItemData[]
-}
 
 type ApiResponse = {
   columns: SubItemColumn[]
@@ -710,17 +689,3 @@ function InlineEdit({
   )
 }
 
-// ─── Tree helpers ─────────────────────────────────────────────────────────────
-
-function patchTree(
-  rows: SubItemData[],
-  id: string,
-  patch: Partial<SubItemData>
-): SubItemData[] {
-  return rows.map((r) => {
-    if (r.id === id) return { ...r, ...patch }
-    if (r.children)
-      return { ...r, children: patchTree(r.children, id, patch) }
-    return r
-  })
-}

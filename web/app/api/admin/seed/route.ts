@@ -8,6 +8,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 const WORKSPACE_ID   = 'aaaaaaaa-0000-0000-0000-000000000001'
 const WORKSPACE_NAME = 'CMP'
@@ -17,7 +18,7 @@ export async function POST() {
   if (isAuthError(auth)) return auth
 
   if (auth.role !== 'admin' && auth.role !== 'superadmin') {
-    return NextResponse.json({ error: 'Solo admins' }, { status: 403 })
+    return jsonError('Solo admins', 403)
   }
 
   const supabase = createServiceClient()

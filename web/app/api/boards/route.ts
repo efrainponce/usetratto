@@ -1,6 +1,7 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET() {
   const auth = await requireAuthApi()
@@ -13,7 +14,7 @@ export async function GET() {
     .eq('workspace_id', auth.workspaceId)
     .order('name')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }
 
@@ -25,11 +26,11 @@ export async function POST(request: Request) {
   const { name, type, description } = body
 
   if (!name || typeof name !== 'string') {
-    return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 })
+    return jsonError('El nombre es requerido', 400)
   }
 
   if (!type || !['pipeline', 'table'].includes(type)) {
-    return NextResponse.json({ error: 'El tipo debe ser pipeline o table' }, { status: 400 })
+    return jsonError('El tipo debe ser pipeline o table', 400)
   }
 
   // Generate slug: lowercase, spaces→hyphens, only alphanumeric+hyphen
@@ -53,6 +54,6 @@ export async function POST(request: Request) {
     .select('id, sid, slug, name, type, system_key')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }

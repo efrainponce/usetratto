@@ -375,6 +375,19 @@ components/
   SubItemsView.tsx              → Sub-items para CUALQUIER board.
                                    Depth 0 expandible, depth 1 variantes.
                                    Columnas configuradas por sub_item_views.
+  components/sub-items/         → Módulos extraídos (sesión 1 2026-04-22):
+    types.ts                    → NativeData / BoardItemsData / BoardSubData / SubItemColumn / EditTarget
+    LoadingState.tsx            → Spinner compartido
+    BoardItemsRenderer.tsx      → Reference mode: items de otro board (read-only)
+    BoardSubItemsRenderer.tsx   → Reference mode: sub-items de otros items (read-only)
+    SubItemDetailDrawer.tsx     → Drawer lateral con DrawerEditField interno
+    RollupUpPopup.tsx           → Popup para configurar rollup → item parent
+    AddColumnInline.tsx         → Inline form para agregar sub_item_column
+  components/column-settings/   → Módulos extraídos de ColumnSettingsPanel:
+    constants.ts                → PRESET_COLORS / KIND_OPTIONS / NUMBER_FORMATS
+    PermissionsTab.tsx          → Tab "Permisos" autónomo (state + handlers encapsulados)
+  lib/sub-items/tree.ts         → findInTree / patchTree / patchValueInTree (puros, reusados)
+  lib/boards/types.ts           → Types client-safe: SubItemValue/SubItemData/ColPermission/SourceItem
 
   ImportWizard.tsx              → Shell genérico. Sources pluggables.
   components/import/

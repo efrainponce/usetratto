@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Ctx = { params: Promise<{ colId: string }> }
 
@@ -28,7 +29,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     .eq('id', colId)
     .single()
 
-  if (!col) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!col) return jsonError('Not found', 404)
 
   const { data: board } = await supabase
     .from('boards')
@@ -37,7 +38,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (!board) return jsonError('Unauthorized', 403)
 
   const allowed = ['name', 'kind', 'position', 'is_hidden', 'required', 'settings', 'source_col_key'] as const
   const patch: Record<string, unknown> = {}
@@ -46,7 +47,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
+    return jsonError('nothing to update', 400)
   }
 
   const { data, error } = await supabase
@@ -56,7 +57,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     .select('id, board_id, col_key, name, kind, position, is_hidden, required, settings, source_col_key')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }
 
@@ -74,7 +75,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     .eq('id', colId)
     .single()
 
-  if (!col) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!col) return jsonError('Not found', 404)
 
   const { data: board } = await supabase
     .from('boards')
@@ -83,13 +84,13 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (!board) return jsonError('Unauthorized', 403)
 
   const { error } = await supabase
     .from('sub_item_columns')
     .delete()
     .eq('id', colId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return new NextResponse(null, { status: 204 })
 }

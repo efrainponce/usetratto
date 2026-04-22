@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function DELETE(
   request: Request,
@@ -19,6 +20,6 @@ export async function DELETE(
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json({ ok: true })
 }

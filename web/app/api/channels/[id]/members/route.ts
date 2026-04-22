@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuthApi()
@@ -17,7 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     )
     .eq('channel_id', channelId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json({ members: data ?? [] })
 }
 
@@ -30,7 +31,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { user_id } = body as { user_id?: string }
 
   if (!user_id) {
-    return NextResponse.json({ error: 'user_id required' }, { status: 400 })
+    return jsonError('user_id required', 400)
   }
 
   const supabase = await createClient()
@@ -43,8 +44,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (channelError) return NextResponse.json({ error: channelError.message }, { status: 500 })
-  if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+  if (channelError) return jsonError(channelError.message, 500)
+  if (!channel) return jsonError('Channel not found', 404)
 
   // Upsert member to avoid duplicates
   const { data, error } = await supabase
@@ -63,7 +64,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     )
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data, { status: 201 })
 }
 
@@ -76,7 +77,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const { user_id } = body as { user_id?: string }
 
   if (!user_id) {
-    return NextResponse.json({ error: 'user_id required' }, { status: 400 })
+    return jsonError('user_id required', 400)
   }
 
   const supabase = await createClient()
@@ -89,8 +90,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (channelError) return NextResponse.json({ error: channelError.message }, { status: 500 })
-  if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+  if (channelError) return jsonError(channelError.message, 500)
+  if (!channel) return jsonError('Channel not found', 404)
 
   const { error } = await supabase
     .from('channel_members')
@@ -98,6 +99,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     .eq('channel_id', channelId)
     .eq('user_id', user_id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json({ success: true })
 }

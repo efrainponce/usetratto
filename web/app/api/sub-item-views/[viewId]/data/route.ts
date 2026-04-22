@@ -2,34 +2,12 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { userCanAccessItem, getColumnUserAccess } from '@/lib/permissions'
+import type { SubItemData, SubItemValue } from '@/lib/boards/types'
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ viewId: string }> }
-
-// ─── Shared types ─────────────────────────────────────────────────────────────
-
-type SubItemValue = {
-  column_id: string
-  value_text: string | null
-  value_number: number | null
-  value_date: string | null
-  value_json: unknown
-}
-
-type SubItemData = {
-  id: string
-  sid: number
-  parent_id: string | null
-  depth: number
-  name: string
-  position: number
-  source_item_id: string | null
-  source_item_sid:  number | null
-  source_board_sid: number | null
-  values: Array<SubItemValue & { col_key: string }>
-  children: SubItemData[]
-}
 
 // ─── GET /api/sub-item-views/[viewId]/data?itemId=uuid ───────────────────────
 
@@ -39,7 +17,7 @@ export async function GET(req: Request, { params }: Context) {
 
   const { viewId } = await params
   const itemId = new URL(req.url).searchParams.get('itemId')
-  if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 })
+  if (!itemId) return jsonError('itemId required', 400)
 
   // Use user JWT only for workspace ownership check, then switch to service client
   // to bypass RLS on data tables (auth already validated above).
@@ -52,12 +30,12 @@ export async function GET(req: Request, { params }: Context) {
     .eq('id', viewId)
     .single()
 
-  if (viewError || !view) return NextResponse.json({ error: 'View not found' }, { status: 404 })
-  if (view.workspace_id !== auth.workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (viewError || !view) return jsonError('View not found', 404)
+  if (view.workspace_id !== auth.workspaceId) return jsonError('Unauthorized', 403)
 
   // 16.11 + 16.10: Verify item access before processing
   const canAccess = await userCanAccessItem(itemId, auth.userId, auth.workspaceId, auth.role)
-  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canAccess) return jsonError('Forbidden', 403)
 
   const config = view.config as Record<string, unknown>
 
@@ -65,7 +43,7 @@ export async function GET(req: Request, { params }: Context) {
     case 'native':         return nativeHandler(service, view.board_id, itemId, config, viewId, auth.userId, auth.workspaceId, auth.role)
     case 'board_items':    return boardItemsHandler(service, config, itemId, auth.userId, auth.workspaceId, auth.role)
     case 'board_sub_items': return boardSubItemsHandler(service, config, itemId, auth.userId, auth.workspaceId, auth.role)
-    default:               return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
+    default:               return jsonError('Unknown type', 400)
   }
 }
 
@@ -105,8 +83,8 @@ async function nativeHandler(
     subItemsQuery,
   ])
 
-  if (colRes.error) return NextResponse.json({ error: colRes.error.message }, { status: 500 })
-  if (itemRes.error) return NextResponse.json({ error: itemRes.error.message }, { status: 500 })
+  if (colRes.error) return jsonError(colRes.error.message, 500)
+  if (itemRes.error) return jsonError(itemRes.error.message, 500)
 
   const columns = colRes.data ?? []
   const colKeyMap = Object.fromEntries(columns.map(c => [c.id, c.col_key]))
@@ -152,12 +130,12 @@ async function nativeHandler(
       source_item_id:  row.source_item_id ?? null,
       source_item_sid:  null,
       source_board_sid: null,
-      values: (row.sub_item_values ?? []).map((v: SubItemValue) => ({ ...v, col_key: colKeyMap[v.column_id] ?? '' })),
+      values: (row.sub_item_values ?? []).map(v => ({ ...(v as Omit<SubItemValue, 'col_key'>), col_key: colKeyMap[(v as { column_id: string }).column_id] ?? '' })),
       children: [],
     }
     if (row.depth === 0) { l1Map[row.id] = item; l1.push(item) }
     else if (row.depth === 1 && row.parent_id && l1Map[row.parent_id]) {
-      l1Map[row.parent_id].children.push(item)
+      l1Map[row.parent_id].children!.push(item)
     }
   }
 
@@ -185,7 +163,7 @@ async function nativeHandler(
             item.source_item_sid  = srcMap[item.source_item_id].item_sid
             item.source_board_sid = srcMap[item.source_item_id].board_sid
           }
-          if (item.children.length) patchSids(item.children)
+          if (item.children && item.children.length) patchSids(item.children)
         }
       }
       patchSids(l1)
@@ -211,7 +189,7 @@ async function boardItemsHandler(
   const sourceBoardId = config.source_board_id as string | undefined
   const relationColId = config.relation_col_id as string | undefined
   if (!sourceBoardId || !relationColId) {
-    return NextResponse.json({ error: 'config requires source_board_id and relation_col_id' }, { status: 400 })
+    return jsonError('config requires source_board_id and relation_col_id', 400)
   }
 
   // Step 1 — parallel: source board columns + related item_ids
@@ -229,8 +207,8 @@ async function boardItemsHandler(
       .eq('value_text', itemId),
   ])
 
-  if (colRes.error) return NextResponse.json({ error: colRes.error.message }, { status: 500 })
-  if (relRes.error) return NextResponse.json({ error: relRes.error.message }, { status: 500 })
+  if (colRes.error) return jsonError(colRes.error.message, 500)
+  if (relRes.error) return jsonError(relRes.error.message, 500)
 
   const columns = colRes.data ?? []
   const relatedItemIds = (relRes.data ?? []).map(v => v.item_id)
@@ -267,7 +245,7 @@ async function boardItemsHandler(
     supabase.from('boards').select('name, sid').eq('id', sourceBoardId).single(),
   ])
 
-  if (itemRes.error) return NextResponse.json({ error: itemRes.error.message }, { status: 500 })
+  if (itemRes.error) return jsonError(itemRes.error.message, 500)
 
   // 16.5: Add user_access to columns using getColumnUserAccess
   const columnsWithAccess = await Promise.all(
@@ -312,7 +290,7 @@ async function boardSubItemsHandler(
   const sourceBoardId = config.source_board_id as string | undefined
   const relationColId = config.relation_col_id as string | undefined
   if (!sourceBoardId || !relationColId) {
-    return NextResponse.json({ error: 'config requires source_board_id and relation_col_id' }, { status: 400 })
+    return jsonError('config requires source_board_id and relation_col_id', 400)
   }
 
   // Step 1 — parallel: sub_item_columns of source board + related item_ids
@@ -330,8 +308,8 @@ async function boardSubItemsHandler(
       .eq('value_text', itemId),
   ])
 
-  if (colRes.error) return NextResponse.json({ error: colRes.error.message }, { status: 500 })
-  if (relRes.error) return NextResponse.json({ error: relRes.error.message }, { status: 500 })
+  if (colRes.error) return jsonError(colRes.error.message, 500)
+  if (relRes.error) return jsonError(relRes.error.message, 500)
 
   const columns = colRes.data ?? []
   const colKeyMap = Object.fromEntries(columns.map(c => [c.id, c.col_key]))
@@ -365,7 +343,7 @@ async function boardSubItemsHandler(
     .order('depth')
     .order('position')
 
-  if (subErr) return NextResponse.json({ error: subErr.message }, { status: 500 })
+  if (subErr) return jsonError(subErr.message, 500)
 
   // Build tree (grouped within each parent item)
   const l1Map: Record<string, SubItemData> = {}
@@ -378,12 +356,12 @@ async function boardSubItemsHandler(
       source_item_id: row.source_item_id ?? null,
       source_item_sid: null,
       source_board_sid: null,
-      values: (row.sub_item_values ?? []).map((v: SubItemValue) => ({ ...v, col_key: colKeyMap[v.column_id] ?? '' })),
+      values: (row.sub_item_values ?? []).map(v => ({ ...(v as Omit<SubItemValue, 'col_key'>), col_key: colKeyMap[(v as { column_id: string }).column_id] ?? '' })),
       children: [],
     }
     if (row.depth === 0) { l1Map[row.id] = item; l1.push(item) }
     else if (row.depth === 1 && row.parent_id && l1Map[row.parent_id]) {
-      l1Map[row.parent_id].children.push(item)
+      l1Map[row.parent_id].children!.push(item)
     }
   }
 

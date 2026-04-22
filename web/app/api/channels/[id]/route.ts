@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuthApi()
@@ -17,7 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }
 
@@ -39,12 +40,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
-  if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+  if (fetchError) return jsonError(fetchError.message, 500)
+  if (!channel) return jsonError('Channel not found', 404)
 
   // Cannot change type of 'system' channel
   if (channel.type === 'system' && body.type !== undefined) {
-    return NextResponse.json({ error: 'Cannot change type of system channel' }, { status: 400 })
+    return jsonError('Cannot change type of system channel', 400)
   }
 
   const updates: Record<string, any> = {}
@@ -59,7 +60,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .select('id, name, type, team_id, position, created_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }
 
@@ -79,12 +80,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
-  if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+  if (fetchError) return jsonError(fetchError.message, 500)
+  if (!channel) return jsonError('Channel not found', 404)
 
   // Cannot delete 'system' type channels
   if (channel.type === 'system') {
-    return NextResponse.json({ error: 'Cannot delete system channel' }, { status: 400 })
+    return jsonError('Cannot delete system channel', 400)
   }
 
   const { error } = await supabase
@@ -93,6 +94,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json({ success: true })
 }

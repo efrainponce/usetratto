@@ -2,6 +2,7 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { userCanEditColumn } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -20,14 +21,14 @@ export async function GET(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!item) return jsonError('Not found', 404)
 
   const { data, error } = await supabase
     .from('item_values')
     .select('column_id, value_text, value_number, value_date, value_json')
     .eq('item_id', id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data ?? [])
 }
 
@@ -39,7 +40,7 @@ export async function PUT(req: Request, { params }: Context) {
   const body = await req.json() as { column_id: string; value: unknown }
   const { column_id, value } = body
 
-  if (!column_id) return NextResponse.json({ error: 'column_id required' }, { status: 400 })
+  if (!column_id) return jsonError('column_id required', 400)
 
   const supabase = await createClient()
 
@@ -51,7 +52,7 @@ export async function PUT(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!item) return jsonError('Not found', 404)
 
   // Check edit permission for this column
   const canEdit = await userCanEditColumn(
@@ -61,7 +62,7 @@ export async function PUT(req: Request, { params }: Context) {
     auth.role
   )
   if (!canEdit) {
-    return NextResponse.json({ error: 'No tienes permiso para editar esta columna' }, { status: 403 })
+    return jsonError('No tienes permiso para editar esta columna', 403)
   }
 
   // Determine column kind for correct typed field
@@ -84,10 +85,7 @@ export async function PUT(req: Request, { params }: Context) {
 
   // signature is immutable — use /api/items/[id]/signature instead
   if (kind === 'signature') {
-    return NextResponse.json(
-      { error: 'Use /api/items/[id]/signature para firmar' },
-      { status: 400 }
-    )
+    return jsonError('Use /api/items/[id]/signature para firmar', 400)
   }
 
   if (value !== null && value !== undefined) {
@@ -108,6 +106,6 @@ export async function PUT(req: Request, { params }: Context) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }

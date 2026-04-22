@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 import { requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function POST(request: Request) {
   const auth = await requireAdminApi()
@@ -13,10 +14,10 @@ export async function POST(request: Request) {
 
   // Validation
   if (!email || !email.includes('@')) {
-    return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
+    return jsonError('Email inválido', 400)
   }
   if (!['admin', 'member', 'viewer'].includes(role)) {
-    return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
+    return jsonError('Rol inválido', 400)
   }
 
   const service = createServiceClient()
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     .maybeSingle()
 
   if (existing) {
-    return NextResponse.json({ error: 'Ya existe una invitación pendiente para este email' }, { status: 409 })
+    return jsonError('Ya existe una invitación pendiente para este email', 409)
   }
 
   // Generate token: 32 URL-safe chars
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     .single()
 
   if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 })
+    return jsonError(insertError.message, 500)
   }
 
   // Send email via Supabase Auth (built-in SMTP)
@@ -88,10 +89,7 @@ export async function POST(request: Request) {
 
     if (staleUser?.workspace_id) {
       await service.from('invitations').delete().eq('id', invitation.id)
-      return NextResponse.json(
-        { error: 'Este usuario ya tiene una cuenta activa' },
-        { status: 409 }
-      )
+      return jsonError('Este usuario ya tiene una cuenta activa', 409)
     }
 
     if (staleUser) {
@@ -107,10 +105,7 @@ export async function POST(request: Request) {
 
   if (linkResult.error || !linkResult.data?.properties?.action_link) {
     await service.from('invitations').delete().eq('id', invitation.id)
-    return NextResponse.json(
-      { error: `No se pudo generar la invitación: ${linkResult.error?.message ?? 'sin link'}` },
-      { status: 500 }
-    )
+    return jsonError(`No se pudo generar la invitación: ${linkResult.error?.message ?? 'sin link'}`, 500)
   }
 
   // Send email via Resend (no Supabase rate limit)
@@ -146,10 +141,7 @@ export async function POST(request: Request) {
   if (!resendRes.ok) {
     const resendErr = await resendRes.text()
     await service.from('invitations').delete().eq('id', invitation.id)
-    return NextResponse.json(
-      { error: `No se pudo enviar el email: ${resendErr}` },
-      { status: 500 }
-    )
+    return jsonError(`No se pudo enviar el email: ${resendErr}`, 500)
   }
 
   return NextResponse.json(invitation)
@@ -166,6 +158,6 @@ export async function GET(request: Request) {
     .eq('workspace_id', auth.workspaceId)
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json({ invitations: data ?? [] })
 }

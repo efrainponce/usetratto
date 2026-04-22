@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 interface DocumentItem {
   id: string
@@ -26,10 +27,7 @@ export async function GET(req: Request) {
     const sourceItemId = url.searchParams.get('source_item_id')
 
     if (!sourceItemId) {
-      return NextResponse.json(
-        { error: 'source_item_id query param required' },
-        { status: 400 }
-      )
+      return jsonError('source_item_id query param required', 400)
     }
 
     const service = createServiceClient()
@@ -175,9 +173,6 @@ export async function GET(req: Request) {
     return NextResponse.json(result, { status: 200 })
   } catch (error) {
     console.error('[documents GET] Error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return jsonError('Internal server error', 500)
   }
 }

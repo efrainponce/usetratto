@@ -2,6 +2,7 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string; memberId: string }> }
 
@@ -12,20 +13,17 @@ export async function PATCH(req: Request, { params }: Context) {
   const { id, memberId } = await params
   const isAdmin = await requireBoardAdmin(id, auth.userId, auth.workspaceId, auth.role)
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Solo el admin del board puede realizar esta acción' }, { status: 403 })
+    return jsonError('Solo el admin del board puede realizar esta acción', 403)
   }
 
   const body = await req.json() as { access?: string; restrict_to_own?: boolean }
 
   if (body.access !== undefined && !['view', 'edit'].includes(body.access)) {
-    return NextResponse.json(
-      { error: "Access must be 'view' or 'edit'" },
-      { status: 400 }
-    )
+    return jsonError("Access must be 'view' or 'edit'", 400)
   }
 
   if (Object.keys(body).length === 0) {
-    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    return jsonError('Nothing to update', 400)
   }
 
   const supabase = await createClient()
@@ -38,7 +36,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+  if (!board) return jsonError('Board not found', 404)
 
   // Verify member belongs to board
   const { data: member } = await supabase
@@ -48,7 +46,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+  if (!member) return jsonError('Member not found', 404)
 
   // Build patch — only update provided fields
   const patch: Record<string, unknown> = {}
@@ -70,6 +68,6 @@ export async function PATCH(req: Request, { params }: Context) {
     `)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(updated)
 }

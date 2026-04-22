@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function POST(request: Request) {
   // User must be signed in (the magic link flow handles this)
@@ -11,14 +12,14 @@ export async function POST(request: Request) {
   const body = await request.json()
   const token = typeof body.token === 'string' ? body.token : ''
   if (!token) {
-    return NextResponse.json({ error: 'Token requerido' }, { status: 400 })
+    return jsonError('Token requerido', 400)
   }
 
   // Get session user's email from Supabase auth (not our users table)
   const supabase = await createClient()
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser || !authUser.email) {
-    return NextResponse.json({ error: 'Sesión sin email válido' }, { status: 401 })
+    return jsonError('Sesión sin email válido', 401)
   }
   const sessionEmail = authUser.email.toLowerCase()
 
@@ -32,16 +33,16 @@ export async function POST(request: Request) {
     .maybeSingle()
 
   if (fetchError || !invitation) {
-    return NextResponse.json({ error: 'Invitación no encontrada' }, { status: 404 })
+    return jsonError('Invitación no encontrada', 404)
   }
   if (invitation.accepted_at) {
-    return NextResponse.json({ error: 'Invitación ya aceptada' }, { status: 410 })
+    return jsonError('Invitación ya aceptada', 410)
   }
   if (new Date(invitation.expires_at) < new Date()) {
-    return NextResponse.json({ error: 'Invitación expirada' }, { status: 410 })
+    return jsonError('Invitación expirada', 410)
   }
   if (invitation.email.toLowerCase() !== sessionEmail) {
-    return NextResponse.json({ error: 'El email de la sesión no coincide con la invitación' }, { status: 403 })
+    return jsonError('El email de la sesión no coincide con la invitación', 403)
   }
 
   // Provision user row: set workspace_id + role from invitation
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     .eq('id', auth.userId)
 
   if (userError) {
-    return NextResponse.json({ error: `No se pudo actualizar usuario: ${userError.message}` }, { status: 500 })
+    return jsonError(`No se pudo actualizar usuario: ${userError.message}`, 500)
   }
 
   // Mark invitation as accepted
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
     .eq('id', invitation.id)
 
   if (acceptError) {
-    return NextResponse.json({ error: acceptError.message }, { status: 500 })
+    return jsonError(acceptError.message, 500)
   }
 
   return NextResponse.json({ ok: true, workspace_id: invitation.workspace_id })

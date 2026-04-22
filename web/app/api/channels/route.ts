@@ -1,13 +1,14 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET(req: Request) {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const itemId = new URL(req.url).searchParams.get('itemId')
-  if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 })
+  if (!itemId) return jsonError('itemId required', 400)
 
   const supabase = await createClient()
 
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
     .eq('workspace_id', auth.workspaceId)
     .order('position')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
 
   const channels = (data ?? []).map((channel: any) => ({
     id: channel.id,
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { item_id, name, type } = body as { item_id?: string; name?: string; type?: string }
   if (!item_id || !name) {
-    return NextResponse.json({ error: 'item_id and name required' }, { status: 400 })
+    return jsonError('item_id and name required', 400)
   }
 
   const supabase = await createClient()
@@ -69,6 +70,6 @@ export async function POST(req: Request) {
     .select('id, name, type, team_id, position, created_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data, { status: 201 })
 }

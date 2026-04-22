@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -13,7 +14,7 @@ export async function POST(req: Request, { params }: Context) {
   const { column_id } = body
 
   if (!column_id) {
-    return NextResponse.json({ error: 'column_id required' }, { status: 400 })
+    return jsonError('column_id required', 400)
   }
 
   const supabase = await createClient()
@@ -27,7 +28,7 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (!item) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return jsonError('Not found', 404)
   }
 
   // Get column and verify it's a signature column
@@ -38,11 +39,11 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (colError || !col) {
-    return NextResponse.json({ error: 'Column not found' }, { status: 404 })
+    return jsonError('Column not found', 404)
   }
 
   if (col.kind !== 'signature') {
-    return NextResponse.json({ error: 'Column is not a signature column' }, { status: 400 })
+    return jsonError('Column is not a signature column', 400)
   }
 
   // Check if already signed (immutability)
@@ -54,14 +55,14 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (existingValue?.value_json) {
-    return NextResponse.json({ error: 'Ya firmado' }, { status: 409 })
+    return jsonError('Ya firmado', 409)
   }
 
   // Verify role permissions if allowed_roles is set
   const settings = col.settings as Record<string, unknown> | null
   if (settings?.allowed_roles && Array.isArray(settings.allowed_roles) && settings.allowed_roles.length > 0) {
     if (!settings.allowed_roles.includes(auth.role)) {
-      return NextResponse.json({ error: 'Rol no autorizado para firmar' }, { status: 403 })
+      return jsonError('Rol no autorizado para firmar', 403)
     }
   }
 
@@ -89,7 +90,7 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return NextResponse.json(data)

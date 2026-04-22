@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuthApi()
@@ -29,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const { data, error } = await query
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
 
   // Reverse to ascending order for response
   const messages = (data ?? []).reverse()
@@ -45,7 +46,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { body: messageBody } = body as { body?: string }
 
   if (!messageBody) {
-    return NextResponse.json({ error: 'body required' }, { status: 400 })
+    return jsonError('body required', 400)
   }
 
   const supabase = await createClient()
@@ -63,7 +64,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .select('id, channel_id, user_id, body, type, metadata, created_at, users!channel_messages_user_id_fkey(id, name, phone)')
     .single()
 
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
+  if (insertError) return jsonError(insertError.message, 500)
 
   // Parse @[Name](SID) mentions — resolve SID → UUID for mentions table
   const mentionRegex = /@\[([^\]]+)\]\(([0-9]+)\)/g

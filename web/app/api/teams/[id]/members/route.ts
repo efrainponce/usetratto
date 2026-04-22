@@ -1,6 +1,7 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET(
   request: Request,
@@ -19,7 +20,7 @@ export async function GET(
     .eq('team_id', id)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   const members = data
@@ -41,10 +42,7 @@ export async function POST(
   const { userId } = body
 
   if (!userId) {
-    return NextResponse.json(
-      { error: 'User ID is required' },
-      { status: 400 }
-    )
+    return jsonError('User ID is required', 400)
   }
 
   const supabase = await createClient()
@@ -60,12 +58,9 @@ export async function POST(
 
   if (error) {
     if (error.code === '23505') {
-      return NextResponse.json(
-        { error: 'User already in team' },
-        { status: 409 }
-      )
+      return jsonError('User already in team', 409)
     }
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return NextResponse.json(data.users, { status: 201 })
@@ -83,10 +78,7 @@ export async function DELETE(
   const { userId } = body
 
   if (!userId) {
-    return NextResponse.json(
-      { error: 'User ID is required' },
-      { status: 400 }
-    )
+    return jsonError('User ID is required', 400)
   }
 
   const supabase = await createClient()
@@ -98,7 +90,7 @@ export async function DELETE(
     .eq('user_id', userId)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return NextResponse.json({ success: true })

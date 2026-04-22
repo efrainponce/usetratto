@@ -1,5 +1,3 @@
-'use client'
-
 const MOCK_DATA = {
   plan: 'Tratto Pro',
   price: 49,

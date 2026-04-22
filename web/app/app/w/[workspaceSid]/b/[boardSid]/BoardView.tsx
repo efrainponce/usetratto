@@ -8,23 +8,20 @@ import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import { SubItemsView } from '@/components/SubItemsView'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
 
-const SubItemViewWizard = dynamic(() => import('@/components/SubItemViewWizard').then(m => m.SubItemViewWizard), { ssr: false })
-const SourceColumnMapper = dynamic(() => import('@/components/SourceColumnMapper').then(m => m.SourceColumnMapper), { ssr: false })
-const ImportWizard = dynamic(() => import('@/components/import/ImportWizard').then(m => m.ImportWizard), { ssr: false })
-const ColumnSettingsPanel = dynamic(() => import('@/components/ColumnSettingsPanel').then(m => m.ColumnSettingsPanel), { ssr: false })
+const modalLoader = () => (
+  <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center">
+    <div className="bg-white rounded-lg px-4 py-3 text-sm text-gray-600 shadow-lg">Cargando…</div>
+  </div>
+)
+
+const SubItemViewWizard  = dynamic(() => import('@/components/SubItemViewWizard').then(m => m.SubItemViewWizard),   { ssr: false, loading: modalLoader })
+const SourceColumnMapper = dynamic(() => import('@/components/SourceColumnMapper').then(m => m.SourceColumnMapper), { ssr: false, loading: modalLoader })
+const ImportWizard       = dynamic(() => import('@/components/import/ImportWizard').then(m => m.ImportWizard),      { ssr: false, loading: modalLoader })
+const ColumnSettingsPanel = dynamic(() => import('@/components/ColumnSettingsPanel').then(m => m.ColumnSettingsPanel), { ssr: false, loading: modalLoader })
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView, SubItemView } from '@/lib/boards'
+import type { ColPermission } from '@/lib/boards/types'
 import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
 import { computeFormula, type FormulaConfig } from '@/lib/formula-engine'
-
-// ─── Column permission type ───────────────────────────────────────────────────
-type ColPermission = {
-  id: string
-  user_id: string | null
-  team_id: string | null
-  access: 'view' | 'edit'
-  users?: { id: string; sid: number; name: string }
-  teams?: { id: string; sid: number; name: string }
-}
 
 // ─── View member type ─────────────────────────────────────────────────────────
 type ViewMember = {

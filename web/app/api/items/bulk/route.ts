@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
-import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function DELETE(req: Request) {
   const auth = await requireAuthApi()
@@ -10,7 +11,7 @@ export async function DELETE(req: Request) {
   const { ids } = body
 
   if (!Array.isArray(ids) || ids.length === 0) {
-    return NextResponse.json({ error: 'ids array required' }, { status: 400 })
+    return jsonError('ids array required', 400)
   }
 
   const supabase = await createClient()
@@ -21,6 +22,6 @@ export async function DELETE(req: Request) {
     .in('id', ids)
     .eq('workspace_id', auth.workspaceId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return new NextResponse(null, { status: 204 })
 }

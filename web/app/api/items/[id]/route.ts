@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -23,7 +24,7 @@ export async function GET(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (error || !data) return jsonError('Not found', 404)
   return NextResponse.json(data)
 }
 
@@ -40,7 +41,7 @@ export async function PATCH(req: Request, { params }: Context) {
     if (field in body) update[field] = body[field]
   }
   if (Object.keys(update).length === 0) {
-    return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
+    return jsonError('No valid fields', 400)
   }
 
   const supabase = await createClient()
@@ -53,7 +54,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .select('id, sid, name, stage_id, owner_id, territory_id, deadline, position')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }
 
@@ -70,6 +71,6 @@ export async function DELETE(req: Request, { params }: Context) {
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return new NextResponse(null, { status: 204 })
 }

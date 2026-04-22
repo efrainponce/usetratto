@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string; viewId: string; colId: string }> }
 
@@ -25,7 +26,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!board) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!board) return jsonError('Not found', 404)
 
   // Verify view belongs to board
   const { data: view } = await supabase
@@ -35,7 +36,7 @@ export async function PATCH(req: Request, { params }: Context) {
     .eq('board_id', id)
     .single()
 
-  if (!view) return NextResponse.json({ error: 'View not found' }, { status: 404 })
+  if (!view) return jsonError('View not found', 404)
 
   // Build upsert data — position/width must have defaults (NOT NULL in schema)
   const upsertData = {
@@ -52,6 +53,6 @@ export async function PATCH(req: Request, { params }: Context) {
     .select('id, column_id, is_visible, position, width')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(updated)
 }

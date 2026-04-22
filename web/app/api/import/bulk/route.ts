@@ -1,6 +1,7 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient }         from '@/lib/supabase/server'
 import { NextResponse }                 from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 // Generic bulk import endpoint.
 // All import sources (CSV, Airtable, Monday, etc.) transform their data
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
   const { board_id, records } = body
 
   if (!board_id || !Array.isArray(records) || records.length === 0) {
-    return NextResponse.json({ error: 'board_id and records (min 1) required' }, { status: 400 })
+    return jsonError('board_id and records (min 1) required', 400)
   }
 
   const supabase = await createClient()
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
     .maybeSingle()
 
   if (!board) {
-    return NextResponse.json({ error: 'Board no encontrado' }, { status: 404 })
+    return jsonError('Board no encontrado', 404)
   }
 
   // col_key → column UUID (for item_values)
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     .select('id')
 
   if (error || !inserted) {
-    return NextResponse.json({ error: error?.message ?? 'Error al insertar items' }, { status: 500 })
+    return jsonError(error?.message ?? 'Error al insertar items', 500)
   }
 
   // ── Batch insert item_values for custom columns ────────────────────────────

@@ -1,6 +1,7 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function GET() {
   const auth = await requireAuthApi()
@@ -13,7 +14,7 @@ export async function GET() {
     .eq('id', auth.workspaceId)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }
 
@@ -25,7 +26,7 @@ export async function PATCH(request: Request) {
   const { name } = body
 
   if (!name || typeof name !== 'string') {
-    return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 })
+    return jsonError('El nombre es requerido', 400)
   }
 
   const supabase = await createClient()
@@ -36,6 +37,6 @@ export async function PATCH(request: Request) {
     .select('id, sid, name')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return jsonError(error.message, 500)
   return NextResponse.json(data)
 }

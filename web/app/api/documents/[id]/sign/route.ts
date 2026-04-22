@@ -6,6 +6,7 @@ import type { Block, RenderContext, BoardColumnMeta } from '@/lib/document-block
 import { DocumentPdf } from '@/lib/document-blocks/pdf-renderer'
 import { NextResponse } from 'next/server'
 import type { CellKind } from '@/components/data-table/types'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -34,10 +35,7 @@ export async function POST(req: Request, { params }: Context) {
     const { role, signature_image_base64, user_name } = body
 
     if (!role || !signature_image_base64) {
-      return NextResponse.json(
-        { error: 'role and signature_image_base64 required' },
-        { status: 400 }
-      )
+      return jsonError('role and signature_image_base64 required', 400)
     }
 
     const service = createServiceClient()
@@ -54,7 +52,7 @@ export async function POST(req: Request, { params }: Context) {
       .maybeSingle() as any
 
     if (!docItem) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+      return jsonError('Document not found', 404)
     }
 
     // Fetch board_columns from documents board
@@ -94,10 +92,7 @@ export async function POST(req: Request, { params }: Context) {
     }
 
     if (!templateId || !sourceItemId) {
-      return NextResponse.json(
-        { error: 'Document missing template_id or source_item_id' },
-        { status: 400 }
-      )
+      return jsonError('Document missing template_id or source_item_id', 400)
     }
 
     // Fetch template
@@ -109,7 +104,7 @@ export async function POST(req: Request, { params }: Context) {
       .maybeSingle()
 
     if (!template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      return jsonError('Template not found', 404)
     }
 
     // Upload signature image
@@ -129,10 +124,7 @@ export async function POST(req: Request, { params }: Context) {
       .maybeSingle()
 
     if (quotesBoard && docItem.board_id !== quotesBoard.id) {
-      return NextResponse.json(
-        { error: 'Document not in quotes board' },
-        { status: 403 }
-      )
+      return jsonError('Document not in quotes board', 403)
     }
 
     // Decode base64 signature
@@ -141,10 +133,7 @@ export async function POST(req: Request, { params }: Context) {
       const base64Data = signature_image_base64.replace(/^data:image\/\w+;base64,/, '')
       signatureBuffer = Buffer.from(base64Data, 'base64')
     } catch {
-      return NextResponse.json(
-        { error: 'Invalid signature image format' },
-        { status: 400 }
-      )
+      return jsonError('Invalid signature image format', 400)
     }
 
     const signaturePath = `${auth.workspaceId}/${crypto.randomUUID()}.png`
@@ -156,10 +145,7 @@ export async function POST(req: Request, { params }: Context) {
       })
 
     if (sigUploadError) {
-      return NextResponse.json(
-        { error: 'Failed to upload signature' },
-        { status: 500 }
-      )
+      return jsonError('Failed to upload signature', 500)
     }
 
     const { data: sigUrlData } = service.storage
@@ -195,7 +181,7 @@ export async function POST(req: Request, { params }: Context) {
       .maybeSingle() as any
 
     if (!sourceItem) {
-      return NextResponse.json({ error: 'Source item not found' }, { status: 404 })
+      return jsonError('Source item not found', 404)
     }
 
     // Build RenderContext with updated signatures
@@ -391,10 +377,7 @@ export async function POST(req: Request, { params }: Context) {
       })
 
     if (pdfUploadError) {
-      return NextResponse.json(
-        { error: 'Failed to upload new PDF' },
-        { status: 500 }
-      )
+      return jsonError('Failed to upload new PDF', 500)
     }
 
     const { data: newUrlData } = service.storage
@@ -466,9 +449,6 @@ export async function POST(req: Request, { params }: Context) {
     })
   } catch (error) {
     console.error('[documents/[id]/sign] Error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return jsonError('Internal server error', 500)
   }
 }

@@ -1,27 +1,9 @@
 import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createServiceClient } from '@/lib/supabase/service'
 import { userCanAccessItem } from '@/lib/permissions'
+import type { SubItemData, SubItemValue } from '@/lib/boards/types'
 import { NextResponse } from 'next/server'
-
-type SubItemValue = {
-  column_id: string
-  col_key: string
-  value_text: string | null
-  value_number: number | null
-  value_date: string | null
-  value_json: unknown
-}
-
-type SubItemData = {
-  id: string
-  sid: number
-  parent_id: string | null
-  depth: 0 | 1
-  name: string
-  source_item_id: string | null
-  position: number
-  values: SubItemValue[]
-}
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -41,7 +23,7 @@ export async function POST(req: Request, { params }: Context) {
   const { column_ids } = body
 
   if (!column_ids || column_ids.length === 0) {
-    return NextResponse.json({ error: 'column_ids required' }, { status: 400 })
+    return jsonError('column_ids required', 400)
   }
 
   const service = createServiceClient()
@@ -54,26 +36,23 @@ export async function POST(req: Request, { params }: Context) {
     .single()
 
   if (!parentSubItem) {
-    return NextResponse.json({ error: 'Sub-item not found' }, { status: 404 })
+    return jsonError('Sub-item not found', 404)
   }
 
   // 16.13: Verify workspace_id matches
   if (parentSubItem.workspace_id !== auth.workspaceId) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return jsonError('Not found', 404)
   }
 
   // 16.10: Verify item access
   const canAccess = await userCanAccessItem(parentSubItem.item_id, auth.userId, auth.workspaceId, auth.role)
   if (!canAccess) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return jsonError('Forbidden', 403)
   }
 
   // Verify it's a depth-0 sub-item
   if (parentSubItem.depth !== 0) {
-    return NextResponse.json(
-      { error: 'Solo sub-items de profundidad 0 pueden expandirse' },
-      { status: 400 }
-    )
+    return jsonError('Solo sub-items de profundidad 0 pueden expandirse', 400)
   }
 
   // Load column values for each column_id
@@ -96,10 +75,7 @@ export async function POST(req: Request, { params }: Context) {
 
   // Check if any dimension is empty
   if (dimensionArrays.some(d => d.length === 0)) {
-    return NextResponse.json(
-      { error: 'Una dimensión está vacía' },
-      { status: 400 }
-    )
+    return jsonError('Una dimensión está vacía', 400)
   }
 
   // Compute cartesian product
@@ -151,10 +127,7 @@ export async function POST(req: Request, { params }: Context) {
       .single()
 
     if (insertError || !newSubItem) {
-      return NextResponse.json(
-        { error: insertError?.message ?? 'Insert failed' },
-        { status: 500 }
-      )
+      return jsonError(insertError?.message ?? 'Insert failed', 500)
     }
 
     // Note: The sid returned from insert might differ from the one we generated.

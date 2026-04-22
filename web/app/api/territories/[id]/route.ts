@@ -1,6 +1,7 @@
 import { requireAuthApi, requireAdminApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 export async function PATCH(
   request: Request,
@@ -14,10 +15,7 @@ export async function PATCH(
   const { name } = body
 
   if (!name?.trim()) {
-    return NextResponse.json(
-      { error: 'Territory name is required' },
-      { status: 400 }
-    )
+    return jsonError('Territory name is required', 400)
   }
 
   const supabase = await createClient()
@@ -31,10 +29,7 @@ export async function PATCH(
     .single()
 
   if (fetchError || !territory) {
-    return NextResponse.json(
-      { error: 'Territory not found' },
-      { status: 404 }
-    )
+    return jsonError('Territory not found', 404)
   }
 
   const { data, error } = await supabase
@@ -45,7 +40,7 @@ export async function PATCH(
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return NextResponse.json(data)
@@ -71,10 +66,7 @@ export async function DELETE(
     .single()
 
   if (fetchError || !territory) {
-    return NextResponse.json(
-      { error: 'Territory not found' },
-      { status: 404 }
-    )
+    return jsonError('Territory not found', 404)
   }
 
   const { error } = await supabase
@@ -83,7 +75,7 @@ export async function DELETE(
     .eq('id', id)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return NextResponse.json({ success: true })

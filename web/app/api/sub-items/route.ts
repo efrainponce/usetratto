@@ -2,7 +2,9 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { userCanAccessItem, getColumnUserAccess, userCanViewColumn } from '@/lib/permissions'
+import type { SubItemData, SubItemValue } from '@/lib/boards/types'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type SubItemColumn = {
   id: string
@@ -19,32 +21,12 @@ type SubItemColumn = {
   user_access?: 'edit' | 'view' | null
 }
 
-type SubItemValue = {
-  column_id: string
-  col_key: string
-  value_text: string | null
-  value_number: number | null
-  value_date: string | null
-  value_json: unknown
-}
-
-type SubItemData = {
-  id: string
-  sid: number
-  parent_id: string | null
-  depth: 0 | 1
-  name: string
-  source_item_id: string | null
-  position: number
-  values: SubItemValue[]
-}
-
 export async function GET(req: Request) {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const itemId = new URL(req.url).searchParams.get('itemId')
-  if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 })
+  if (!itemId) return jsonError('itemId required', 400)
 
   const userClient = await createClient()
   const service = createServiceClient()
@@ -57,11 +39,11 @@ export async function GET(req: Request) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!item) return jsonError('Not found', 404)
 
   // 16.9: Verify item access before fetching
   const canAccess = await userCanAccessItem(itemId, auth.userId, auth.workspaceId, auth.role)
-  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canAccess) return jsonError('Forbidden', 403)
 
   // Get sub_item_columns for the board
   const { data: columns } = await service
@@ -170,7 +152,7 @@ export async function POST(req: Request) {
   }
 
   if (!body.item_id) {
-    return NextResponse.json({ error: 'item_id required' }, { status: 400 })
+    return jsonError('item_id required', 400)
   }
 
   const userClient2 = await createClient()
@@ -184,7 +166,7 @@ export async function POST(req: Request) {
     .eq('workspace_id', auth.workspaceId)
     .single()
 
-  if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+  if (!item) return jsonError('Item not found', 404)
 
   const boardId = item.board_id
   const depth = body.depth ?? 0
@@ -241,7 +223,7 @@ export async function POST(req: Request) {
     .single()
 
   if (insertError || !subItem) {
-    return NextResponse.json({ error: insertError?.message ?? 'Insert failed' }, { status: 500 })
+    return jsonError(insertError?.message ?? 'Insert failed', 500)
   }
 
   // Snapshot logic: if source_item_id and source_board exists

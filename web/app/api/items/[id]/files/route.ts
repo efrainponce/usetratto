@@ -2,6 +2,7 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -39,13 +40,13 @@ export async function POST(req: Request, { params }: Context) {
 
   // Validate input
   if (!column_id || !filename || !mime || typeof size !== 'number') {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    return jsonError('Missing required fields', 400)
   }
 
   // Verify item ownership
   const isOwner = await verifyItemOwnership(id, auth.workspaceId)
   if (!isOwner) {
-    return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+    return jsonError('Item not found', 404)
   }
 
   const sanitized = sanitizeFilename(filename)
@@ -57,7 +58,7 @@ export async function POST(req: Request, { params }: Context) {
     .createSignedUploadUrl(path)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return NextResponse.json({
@@ -76,13 +77,13 @@ export async function GET(req: Request, { params }: Context) {
   const column_id = url.searchParams.get('column_id')
 
   if (!path || !column_id) {
-    return NextResponse.json({ error: 'Missing path or column_id' }, { status: 400 })
+    return jsonError('Missing path or column_id', 400)
   }
 
   // Verify item ownership
   const isOwner = await verifyItemOwnership(id, auth.workspaceId)
   if (!isOwner) {
-    return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+    return jsonError('Item not found', 404)
   }
 
   const serviceClient = createServiceClient()
@@ -91,7 +92,7 @@ export async function GET(req: Request, { params }: Context) {
     .createSignedUrl(path, 3600)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return NextResponse.json({
@@ -110,13 +111,13 @@ export async function DELETE(req: Request, { params }: Context) {
   }
 
   if (!column_id || !path) {
-    return NextResponse.json({ error: 'Missing column_id or path' }, { status: 400 })
+    return jsonError('Missing column_id or path', 400)
   }
 
   // Verify item ownership
   const isOwner = await verifyItemOwnership(id, auth.workspaceId)
   if (!isOwner) {
-    return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+    return jsonError('Item not found', 404)
   }
 
   const serviceClient = createServiceClient()
@@ -125,7 +126,7 @@ export async function DELETE(req: Request, { params }: Context) {
     .remove([path])
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return jsonError(error.message, 500)
   }
 
   return new NextResponse(null, { status: 204 })

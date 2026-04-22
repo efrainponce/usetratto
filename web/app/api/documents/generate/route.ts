@@ -9,6 +9,7 @@ import { DocumentPdf } from '@/lib/document-blocks/pdf-renderer'
 import { NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import type { CellKind } from '@/components/data-table/types'
+import { jsonError } from '@/lib/api-helpers'
 
 interface GenerateRequest {
   template_id: string
@@ -182,10 +183,7 @@ export async function POST(req: Request) {
     const { template_id, source_item_id } = body
 
     if (!template_id || !source_item_id) {
-      return NextResponse.json(
-        { error: 'template_id and source_item_id required' },
-        { status: 400 }
-      )
+      return jsonError('template_id and source_item_id required', 400)
     }
 
     const service = createServiceClient()
@@ -199,7 +197,7 @@ export async function POST(req: Request) {
       .maybeSingle()
 
     if (templateError || !template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      return jsonError('Template not found', 404)
     }
 
     // Fetch source item with item_values
@@ -215,7 +213,7 @@ export async function POST(req: Request) {
     const sourceItem = sourceItemResponse.data
 
     if (!sourceItem) {
-      return NextResponse.json({ error: 'Source item not found' }, { status: 404 })
+      return jsonError('Source item not found', 404)
     }
 
     // Fetch workspace info
@@ -240,10 +238,7 @@ export async function POST(req: Request) {
     })
 
     if (!validation.ok) {
-      return NextResponse.json(
-        { error: 'Pre-conditions not met', errors: validation.errors },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Pre-conditions not met', errors: validation.errors }, { status: 400 })
     }
 
     // Fetch board_columns for rootColumns
@@ -375,10 +370,7 @@ export async function POST(req: Request) {
       })
 
     if (uploadError) {
-      return NextResponse.json(
-        { error: 'Failed to upload PDF', details: uploadError.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Failed to upload PDF', details: uploadError.message }, { status: 500 })
     }
 
     // Get public URL
@@ -397,7 +389,7 @@ export async function POST(req: Request) {
       .maybeSingle()
 
     if (!documentsBoard) {
-      return NextResponse.json({ error: 'Quotes board not found' }, { status: 404 })
+      return jsonError('Quotes board not found', 404)
     }
 
     // Find board_columns
@@ -500,10 +492,7 @@ export async function POST(req: Request) {
       .single()
 
     if (itemError || !docItem) {
-      return NextResponse.json(
-        { error: 'Failed to create document item' },
-        { status: 500 }
-      )
+      return jsonError('Failed to create document item', 500)
     }
 
     // Insert item_values for document columns
@@ -626,9 +615,6 @@ export async function POST(req: Request) {
     )
   } catch (error) {
     console.error('[documents/generate] Error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return jsonError('Internal server error', 500)
   }
 }
