@@ -25,6 +25,8 @@ import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 import { evaluateCondition, type FormulaCondition } from '../lib/formula-engine'
 import { ColumnSettingsPanel, type PanelUser } from './ColumnSettingsPanel'
 import { SelectCell } from './data-table/cells/SelectCell'
+import { ImageCell } from './data-table/cells/ImageCell'
+import type { CellValue } from './data-table/types'
 import { findInTree, patchTree, patchValueInTree } from '@/lib/sub-items/tree'
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
@@ -1155,6 +1157,31 @@ function NativeRow({
 
         // Determine if user can edit this column
         const canEdit = access === 'edit'
+
+        if (col.kind === 'image') {
+          const imageValue = (val?.value_json as unknown as { name: string; path?: string; thumb_path?: string; url?: string; size: number; mime?: string }[] | null) ?? null
+          return (
+            <div key={col.id} className="relative flex-none" style={{ width: w(col.id, 180) }} onClick={e => e.stopPropagation()}>
+              <ImageCell
+                value={imageValue as unknown as CellValue}
+                isEditing={false}
+                column={{ key: col.col_key, label: col.name, kind: 'image', settings: col.settings ?? {} }}
+                rowId={row.id}
+                filesBase={`/api/sub-items/${row.id}/files`}
+                size={56}
+                onStartEdit={() => {}}
+                onCommit={v => onCommit(col.id, v)}
+                onCancel={() => {}}
+                onNavigate={() => {}}
+              />
+              {isInvalid && (
+                <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
+                  <span className="absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>
+                </div>
+              )}
+            </div>
+          )
+        }
 
         if (col.kind === 'select') {
           const opts = (col.settings.options as { value: string; label: string; color?: string }[] | undefined) ?? []

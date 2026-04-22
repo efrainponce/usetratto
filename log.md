@@ -2,6 +2,13 @@
 
 ## 2026-04-22
 
+**~sesión 3 — Chat files+privacy + kind `image` con thumbnails**
+- Chat: upload de archivos en canales (endpoint `/api/channels/[id]/attachments` multipart + bucket privado `channel-attachments`, signed URLs 1h, preview imágenes inline + card para otros), visibilidad public/private en `item_channels` con RLS filtrando privados por membership. Hotfix: recursión RLS (item_channels↔channel_members) resuelta con helper `auth_channel_ids()` SECURITY DEFINER. Fix pre-existente: `channel_members` insertaba `workspace_id` inexistente.
+- Kind nuevo `image`: celda dedicada (`ImageCell.tsx`) con thumbnails 48×48 (56 en sub-items), canvas genera webp 128px 0.7 client-side al subir, ring índigo en la primera (cover). Endpoints `/files` extendidos con `thumb_filename/thumb_path`, batch `/files/signed-urls`, paralelos en `/api/sub-items/[id]/files`. Dispatch wireado en `ColumnCell` + `SubItemsView` (value_json).
+- Oportunidades catálogo: `foto` convertido a `image` y movido a posición 1. Bug atrapado: el orden en boards lo controla `board_view_columns.position` por vista — no `board_columns.position`. Migration adicional upsertea posición por cada view_id del board.
+- Migrations aplicadas a prod: `20260422000002` (chat files+privacy), `20260422000003` (RLS recursion fix), `20260422000004` (image kind constraint), `20260422000005` (catálogo foto→image+pos1), `20260422000006` (fix view_columns ordering).
+- Memory: saved feedback `feedback_rls_recursion.md` + `feedback_board_column_position.md`.
+
 **~sesión 2 — UX polish: headers bold + avatar pill + channels modal + bug/seed fixes**
 - GenericDataTable header `font-bold text-[--ink-2]` (era semibold ink-4); RelationCell pill ahora con avatar 16px iniciales+color hash en warm-earth palette (sin cargo — decisión: "solo pill+avatar").
 - ContactCard reusable en `components/ContactCard.tsx` — dos variantes (`contact` con acciones llamar/correo/WhatsApp, `institution` con `extras` para contadores); espera puesto+institución como `subLine`. Creado pero no wireado aún (integrarlo al detail view pide mapping de columnas del board contactos — diferido).

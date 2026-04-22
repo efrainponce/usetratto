@@ -614,6 +614,7 @@ const ADD_COL_KINDS = [
   { value: 'phone',       label: 'Teléfono' },
   { value: 'email',       label: 'Email' },
   { value: 'file',        label: 'Archivo(s)' },
+  { value: 'image',       label: 'Imagen(es)' },
   { value: 'button',      label: 'Botón' },
   { value: 'signature',   label: 'Firma' },
   { value: 'formula',     label: 'Fórmula' },

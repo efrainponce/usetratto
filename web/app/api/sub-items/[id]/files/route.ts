@@ -6,23 +6,18 @@ import { jsonError } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
-// Sanitize filename: replace spaces with _, keep only alphanumeric, dots, dashes, underscores
 function sanitizeFilename(filename: string): string {
-  return filename
-    .replace(/\s+/g, '_')
-    .replace(/[^a-zA-Z0-9._\-]/g, '')
+  return filename.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._\-]/g, '')
 }
 
-// Verify item belongs to workspace
-async function verifyItemOwnership(itemId: string, workspaceId: string) {
+async function verifySubItemOwnership(subItemId: string, workspaceId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
-    .from('items')
+    .from('sub_items')
     .select('id')
-    .eq('id', itemId)
+    .eq('id', subItemId)
     .eq('workspace_id', workspaceId)
     .single()
-
   return !error && data
 }
 
@@ -39,37 +34,30 @@ export async function POST(req: Request, { params }: Context) {
     thumb_filename?: string
   }
 
-  // Validate input
   if (!column_id || !filename || !mime || typeof size !== 'number') {
     return jsonError('Missing required fields', 400)
   }
 
-  // Verify item ownership
-  const isOwner = await verifyItemOwnership(id, auth.workspaceId)
-  if (!isOwner) {
-    return jsonError('Item not found', 404)
+  if (!await verifySubItemOwnership(id, auth.workspaceId)) {
+    return jsonError('Sub-item not found', 404)
   }
 
   const sanitized = sanitizeFilename(filename)
   const stamp = Date.now()
-  const path = `${auth.workspaceId}/${id}/${stamp}_${sanitized}`
+  const path = `${auth.workspaceId}/sub-items/${id}/${stamp}_${sanitized}`
 
-  const serviceClient = createServiceClient()
-  const { data, error } = await serviceClient.storage
+  const service = createServiceClient()
+  const { data, error } = await service.storage
     .from('item-files')
     .createSignedUploadUrl(path)
+  if (error) return jsonError(error.message, 500)
 
-  if (error) {
-    return jsonError(error.message, 500)
-  }
-
-  // Optional companion thumbnail — for image columns the client ships a resized webp
   let thumbSignedUrl: string | undefined
   let thumbPath: string | undefined
   if (thumb_filename) {
     const sanitizedThumb = sanitizeFilename(thumb_filename)
-    const tPath = `${auth.workspaceId}/${id}/thumbs/${stamp}_${sanitizedThumb}`
-    const { data: tData, error: tError } = await serviceClient.storage
+    const tPath = `${auth.workspaceId}/sub-items/${id}/thumbs/${stamp}_${sanitizedThumb}`
+    const { data: tData, error: tError } = await service.storage
       .from('item-files')
       .createSignedUploadUrl(tPath)
     if (tError) return jsonError(tError.message, 500)
@@ -94,28 +82,18 @@ export async function GET(req: Request, { params }: Context) {
   const path = url.searchParams.get('path')
   const column_id = url.searchParams.get('column_id')
 
-  if (!path || !column_id) {
-    return jsonError('Missing path or column_id', 400)
+  if (!path || !column_id) return jsonError('Missing path or column_id', 400)
+  if (!await verifySubItemOwnership(id, auth.workspaceId)) {
+    return jsonError('Sub-item not found', 404)
   }
 
-  // Verify item ownership
-  const isOwner = await verifyItemOwnership(id, auth.workspaceId)
-  if (!isOwner) {
-    return jsonError('Item not found', 404)
-  }
-
-  const serviceClient = createServiceClient()
-  const { data, error } = await serviceClient.storage
+  const service = createServiceClient()
+  const { data, error } = await service.storage
     .from('item-files')
     .createSignedUrl(path, 3600)
+  if (error) return jsonError(error.message, 500)
 
-  if (error) {
-    return jsonError(error.message, 500)
-  }
-
-  return NextResponse.json({
-    url: data.signedUrl
-  })
+  return NextResponse.json({ url: data.signedUrl })
 }
 
 export async function DELETE(req: Request, { params }: Context) {
@@ -129,25 +107,15 @@ export async function DELETE(req: Request, { params }: Context) {
     thumb_path?: string
   }
 
-  if (!column_id || !path) {
-    return jsonError('Missing column_id or path', 400)
-  }
-
-  // Verify item ownership
-  const isOwner = await verifyItemOwnership(id, auth.workspaceId)
-  if (!isOwner) {
-    return jsonError('Item not found', 404)
+  if (!column_id || !path) return jsonError('Missing column_id or path', 400)
+  if (!await verifySubItemOwnership(id, auth.workspaceId)) {
+    return jsonError('Sub-item not found', 404)
   }
 
   const targets = thumb_path ? [path, thumb_path] : [path]
-  const serviceClient = createServiceClient()
-  const { error } = await serviceClient.storage
-    .from('item-files')
-    .remove(targets)
-
-  if (error) {
-    return jsonError(error.message, 500)
-  }
+  const service = createServiceClient()
+  const { error } = await service.storage.from('item-files').remove(targets)
+  if (error) return jsonError(error.message, 500)
 
   return new NextResponse(null, { status: 204 })
 }

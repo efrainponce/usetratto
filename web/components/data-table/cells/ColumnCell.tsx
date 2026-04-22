@@ -13,6 +13,7 @@ import { PhoneCell }       from './PhoneCell'
 import { EmailCell }       from './EmailCell'
 import { AutonumberCell }  from './AutonumberCell'
 import { FileCell }        from './FileCell'
+import { ImageCell }       from './ImageCell'
 import { ButtonCell }      from './ButtonCell'
 import { SignatureCell }   from './SignatureCell'
 import { FormulaCell }     from './FormulaCell'
@@ -67,6 +68,7 @@ export function ColumnCell(props: CellProps & { canEdit?: boolean }) {
       case 'email':       return <EmailCell       {...cellPropsAdjusted} />
       case 'autonumber':  return <AutonumberCell  {...cellPropsAdjusted} />
       case 'file':        return <FileCell        {...cellPropsAdjusted} />
+      case 'image':       return <ImageCell       {...cellPropsAdjusted} />
       case 'button':      return <ButtonCell      {...cellPropsAdjusted} />
       case 'signature':   return <SignatureCell   {...cellPropsAdjusted} />
       case 'formula':     return <FormulaCell     {...cellPropsAdjusted} />

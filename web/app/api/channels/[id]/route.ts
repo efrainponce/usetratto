@@ -13,7 +13,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const { data, error } = await supabase
     .from('item_channels')
-    .select('id, name, type, team_id, position, created_at')
+    .select('id, name, type, visibility, team_id, position, created_at')
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
     .single()
@@ -28,14 +28,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params
   const body = await req.json()
-  const { name, position } = body as { name?: string; position?: number }
+  const { name, position, visibility } = body as { name?: string; position?: number; visibility?: string }
 
   const supabase = await createClient()
 
   // Verify channel belongs to auth.workspaceId and get current type
   const { data: channel, error: fetchError } = await supabase
     .from('item_channels')
-    .select('type')
+    .select('type, visibility')
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
     .single()
@@ -51,16 +51,38 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updates: Record<string, any> = {}
   if (name !== undefined) updates.name = name
   if (position !== undefined) updates.position = position
+  if (visibility !== undefined) {
+    if (visibility !== 'public' && visibility !== 'private') {
+      return jsonError('visibility must be public or private', 400)
+    }
+    if (channel.type === 'system') {
+      return jsonError('Cannot change visibility of system channel', 400)
+    }
+    updates.visibility = visibility
+  }
 
   const { data, error } = await supabase
     .from('item_channels')
     .update(updates)
     .eq('id', id)
     .eq('workspace_id', auth.workspaceId)
-    .select('id, name, type, team_id, position, created_at')
+    .select('id, name, type, visibility, team_id, position, created_at')
     .single()
 
   if (error) return jsonError(error.message, 500)
+
+  // When switching public → private, seed the switcher as a member so they don't lock themselves out
+  if (visibility === 'private' && channel.visibility !== 'private') {
+    await supabase.from('channel_members').upsert(
+      {
+        channel_id: id,
+        user_id: auth.userId,
+        added_by: auth.userId,
+      },
+      { onConflict: 'channel_id,user_id' }
+    )
+  }
+
   return NextResponse.json(data)
 }
 

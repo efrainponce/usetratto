@@ -9,7 +9,7 @@ type Context = { params: Promise<{ id: string; colId: string }> }
 
 const VALID_KINDS = [
   'text','number','date','select','multiselect','people','boolean',
-  'relation','phone','email','autonumber','url','file','button','signature','formula','reflejo',
+  'relation','phone','email','autonumber','url','file','image','button','signature','formula','reflejo',
 ]
 
 export async function PATCH(req: Request, { params }: Context) {

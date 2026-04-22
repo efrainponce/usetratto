@@ -13,6 +13,7 @@ export type CellKind =
   | 'email'
   | 'autonumber'
   | 'file'
+  | 'image'
   | 'button'
   | 'signature'
   | 'formula'
@@ -106,6 +107,7 @@ export const DEFAULT_WIDTHS: Record<CellKind, number> = {
   reflejo:     150,
   text:        200,
   file:        180,
+  image:       180,
   button:      120,
   signature:   160,
   rollup:      100,

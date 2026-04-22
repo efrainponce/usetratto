@@ -55,7 +55,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         channel_id: channelId,
         user_id,
         added_by: auth.userId,
-        workspace_id: auth.workspaceId,
       },
       { onConflict: 'channel_id,user_id' }
     )

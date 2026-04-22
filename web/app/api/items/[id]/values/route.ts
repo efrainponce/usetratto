@@ -93,7 +93,7 @@ export async function PUT(req: Request, { params }: Context) {
       upsert.value_number = typeof value === 'number' ? value : parseFloat(String(value))
     } else if (kind === 'date') {
       upsert.value_date = String(value)
-    } else if (kind === 'boolean' || kind === 'multiselect' || kind === 'file') {
+    } else if (kind === 'boolean' || kind === 'multiselect' || kind === 'file' || kind === 'image') {
       upsert.value_json = value
     } else {
       upsert.value_text = String(value)

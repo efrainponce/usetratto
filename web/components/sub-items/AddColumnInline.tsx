@@ -16,6 +16,7 @@ const COL_KIND_OPTIONS = [
   { value: 'relation',  label: 'Relación' },
   { value: 'signature', label: 'Firma' },
   { value: 'file',      label: 'Archivo' },
+  { value: 'image',     label: 'Imagen' },
   { value: 'phone',     label: 'Teléfono' },
   { value: 'email',     label: 'Email' },
   { value: 'url',       label: 'URL' },

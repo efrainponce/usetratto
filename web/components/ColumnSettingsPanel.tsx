@@ -214,8 +214,8 @@ const [savingButton,    setSavingButton]    = useState(false)
   const isSignature = kind === 'signature'
   const isFormula   = kind === 'formula'
   const isRollup    = kind === 'rollup'
-  const hasDefault  = !['formula', 'rollup', 'signature', 'file', 'button', 'autonumber'].includes(kind)
-  const canBeRef    = !['formula', 'rollup', 'button', 'signature', 'file', 'autonumber'].includes(kind)
+  const hasDefault  = !['formula', 'rollup', 'signature', 'file', 'image', 'button', 'autonumber'].includes(kind)
+  const canBeRef    = !['formula', 'rollup', 'button', 'signature', 'file', 'image', 'autonumber'].includes(kind)
 
   type TabId = 'general' | 'opciones' | 'formula' | 'rollup' | 'validacion' | 'reflejo' | 'permisos'
   const [tab, setTab] = useState<TabId>('general')
@@ -264,7 +264,7 @@ const [savingButton,    setSavingButton]    = useState(false)
       .then(r => (r.ok ? r.json() : []))
       .then((cols: Array<{ id: string; col_key: string; name: string; kind: string }>) => {
         const allowed = cols.filter(
-          c => !['formula', 'rollup', 'button', 'signature', 'file', 'autonumber'].includes(c.kind)
+          c => !['formula', 'rollup', 'button', 'signature', 'file', 'image', 'autonumber'].includes(c.kind)
         )
         setRefTargetCols(allowed)
       })

@@ -5,11 +5,22 @@ import { useDisclosure } from '../hooks/useDisclosure'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type Visibility = 'public' | 'private'
+
 type Channel = {
   id: string
   name: string
   type: 'internal' | 'system'
+  visibility: Visibility
   members?: string[]
+}
+
+type Attachment = {
+  id: string
+  file_name: string
+  mime_type: string
+  size_bytes: number
+  url: string | null
 }
 
 type Message = {
@@ -21,6 +32,7 @@ type Message = {
   metadata: Record<string, unknown>
   created_at: string
   users: { id: string; name: string | null; phone: string | null } | null
+  attachments?: Attachment[]
 }
 
 type WorkspaceUser = {
@@ -34,6 +46,16 @@ type Props = {
   itemId: string
   workspaceUsers: WorkspaceUser[]
 }
+
+type PendingAttachment = {
+  file: File
+  localId: string
+  status: 'uploading' | 'ready' | 'error'
+  errorMsg?: string
+  uploaded?: { file_path: string; file_name: string; mime_type: string; size_bytes: number }
+}
+
+const MAX_FILE_SIZE = 25 * 1024 * 1024
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -49,6 +71,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
   const [renameValue, setRenameValue] = useState('')
   const [creatingNew, setCreatingNew] = useState(false)
   const [newChannelName, setNewChannelName] = useState('')
+  const [newChannelVisibility, setNewChannelVisibility] = useState<Visibility>('public')
 
   // Message state
   const [messages, setMessages] = useState<Message[]>([])
@@ -60,7 +83,9 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
   // Message input state
   const [inputValue, setInputValue] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Mention picker state
   const { isOpen: showMentionPicker, open: openMentionPicker, close: closeMentionPicker } = useDisclosure(false)
@@ -74,16 +99,21 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
 
   // ── Load channels on mount ──────────────────────────────────────────────────
 
+  const reloadChannels = useCallback(async () => {
+    const res = await fetch(`/api/channels?itemId=${itemId}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = (await res.json()) as { channels: Channel[] }
+    setChannels(data.channels ?? [])
+    return data.channels ?? []
+  }, [itemId])
+
   useEffect(() => {
     const loadChannels = async () => {
       setLoadingChannels(true)
       setChannelsError(null)
       try {
-        const res = await fetch(`/api/channels?itemId=${itemId}`)
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = (await res.json()) as { channels: Channel[] }
-        setChannels(data.channels ?? [])
-        if (data.channels && data.channels.length > 0) setSelectedChannelId(data.channels[0].id)
+        const list = await reloadChannels()
+        if (list.length > 0) setSelectedChannelId(prev => prev ?? list[0].id)
       } catch (e) {
         setChannelsError(e instanceof Error ? e.message : 'Error loading channels')
       } finally {
@@ -91,7 +121,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       }
     }
     loadChannels()
-  }, [itemId])
+  }, [reloadChannels])
 
   // ── Load messages when channel changes ──────────────────────────────────────
 
@@ -122,13 +152,18 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
 
     fetchMessages(true)
 
-    // Poll silently — no loading spinner on poll
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     pollIntervalRef.current = setInterval(() => fetchMessages(false), 8000)
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
+  }, [selectedChannelId])
+
+  // Reset pending attachments when switching channels
+  useEffect(() => {
+    setPendingAttachments([])
+    setSendError(null)
   }, [selectedChannelId])
 
   // ── Auto-scroll to bottom ──────────────────────────────────────────────────
@@ -143,7 +178,6 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     const value = e.target.value
     setInputValue(value)
 
-    // Check for @mention
     const cursorPos = e.target.selectionStart
     const lastAtIndex = value.lastIndexOf('@', cursorPos - 1)
 
@@ -160,7 +194,6 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       closeMentionPicker()
     }
 
-    // Auto-expand textarea — set to auto first to shrink, then grow to scrollHeight
     requestAnimationFrame(() => {
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
@@ -170,7 +203,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
   }
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && inputValue.trim()) {
+    if (e.key === 'Enter' && !e.shiftKey && (inputValue.trim() || pendingAttachments.some(a => a.status === 'ready'))) {
       e.preventDefault()
       handleSendMessage()
     }
@@ -189,28 +222,93 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     setMentionQuery('')
   }
 
-  const handleSendMessage = useCallback(async () => {
-    if (!selectedChannelId || !inputValue.trim()) return
+  // ── File upload ────────────────────────────────────────────────────────────
 
-    const body = inputValue.trim()
-    setInputValue('')
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
+  const uploadFile = useCallback(async (channelId: string, localId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const res = await fetch(`/api/channels/${channelId}/attachments`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as any).error ?? `HTTP ${res.status}`)
+      }
+      const data = (await res.json()) as { file_path: string; file_name: string; mime_type: string; size_bytes: number }
+      setPendingAttachments(prev =>
+        prev.map(a => a.localId === localId ? { ...a, status: 'ready', uploaded: data } : a)
+      )
+    } catch (e) {
+      setPendingAttachments(prev =>
+        prev.map(a => a.localId === localId
+          ? { ...a, status: 'error', errorMsg: e instanceof Error ? e.message : 'Error al subir' }
+          : a
+        )
+      )
+    }
+  }, [])
+
+  const handleFilesSelected = useCallback((files: FileList | null) => {
+    if (!files || !selectedChannelId) return
+
+    const accepted: PendingAttachment[] = []
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_FILE_SIZE) {
+        setSendError(`"${file.name}" excede 25MB`)
+        continue
+      }
+      accepted.push({
+        file,
+        localId: crypto.randomUUID(),
+        status: 'uploading',
+      })
     }
 
+    if (accepted.length === 0) return
+    setPendingAttachments(prev => [...prev, ...accepted])
     setSendError(null)
+    accepted.forEach(a => uploadFile(selectedChannelId, a.localId, a.file))
+  }, [selectedChannelId, uploadFile])
+
+  const handleRemoveAttachment = (localId: string) => {
+    setPendingAttachments(prev => prev.filter(a => a.localId !== localId))
+  }
+
+  const handleSendMessage = useCallback(async () => {
+    if (!selectedChannelId) return
+    const trimmed = inputValue.trim()
+    const readyUploads = pendingAttachments.filter(a => a.status === 'ready' && a.uploaded)
+    if (!trimmed && readyUploads.length === 0) return
+    if (pendingAttachments.some(a => a.status === 'uploading')) {
+      setSendError('Espera a que terminen de subir los archivos')
+      return
+    }
+
+    const savedBody = trimmed
+    const savedAttachments = readyUploads
+
+    setInputValue('')
+    setPendingAttachments([])
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    setSendError(null)
+
     try {
       const res = await fetch(`/api/channels/${selectedChannelId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({
+          body: savedBody,
+          attachments: savedAttachments.map(a => a.uploaded!),
+        }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error((err as any).error ?? `HTTP ${res.status}`)
       }
 
-      // Refresh messages
       const messagesRes = await fetch(`/api/channels/${selectedChannelId}/messages`)
       if (messagesRes.ok) {
         const data = (await messagesRes.json()) as { messages: Message[] }
@@ -218,9 +316,10 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       }
     } catch (e) {
       setSendError(e instanceof Error ? e.message : 'Error al enviar')
-      setInputValue(body) // restore input so user doesn't lose the message
+      setInputValue(savedBody)
+      setPendingAttachments(savedAttachments)
     }
-  }, [selectedChannelId, inputValue])
+  }, [selectedChannelId, inputValue, pendingAttachments])
 
   // ── Channel management ─────────────────────────────────────────────────────
 
@@ -230,17 +329,23 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       const res = await fetch('/api/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, name: newChannelName.trim() }),
+        body: JSON.stringify({
+          item_id: itemId,
+          name: newChannelName.trim(),
+          visibility: newChannelVisibility,
+        }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const newChannel = (await res.json()) as Channel
       setChannels(c => [...c, newChannel])
+      setSelectedChannelId(newChannel.id)
       setNewChannelName('')
+      setNewChannelVisibility('public')
       setCreatingNew(false)
     } catch (e) {
       console.error('Error creating channel:', e)
     }
-  }, [itemId, newChannelName])
+  }, [itemId, newChannelName, newChannelVisibility])
 
   const handleRenameChannel = useCallback(async (channelId: string) => {
     if (!renameValue.trim()) return
@@ -259,6 +364,20 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     }
   }, [renameValue])
 
+  const handleToggleVisibility = useCallback(async (channelId: string, next: Visibility) => {
+    try {
+      const res = await fetch(`/api/channels/${channelId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visibility: next }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await reloadChannels()
+    } catch (e) {
+      console.error('Error toggling visibility:', e)
+    }
+  }, [reloadChannels])
+
   const handleDeleteChannel = useCallback(async (channelId: string) => {
     try {
       const res = await fetch(`/api/channels/${channelId}`, { method: 'DELETE' })
@@ -275,39 +394,36 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       const res = await fetch(`/api/channels/${channelId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ user_id: userId }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      // Refresh channels to get updated members
-      const refreshRes = await fetch(`/api/channels?itemId=${itemId}`)
-      if (refreshRes.ok) {
-        const data = (await refreshRes.json()) as { channels: Channel[] }
-        setChannels(data.channels ?? [])
-      }
+      await reloadChannels()
     } catch (e) {
       console.error('Error adding member:', e)
     }
-  }, [itemId])
+  }, [reloadChannels])
 
   const handleRemoveMember = useCallback(async (channelId: string, userId: string) => {
     try {
-      const res = await fetch(`/api/channels/${channelId}/members/${userId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/channels/${channelId}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      // Refresh channels to get updated members
-      const refreshRes = await fetch(`/api/channels?itemId=${itemId}`)
-      if (refreshRes.ok) {
-        const data = (await refreshRes.json()) as { channels: Channel[] }
-        setChannels(data.channels ?? [])
-      }
+      await reloadChannels()
     } catch (e) {
       console.error('Error removing member:', e)
     }
-  }, [itemId])
+  }, [reloadChannels])
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const selectedChannel = channels.find(c => c.id === selectedChannelId)
   const isSystemChannel = selectedChannel?.type === 'system'
+  const hasReadyAttachments = pendingAttachments.some(a => a.status === 'ready')
+  const hasUploadingAttachments = pendingAttachments.some(a => a.status === 'uploading')
+  const canSend = !isSystemChannel && (inputValue.trim().length > 0 || hasReadyAttachments) && !hasUploadingAttachments
 
   const filteredMentions = mentionQuery.trim()
     ? workspaceUsers.filter(u => (u.name ?? '').toLowerCase().includes(mentionQuery.toLowerCase()))
@@ -351,9 +467,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
                         type="text"
                         value={renameValue}
                         onChange={e => setRenameValue(e.target.value)}
-                        onBlur={() => {
-                          handleRenameChannel(channel.id)
-                        }}
+                        onBlur={() => { handleRenameChannel(channel.id) }}
                         onKeyDown={e => {
                           if (e.key === 'Enter') handleRenameChannel(channel.id)
                           if (e.key === 'Escape') {
@@ -367,11 +481,8 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
                     ) : (
                       <>
                         <span className="mr-1">
-                          {channel.type === 'system' ? '⊙' : '#'}
+                          {channel.type === 'system' ? '⊙' : channel.visibility === 'private' ? '🔒' : '#'}
                         </span>
-                        {channel.members && channel.members.length > 0 && (
-                          <span className="mr-1">🔒</span>
-                        )}
                         <span>{channel.name}</span>
                       </>
                     )}
@@ -389,6 +500,15 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
                         className="block w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-100"
                       >
                         Renombrar
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleToggleVisibility(channel.id, channel.visibility === 'private' ? 'public' : 'private')
+                          setContextMenuId(null)
+                        }}
+                        className="block w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-100"
+                      >
+                        {channel.visibility === 'private' ? 'Hacer público' : 'Hacer privado'}
                       </button>
                       <button
                         onClick={() => {
@@ -425,36 +545,92 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
             + Canal
           </button>
         ) : (
-          <div className="mx-2 mb-2 flex-none">
+          <div className="mx-2 mb-2 flex-none space-y-1.5">
             <input
               autoFocus
               type="text"
               value={newChannelName}
               onChange={e => setNewChannelName(e.target.value)}
-              onBlur={() => {
-                if (newChannelName.trim()) {
-                  handleCreateChannel()
-                } else {
-                  setCreatingNew(false)
-                  setNewChannelName('')
-                }
-              }}
               onKeyDown={e => {
                 if (e.key === 'Enter') handleCreateChannel()
                 if (e.key === 'Escape') {
                   setCreatingNew(false)
                   setNewChannelName('')
+                  setNewChannelVisibility('public')
                 }
               }}
               placeholder="Nombre del canal"
               className="w-full text-[12px] px-2 py-1.5 rounded border border-indigo-300 outline-none"
             />
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setNewChannelVisibility('public')}
+                className={`flex-1 text-[11px] px-2 py-1 rounded border transition-colors ${
+                  newChannelVisibility === 'public'
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                # Público
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewChannelVisibility('private')}
+                className={`flex-1 text-[11px] px-2 py-1 rounded border transition-colors ${
+                  newChannelVisibility === 'private'
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                🔒 Privado
+              </button>
+            </div>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={handleCreateChannel}
+                disabled={!newChannelName.trim()}
+                className="flex-1 text-[11px] px-2 py-1 rounded bg-indigo-500 text-white hover:bg-indigo-600 disabled:bg-gray-300"
+              >
+                Crear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingNew(false)
+                  setNewChannelName('')
+                  setNewChannelVisibility('public')
+                }}
+                className="flex-1 text-[11px] px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       {/* ── Main: Message thread ──────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header with channel name + privacy indicator */}
+        {selectedChannel && (
+          <div className="flex-none border-b border-gray-100 px-4 py-2 flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-gray-900">
+              {selectedChannel.type === 'system' ? '⊙' : selectedChannel.visibility === 'private' ? '🔒' : '#'} {selectedChannel.name}
+            </span>
+            {selectedChannel.type !== 'system' && (
+              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                selectedChannel.visibility === 'private'
+                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+                {selectedChannel.visibility === 'private' ? 'Privado' : 'Público'}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
           {loadingMessages ? (
@@ -481,9 +657,16 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
                         </span>
                       </div>
                     )}
-                    <div className="text-gray-700 break-words whitespace-pre-wrap">
-                      {renderBody(msg.body)}
-                    </div>
+                    {msg.body && (
+                      <div className="text-gray-700 break-words whitespace-pre-wrap">
+                        {renderBody(msg.body)}
+                      </div>
+                    )}
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="mt-1 space-y-1">
+                        {msg.attachments.map(att => <AttachmentView key={att.id} attachment={att} />)}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -497,7 +680,60 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
           {sendError && (
             <div className="text-[12px] text-red-500 mb-1.5">{sendError}</div>
           )}
+
+          {/* Pending attachments */}
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {pendingAttachments.map(att => (
+                <div
+                  key={att.localId}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] border ${
+                    att.status === 'error'
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : att.status === 'uploading'
+                      ? 'bg-gray-50 border-gray-200 text-gray-500'
+                      : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                  }`}
+                  title={att.errorMsg ?? att.file.name}
+                >
+                  <span>
+                    {att.status === 'uploading' ? '⏳' : att.status === 'error' ? '⚠' : '📎'}
+                  </span>
+                  <span className="max-w-[140px] truncate">{att.file.name}</span>
+                  <span className="text-gray-400">{formatSize(att.file.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(att.localId)}
+                    className="ml-0.5 text-gray-400 hover:text-gray-700"
+                    aria-label="Quitar"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={e => {
+                handleFilesSelected(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSystemChannel}
+              title="Adjuntar archivo"
+              className="flex-none self-end w-9 h-9 rounded text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            >
+              📎
+            </button>
             <textarea
               ref={textareaRef}
               value={inputValue}
@@ -513,7 +749,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
             />
             <button
               onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isSystemChannel}
+              disabled={!canSend}
               className="flex-none self-end px-3 py-1.5 text-[13px] font-medium rounded bg-indigo-500 text-white hover:bg-indigo-600 disabled:bg-gray-300 transition-colors"
             >
               Enviar
@@ -577,6 +813,9 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
                   </div>
                 )
               })}
+              {(!selectedChannel.members || selectedChannel.members.length === 0) && (
+                <div className="text-[12px] text-gray-400 italic">Sin miembros explícitos</div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -622,4 +861,41 @@ function renderBody(body: string): React.ReactNode {
     }
     return <span key={i}>{part}</span>
   })
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function AttachmentView({ attachment }: { attachment: Attachment }) {
+  const isImage = attachment.mime_type.startsWith('image/')
+  if (isImage && attachment.url) {
+    return (
+      <a href={attachment.url} target="_blank" rel="noreferrer" className="block max-w-xs">
+        <img
+          src={attachment.url}
+          alt={attachment.file_name}
+          className="rounded border border-gray-200 max-h-56 object-cover"
+        />
+        <div className="text-[11px] text-gray-500 mt-0.5 truncate">{attachment.file_name}</div>
+      </a>
+    )
+  }
+
+  return (
+    <a
+      href={attachment.url ?? '#'}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-2 px-2.5 py-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors max-w-xs"
+    >
+      <span className="text-[16px]">📄</span>
+      <div className="min-w-0">
+        <div className="text-[12px] font-medium text-gray-900 truncate">{attachment.file_name}</div>
+        <div className="text-[10px] text-gray-500">{formatSize(attachment.size_bytes)}</div>
+      </div>
+    </a>
+  )
 }

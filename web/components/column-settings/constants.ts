@@ -16,6 +16,7 @@ export const KIND_OPTIONS = [
   { value: 'email',       label: 'Email' },
   { value: 'url',         label: 'URL' },
   { value: 'file',        label: 'Archivo(s)' },
+  { value: 'image',       label: 'Imagen(es)' },
   { value: 'button',      label: 'Botón' },
   { value: 'signature',   label: 'Firma' },
   { value: 'formula',     label: 'Fórmula' },
