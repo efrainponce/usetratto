@@ -2,7 +2,7 @@ import { requireAuthApi, isAuthError } from '@/lib/auth/api'
 import { requireBoardAdmin } from '@/lib/permissions'
 import { createServiceClient } from '@/lib/supabase/service'
 import { jsonError, jsonOk } from '@/lib/api-helpers'
-import { basicQuoteTemplateBody } from '@/lib/document-blocks/defaults'
+import { buildQuoteBody, DEFAULT_QUOTE_CONFIG } from '@/lib/document-blocks/defaults'
 
 /**
  * GET /api/document-templates
@@ -99,8 +99,10 @@ export async function POST(request: Request) {
       workspace_id: auth.workspaceId,
       name: name.trim(),
       target_board_id,
-      body_json: Array.isArray(body_json) && body_json.length > 0 ? body_json : basicQuoteTemplateBody(),
-      style_json: style_json ?? {},
+      body_json: Array.isArray(body_json) && body_json.length > 0 ? body_json : buildQuoteBody(DEFAULT_QUOTE_CONFIG),
+      style_json: style_json && typeof style_json === 'object' && (style_json as Record<string, unknown>).quote_config
+        ? style_json
+        : { ...(style_json as Record<string, unknown> ?? {}), quote_config: DEFAULT_QUOTE_CONFIG },
       signature_config: signature_config ?? [],
       pre_conditions: pre_conditions ?? [],
       folio_format: folio_format ?? null,

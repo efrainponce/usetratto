@@ -36,7 +36,7 @@ type Props = {
   channelSummary?:      Record<string, { message_count: number; unread_count: number }>
   onBulkDelete?:        (ids: string[]) => void
   onColumnSettings?:    (colKey: string) => void
-  onAddColumn?:         (name: string, kind: string) => Promise<void>
+  onAddColumn?:         (name: string, kind: string, settings?: Record<string, unknown>) => Promise<void>
   loading?:             boolean
   storageKey?:          string   // if provided, column widths are persisted to localStorage
 }
@@ -615,30 +615,38 @@ function SortDesc() {
   )
 }
 
-const ADD_COL_KINDS = [
-  { value: 'text',        label: 'Texto' },
-  { value: 'number',      label: 'Número' },
-  { value: 'date',        label: 'Fecha' },
-  { value: 'select',      label: 'Selección simple' },
-  { value: 'multiselect', label: 'Selección múltiple' },
-  { value: 'people',      label: 'Persona' },
-  { value: 'boolean',     label: 'Checkbox' },
-  { value: 'phone',       label: 'Teléfono' },
-  { value: 'email',       label: 'Email' },
-  { value: 'file',        label: 'Archivo(s)' },
-  { value: 'image',       label: 'Imagen(es)' },
-  { value: 'button',      label: 'Botón' },
-  { value: 'signature',   label: 'Firma' },
-  { value: 'formula',     label: 'Fórmula' },
+type AddColKind = {
+  value:     string                            // id interno de la opción
+  label:     string
+  kind:      string                            // kind real que se manda al backend
+  settings?: Record<string, unknown>           // settings preset (prefix/source/etc)
+}
+
+const ADD_COL_KINDS: AddColKind[] = [
+  { value: 'text',        label: 'Texto',              kind: 'text' },
+  { value: 'number',      label: 'Número',             kind: 'number' },
+  { value: 'date',        label: 'Fecha',              kind: 'date' },
+  { value: 'select',      label: 'Selección simple',   kind: 'select' },
+  { value: 'multiselect', label: 'Selección múltiple', kind: 'multiselect' },
+  { value: 'people',      label: 'Persona',            kind: 'people' },
+  { value: 'boolean',     label: 'Checkbox',           kind: 'boolean' },
+  { value: 'phone',       label: 'Teléfono',           kind: 'phone' },
+  { value: 'email',       label: 'Email',              kind: 'email' },
+  { value: 'file',        label: 'Archivo(s)',         kind: 'file' },
+  { value: 'image',       label: 'Imagen(es)',         kind: 'image' },
+  { value: 'button',      label: 'Botón',              kind: 'button' },
+  { value: 'signature',   label: 'Firma',              kind: 'signature' },
+  { value: 'formula',     label: 'Fórmula',            kind: 'formula' },
+  { value: '__sysid',     label: 'ID del sistema',     kind: 'autonumber', settings: { source: 'sid', pad: 0 } },
 ]
 
-function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Promise<void> }) {
-  const [open,   setOpen]   = useState(false)
-  const [name,   setName]   = useState('')
-  const [kind,   setKind]   = useState('text')
-  const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState<string | null>(null)
-  const [pos,    setPos]    = useState<{ top: number; left: number } | null>(null)
+function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string, settings?: Record<string, unknown>) => Promise<void> }) {
+  const [open,     setOpen]     = useState(false)
+  const [name,     setName]     = useState('')
+  const [optValue, setOptValue] = useState('text')
+  const [saving,   setSaving]   = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [pos,      setPos]      = useState<{ top: number; left: number } | null>(null)
   const btnRef   = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -654,7 +662,7 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
     }
     setOpen(true)
     setName('')
-    setKind('text')
+    setOptValue('text')
     setError(null)
     setTimeout(() => inputRef.current?.focus(), 30)
   }
@@ -663,10 +671,11 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
 
   const handleSubmit = async () => {
     if (!name.trim() || saving) return
+    const opt = ADD_COL_KINDS.find(k => k.value === optValue) ?? ADD_COL_KINDS[0]
     setSaving(true)
     setError(null)
     try {
-      await onAdd(name.trim(), kind)
+      await onAdd(name.trim(), opt.kind, opt.settings)
       handleClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al crear columna')
@@ -725,9 +734,9 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string) => Pro
               <button
                 key={k.value}
                 type="button"
-                onClick={() => setKind(k.value)}
+                onClick={() => setOptValue(k.value)}
                 className={`w-full text-left text-[13px] px-2 py-1.5 transition-colors ${
-                  kind === k.value
+                  optValue === k.value
                     ? 'bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)] text-[var(--brand-deep)] font-medium'
                     : 'text-[var(--ink)] hover:bg-[var(--surface-2)]'
                 }`}

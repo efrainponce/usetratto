@@ -77,6 +77,10 @@ export type ColumnSettings = {
   ref_source_col_key?: string
   ref_field_col_key?:  string
   ref_field_kind?:     string
+  // autonumber / folio — prefix + pad + source field
+  prefix?:             string          // ej: 'OPP' → "OPP-001"
+  pad?:                number          // ej: 3 → padStart(3, '0')
+  source?:             'folio_number' | 'sid'  // which field feeds the number
 }
 
 export type ColumnDef = {

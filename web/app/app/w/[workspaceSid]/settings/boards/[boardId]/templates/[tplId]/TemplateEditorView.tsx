@@ -1,19 +1,11 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
-import dynamic from 'next/dynamic'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { BlockPalette } from '@/components/templates/BlockPalette'
 import { DocumentHtmlPreview } from '@/lib/document-blocks/html-preview'
 import { buildSampleContext } from '@/lib/document-blocks/sample-context'
-import { basicQuoteTemplateBody } from '@/lib/document-blocks/defaults'
-import type { Block, BoardColumnMeta, RenderContext } from '@/lib/document-blocks'
-
-// BlockCanvas uses @dnd-kit which generates unique IDs on mount → hydration mismatch if SSR'd
-const BlockCanvas = dynamic(
-  () => import('@/components/templates/BlockCanvas').then(m => m.BlockCanvas),
-  { ssr: false, loading: () => <div className="p-8 text-center text-[13px] text-[var(--ink-4)]">Cargando editor…</div> }
-)
+import { buildQuoteBody, DEFAULT_QUOTE_CONFIG, type QuoteConfig } from '@/lib/document-blocks/defaults'
+import type { BoardColumnMeta, RenderContext } from '@/lib/document-blocks'
 
 type TemplateData = {
   id: string
@@ -27,273 +19,269 @@ type TemplateData = {
   updated_at: string
 }
 
-type BoardData = {
-  id: string
-  name: string
-  sid: number
-  workspace_id: string
-}
-
-type WorkspaceData = {
-  id: string
-  name: string
-  logo_url?: string
-}
+type SubItemColumn = { id: string; col_key: string; name: string; kind: string; settings?: Record<string, unknown> }
 
 type TemplateEditorViewProps = {
-  template: TemplateData
-  board: BoardData
-  columns: Array<{
-    id: string
-    col_key: string
-    name: string
-    kind: string
-    settings?: Record<string, unknown>
-  }>
-  subItemColumns: Array<{
-    id: string
-    col_key: string
-    name: string
-    kind: string
-    settings?: Record<string, unknown>
-  }>
-  workspace: WorkspaceData
-  workspaceSid: string
-  onClose?: () => void
+  template:        TemplateData
+  board:           { id: string; name: string; sid: number; workspace_id: string }
+  columns:         SubItemColumn[]
+  subItemColumns:  SubItemColumn[]
+  workspace:       { id: string; name: string; logo_url?: string }
+  workspaceSid:    string
+  onClose?:        () => void
   liveItem?: {
     rootItem: { id: string; sid: number; name: string; values: Record<string, string | number | null> }
     subItems: Array<{ id: string; sid: number; name: string; values: Record<string, string | number | null> }>
   } | null
 }
 
-function convertToBoardColumnMeta(cols: any[]): BoardColumnMeta[] {
-  return cols.map((col) => ({
-    col_key: col.col_key,
-    name: col.name,
-    kind: col.kind as any,
-    settings: col.settings,
-  }))
+// Orden canónico de columnas del catálogo (las que conocemos) — las demás se agregan después.
+const CATALOG_ORDER = ['sku', 'descripcion', 'cantidad', 'unidad', 'unit_price', 'subtotal']
+
+function toMeta(cols: SubItemColumn[]): BoardColumnMeta[] {
+  return cols.map(c => ({ col_key: c.col_key, name: c.name, kind: c.kind as any, settings: c.settings }))
+}
+
+function readConfig(style: unknown): QuoteConfig {
+  const obj = (style && typeof style === 'object' ? (style as Record<string, unknown>) : {})
+  const cfg = obj.quote_config as Partial<QuoteConfig> | undefined
+  return {
+    tableColumns:        Array.isArray(cfg?.tableColumns) && cfg!.tableColumns.length ? cfg!.tableColumns as string[] : DEFAULT_QUOTE_CONFIG.tableColumns,
+    showThumbnail:       cfg?.showThumbnail       ?? DEFAULT_QUOTE_CONFIG.showThumbnail,
+    ivaRate:             typeof cfg?.ivaRate === 'number' ? cfg!.ivaRate as number : DEFAULT_QUOTE_CONFIG.ivaRate,
+    notes:               cfg?.notes               ?? DEFAULT_QUOTE_CONFIG.notes,
+    showClientSignature: cfg?.showClientSignature ?? DEFAULT_QUOTE_CONFIG.showClientSignature,
+    showVendorSignature: cfg?.showVendorSignature ?? DEFAULT_QUOTE_CONFIG.showVendorSignature,
+  }
 }
 
 export default function TemplateEditorView({
-  template,
-  board,
-  columns,
-  subItemColumns,
-  workspace,
-  workspaceSid,
-  onClose,
-  liveItem,
+  template, board: _board, columns, subItemColumns, workspace, workspaceSid: _workspaceSid, onClose, liveItem,
 }: TemplateEditorViewProps) {
   const router = useRouter()
   const handleClose = onClose ?? (() => router.back())
 
-  const [blocks, setBlocks] = useState<Block[]>(
-    Array.isArray(template.body_json) ? (template.body_json as Block[]) : []
-  )
-  const [name, setName] = useState(template.name)
-  const [status, setStatus] = useState<'draft' | 'active' | 'archived'>(template.status)
-  const [savedAt, setSavedAt] = useState<Date | null>(null)
-  const [isDirty, setIsDirty] = useState(false)
+  const [name,     setName]     = useState(template.name)
+  const [config,   setConfig]   = useState<QuoteConfig>(() => readConfig(template.style_json))
+  const [savedAt,  setSavedAt]  = useState<Date | null>(null)
+  const [isDirty,  setIsDirty]  = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  const rootColsMeta = convertToBoardColumnMeta(columns)
-  const subColsMeta = convertToBoardColumnMeta(subItemColumns)
+  const rootColsMeta = useMemo(() => toMeta(columns),         [columns])
+  const subColsMeta  = useMemo(() => toMeta(subItemColumns),  [subItemColumns])
+  const blocks       = useMemo(() => buildQuoteBody(config),  [config])
+  const styleForPreview = useMemo(() => ({ quote_config: config }), [config])
 
-  // Use real item data when available; fall back to dummy sample
   const sampleContext: RenderContext = liveItem
     ? {
-        rootItem: liveItem.rootItem,
-        rootColumns: rootColsMeta,
-        subItems: liveItem.subItems,
+        rootItem:       liveItem.rootItem,
+        rootColumns:    rootColsMeta,
+        subItems:       liveItem.subItems,
         subItemColumns: subColsMeta,
-        workspace: { name: workspace.name, logo_url: workspace.logo_url },
+        workspace:      { name: workspace.name, logo_url: workspace.logo_url },
       }
     : buildSampleContext(rootColsMeta, subColsMeta, workspace)
 
-  const style = (template.style_json ?? {}) as Record<string, unknown>
-
-  // Debounced auto-save
+  // ── Auto-save ────────────────────────────────────────────────────────────
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
+  const latest = useRef({ name, config, blocks })
+  latest.current = { name, config, blocks }
 
   const triggerAutoSave = useCallback(() => {
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current)
-    }
-
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(async () => {
-      await autoSave()
-    }, 1500)
-  }, [])
-
-  const autoSave = useCallback(async () => {
-    if (!isDirty || isSaving) return
-
-    setIsSaving(true)
-    try {
-      const res = await fetch(`/api/document-templates/${template.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          body_json: blocks,
-          status: status,
-        }),
-      })
-
-      if (res.ok) {
-        setSavedAt(new Date())
-        setIsDirty(false)
+      const { name: n, config: c, blocks: b } = latest.current
+      setIsSaving(true)
+      try {
+        const res = await fetch(`/api/document-templates/${template.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name:       n.trim() || 'Plantilla',
+            body_json:  b,
+            style_json: { quote_config: c },
+          }),
+        })
+        if (res.ok) {
+          setSavedAt(new Date())
+          setIsDirty(false)
+        }
+      } catch (err) {
+        console.error('[template auto-save]', err)
+      } finally {
+        setIsSaving(false)
       }
-    } catch (error) {
-      console.error('Auto-save error:', error)
-    } finally {
-      setIsSaving(false)
+    }, 1200)
+  }, [template.id])
+
+  const patchConfig = (patch: Partial<QuoteConfig>) => {
+    setConfig(prev => ({ ...prev, ...patch }))
+    setIsDirty(true)
+    triggerAutoSave()
+  }
+
+  const handleNameChange = (v: string) => {
+    setName(v)
+    setIsDirty(true)
+    triggerAutoSave()
+  }
+
+  // ── Opciones de columnas disponibles para la tabla ───────────────────────
+  // Orden: las conocidas primero (sku, descripcion…), luego custom. Excluimos
+  // foto (rendering en tabla aún no soporta image kind — se usa miniatura).
+  const availableTableCols = useMemo(() => {
+    const byKey  = new Map(subItemColumns.map(c => [c.col_key, c]))
+    const result: SubItemColumn[] = []
+    for (const k of CATALOG_ORDER) {
+      const c = byKey.get(k)
+      if (c) { result.push(c); byKey.delete(k) }
     }
-  }, [isDirty, isSaving, template.id, name, blocks, status])
+    for (const c of byKey.values()) {
+      if (c.col_key === 'foto' || c.col_key === 'name') continue
+      result.push(c)
+    }
+    return result
+  }, [subItemColumns])
 
-  // Handle block changes
-  const handleBlocksChange = (newBlocks: Block[]) => {
-    setBlocks(newBlocks)
-    setIsDirty(true)
-    triggerAutoSave()
+  const toggleTableCol = (col_key: string) => {
+    const exists = config.tableColumns.includes(col_key)
+    const next   = exists
+      ? config.tableColumns.filter(k => k !== col_key)
+      : [...availableTableCols.filter(c => c.col_key === col_key || config.tableColumns.includes(c.col_key)).map(c => c.col_key)]
+    patchConfig({ tableColumns: next })
   }
 
-  // Handle name change
-  const handleNameChange = (newName: string) => {
-    setName(newName)
-    setIsDirty(true)
-    triggerAutoSave()
-  }
-
-  // Handle status change
-  const handleStatusChange = (newStatus: 'draft' | 'active' | 'archived') => {
-    setStatus(newStatus)
-    setIsDirty(true)
-    triggerAutoSave()
-  }
-
-  // Format saved time
+  // ── UI helpers ───────────────────────────────────────────────────────────
   const formatSavedTime = () => {
     if (!savedAt) return null
-    const now = new Date()
-    const diff = Math.round((now.getTime() - savedAt.getTime()) / 1000)
-    if (diff < 60) return 'hace unos segundos'
-    if (diff < 3600) return `hace ${Math.round(diff / 60)}m`
-    if (diff < 86400) return `hace ${Math.round(diff / 3600)}h`
-    return `hace ${Math.round(diff / 86400)}d`
-  }
-
-  const handleDownloadPdf = async () => {
-    // Placeholder: el user puede ver el preview; la generación real es desde el item (no template)
-    alert('Para generar PDF final, usa el botón "Generar PDF" en la vista de sub-items de la oportunidad.')
-  }
-
-  const handleResetToBasic = () => {
-    if (blocks.length > 0 && !confirm('¿Reemplazar los bloques actuales con la plantilla básica? Esta acción no se puede deshacer.')) return
-    handleBlocksChange(basicQuoteTemplateBody())
+    const diff = Math.round((Date.now() - savedAt.getTime()) / 1000)
+    if (diff < 5)   return 'guardado'
+    if (diff < 60)  return 'guardado hace un momento'
+    if (diff < 3600) return `guardado hace ${Math.round(diff / 60)}m`
+    return `guardado hace ${Math.round(diff / 3600)}h`
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--bg-2)]">
-      {/* Top bar */}
-      <div className="flex items-start justify-between gap-4 px-6 py-3.5 border-b border-[var(--border)] bg-[var(--bg)] flex-none">
-        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-          <div className="font-[family-name:var(--font-geist-mono)] text-[11.5px] text-[var(--ink-4)] tabular-nums tracking-tight">
-            COT-{String(template.sid).padStart(4, '0')} · v1
-            {isSaving && <span className="ml-2">· guardando…</span>}
-            {!isSaving && savedAt && <span className="ml-2">· guardado {formatSavedTime()}</span>}
-          </div>
+    <div className="h-full flex flex-col bg-[var(--bg-2)]">
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-[var(--border)] bg-[var(--bg)] flex-none">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="font-[family-name:var(--font-geist-mono)] text-[11.5px] text-[var(--ink-4)] tabular-nums tracking-tight shrink-0">
+            COT-{String(template.sid).padStart(4, '0')}
+          </span>
+          <span className="w-px h-4 bg-[var(--border)] shrink-0" />
           <input
             value={name}
-            onChange={(e) => handleNameChange(e.target.value)}
-            className="font-[family-name:var(--font-geist-mono)] text-[18px] font-semibold uppercase tracking-[0.02em] text-[var(--ink)] bg-transparent border-0 outline-none px-0 py-0 w-full"
-            placeholder="Nombre del template"
+            onChange={e => handleNameChange(e.target.value)}
+            className="font-[family-name:var(--font-geist-mono)] text-[14px] font-semibold uppercase tracking-[0.02em] text-[var(--ink)] bg-transparent border-0 outline-none px-0 py-0 w-full min-w-0"
+            placeholder="Nombre de la plantilla"
           />
+          <span className="text-[11.5px] text-[var(--ink-4)] shrink-0 tabular-nums">
+            {isSaving ? 'guardando…' : (isDirty ? 'sin guardar' : formatSavedTime() ?? '')}
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 flex-none">
-          <select
-            value={status}
-            onChange={(e) => handleStatusChange(e.target.value as 'draft' | 'active' | 'archived')}
-            className="px-2.5 py-1.5 text-[12px] text-[var(--ink-2)] bg-[var(--surface-2)] border border-[var(--border)] rounded-sm outline-none"
-          >
-            <option value="draft">Borrador</option>
-            <option value="active">Activo</option>
-            <option value="archived">Archivado</option>
-          </select>
-          <button
-            onClick={handleResetToBasic}
-            title="Reemplazar bloques por plantilla básica (encabezado, Para, tabla, total, firmas)"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] rounded-sm transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/>
-            </svg>
-            Plantilla básica
-          </button>
-          <button
-            onClick={handleDownloadPdf}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] rounded-sm transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
-            PDF
-          </button>
-          <button
-            onClick={handleClose}
-            title="Cerrar"
-            className="inline-flex items-center justify-center w-8 h-8 text-[var(--ink-3)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] rounded-sm transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={handleClose}
+          title="Cerrar"
+          className="inline-flex items-center justify-center w-8 h-8 text-[var(--ink-3)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] rounded-sm transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18M6 6l12 12"/>
+          </svg>
+        </button>
       </div>
 
-      {/* Body: left sidebar (palette + variables) + middle (canvas) + right (preview paper) */}
+      {/* ── Body: left config + right preview ──────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar */}
-        <div className="w-[220px] flex-none flex flex-col bg-[var(--bg-2)] border-r border-[var(--border)] overflow-y-auto p-3 gap-4">
-          <div>
-            <div className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] uppercase tracking-[0.08em] font-semibold px-1 pb-2">Bloques</div>
-            <BlockPalette onAdd={(block) => setBlocks([...blocks, block])} />
-          </div>
-          <div>
-            <div className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] uppercase tracking-[0.08em] font-semibold px-1 pb-2">Variables</div>
+        {/* Sidebar */}
+        <aside className="w-[300px] flex-none flex flex-col bg-[var(--bg-2)] border-r border-[var(--border)] overflow-y-auto">
+          <Section title="Productos">
+            <p className="text-[11.5px] text-[var(--ink-4)] leading-relaxed mb-3">
+              Columnas del catálogo que aparecen en la tabla de productos.
+            </p>
             <div className="flex flex-col gap-1">
-              {[
-                '{{contacto.nombre}}',
-                '{{institucion.nombre}}',
-                '{{fecha.hoy}}',
-                '{{cotizacion.total}}',
-                '{{oportunidad.nombre}}',
-                '{{monto|currency}}',
-              ].map(v => (
-                <div
-                  key={v}
-                  className="font-[family-name:var(--font-geist-mono)] text-[11.5px] text-[var(--ink-3)] bg-[var(--surface)] border border-dashed border-[var(--border)] rounded-sm px-2 py-1"
-                >
-                  {v}
-                </div>
+              {availableTableCols.map(col => (
+                <label key={col.col_key} className="flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-[var(--surface)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.tableColumns.includes(col.col_key)}
+                    onChange={() => toggleTableCol(col.col_key)}
+                    className="accent-[var(--brand)]"
+                  />
+                  <span className="text-[13px] text-[var(--ink)] flex-1">{col.name}</span>
+                  <span className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)]">{col.col_key}</span>
+                </label>
               ))}
             </div>
-          </div>
-        </div>
+            <label className="flex items-center gap-2 mt-3 px-2 py-1.5 rounded-sm hover:bg-[var(--surface)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.showThumbnail}
+                onChange={e => patchConfig({ showThumbnail: e.target.checked })}
+                className="accent-[var(--brand)]"
+              />
+              <span className="text-[13px] text-[var(--ink)]">Miniatura a la izquierda</span>
+            </label>
+          </Section>
 
-        {/* Middle: canvas (block list, editable) */}
-        <div className="w-[320px] flex-none bg-[var(--bg)] border-r border-[var(--border)] overflow-y-auto p-3">
-          <div className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] uppercase tracking-[0.08em] font-semibold px-1 pb-2">Estructura</div>
-          <BlockCanvas
-            blocks={blocks}
-            onChange={handleBlocksChange}
-            availableColumns={rootColsMeta}
-            subItemColumns={subColsMeta}
-          />
-        </div>
+          <Section title="Impuestos">
+            <label className="flex items-center gap-3 px-2 py-1.5">
+              <span className="text-[13px] text-[var(--ink)] flex-1">IVA</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={Math.round(config.ivaRate * 10000) / 100}
+                onChange={e => {
+                  const pct = parseFloat(e.target.value)
+                  patchConfig({ ivaRate: isNaN(pct) ? 0 : Math.max(0, Math.min(100, pct)) / 100 })
+                }}
+                className="w-[72px] font-[family-name:var(--font-geist-mono)] text-[13px] tabular-nums text-right text-[var(--ink)] bg-[var(--surface)] border border-[var(--border)] rounded-sm px-2 py-1 outline-none focus:border-[var(--brand)]"
+              />
+              <span className="text-[13px] text-[var(--ink-3)]">%</span>
+            </label>
+            <p className="text-[11.5px] text-[var(--ink-4)] leading-relaxed mt-2 px-2">
+              0% para ocultar la fila de IVA.
+            </p>
+          </Section>
 
-        {/* Right: paper preview — tamaño Carta (816×1056 @ 96dpi) con indicador multi-página */}
+          <Section title="Notas">
+            <p className="text-[11.5px] text-[var(--ink-4)] leading-relaxed mb-2">
+              Texto libre que aparece al final del documento (términos, condiciones).
+            </p>
+            <textarea
+              value={config.notes}
+              onChange={e => patchConfig({ notes: e.target.value })}
+              rows={4}
+              placeholder="Ej: Precios en pesos mexicanos, válidos por 30 días…"
+              className="w-full text-[13px] text-[var(--ink)] bg-[var(--surface)] border border-[var(--border)] rounded-sm px-2 py-1.5 outline-none focus:border-[var(--brand)] resize-y"
+            />
+          </Section>
+
+          <Section title="Firmas">
+            <label className="flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-[var(--surface)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.showClientSignature}
+                onChange={e => patchConfig({ showClientSignature: e.target.checked })}
+                className="accent-[var(--brand)]"
+              />
+              <span className="text-[13px] text-[var(--ink)]">Firma del cliente</span>
+            </label>
+            <label className="flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-[var(--surface)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.showVendorSignature}
+                onChange={e => patchConfig({ showVendorSignature: e.target.checked })}
+                className="accent-[var(--brand)]"
+              />
+              <span className="text-[13px] text-[var(--ink)]">Firma del vendedor</span>
+            </label>
+          </Section>
+        </aside>
+
+        {/* Preview */}
         <div className="flex-1 overflow-auto bg-[var(--bg-2)] p-8">
           <div
             className="w-[816px] mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius)] shadow-[var(--shadow-md)] relative"
@@ -302,13 +290,24 @@ export default function TemplateEditorView({
               backgroundImage: `repeating-linear-gradient(to bottom, transparent 0px, transparent 1040px, color-mix(in oklab, var(--ink-4) 25%, transparent) 1040px, color-mix(in oklab, var(--ink-4) 25%, transparent) 1041px, transparent 1041px, transparent 1056px)`,
             }}
           >
-            <DocumentHtmlPreview blocks={blocks} context={sampleContext} style={style} />
+            <DocumentHtmlPreview blocks={blocks} context={sampleContext} style={styleForPreview} />
           </div>
           <div className="text-center text-[10.5px] text-[var(--ink-4)] mt-4 font-[family-name:var(--font-geist-mono)]">
-            Carta · 8.5 × 11 in · se divide automáticamente si se requiere
+            Carta · 8.5 × 11 in · vista previa
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="p-4 border-b border-[var(--border)]">
+      <div className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] uppercase tracking-[0.08em] font-semibold px-1 pb-2.5">
+        {title}
+      </div>
+      {children}
     </div>
   )
 }

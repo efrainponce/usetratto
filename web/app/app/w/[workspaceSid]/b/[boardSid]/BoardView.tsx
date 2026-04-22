@@ -36,21 +36,15 @@ type ViewMember = {
 // Get dynamic ITEMS_FIELD map based on stage/owner col_keys
 function getItemsFieldMap(stageColKey: string, ownerColKey: string): Record<string, keyof BoardItem> {
   return {
-    name:     'name',
+    name:          'name',
     [stageColKey]: 'stage_id',
     [ownerColKey]: 'owner_id',
-    deadline: 'deadline',
+    deadline:      'deadline',
+    created_by:    'created_by',
+    created_at:    'created_at',
+    updated_at:    'updated_at',
+    folio:         'folio_number',
   }
-}
-
-// Virtual sid column (prepended, not in board_columns)
-const SID_COL: ColumnDef = {
-  key:      '__sid',
-  label:    'ID',
-  kind:     'autonumber',
-  editable: false,
-  sortable: false,
-  settings: {},
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -229,9 +223,9 @@ export function BoardView({
   // Active view lookup
   const activeView = views.find(v => v.id === activeViewId) ?? null
 
-  // ColumnDef[] — virtual __sid first, then board columns
+  // ColumnDef[] — board columns (folio is_system lives en board_columns con pos -1, aparece primero)
   const columns = useMemo((): ColumnDef[] => {
-    const dataCols: ColumnDef[] = rawCols
+    return rawCols
       .filter(c => !c.is_hidden)
       .filter(c => {
         if (!activeView || activeView.columns.length === 0) return true
@@ -248,7 +242,6 @@ export function BoardView({
         sortable: true,
         settings: augmentSettings(c, stageColKey, ownerColKey, stages, users),
       }))
-    return [SID_COL, ...dataCols]
   }, [rawCols, stages, users, activeView, stageColKey, ownerColKey])
 
   // Row[] — derived from rawItems + columns
@@ -258,8 +251,6 @@ export function BoardView({
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
-    if (colKey === '__sid') return
-
     // Ref column: write to source item instead of this item
     // NOTE: ref cells are rendered read-only in UI (see RelationCell), so this path
     // is rarely hit. Defensive logic here reads the source item_id from raw item_values
@@ -400,11 +391,11 @@ export function BoardView({
   }, [colIdMap, refColsMeta, refTargetCols, rawCols, ITEMS_FIELD])
 
   // ── Create ─────────────────────────────────────────────────────────────────
-  const handleAddColumn = useCallback(async (name: string, kind: string) => {
+  const handleAddColumn = useCallback(async (name: string, kind: string, settings?: Record<string, unknown>) => {
     const res = await fetch(`/api/boards/${boardId}/columns`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ name, kind }),
+      body:    JSON.stringify({ name, kind, settings: settings ?? {} }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -1189,9 +1180,13 @@ function toRow(
 ): Row {
   const cells: Record<string, CellValue> = {}
   for (const col of cols) {
-    if (col.key === '__sid') {
-      cells[col.key] = item.sid
-    } else {
+    {
+      // Autonumber con source='sid' → leer de items.sid (col custom "ID del sistema")
+      if (col.kind === 'autonumber' && (col.settings as any)?.source === 'sid') {
+        cells[col.key] = item.sid
+        continue
+      }
+
       // Relation column: resolve id → name from label map (fallback to null to avoid UUID flash)
       if (col.kind === 'relation') {
         const colId = colIdMap[col.key]

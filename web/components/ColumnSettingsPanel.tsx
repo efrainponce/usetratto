@@ -78,6 +78,15 @@ export function ColumnSettingsPanel({ column, boardId, allColumns, users, onClos
   )
   const [savingFormat, setSavingFormat] = useState(false)
 
+  // ── Autonumber (folio) state ──────────────────────────────────────────────
+  const [autoPrefix,       setAutoPrefix]       = useState<string>(
+    (column.settings?.prefix as string) ?? ''
+  )
+  const [autoPad,          setAutoPad]          = useState<number>(
+    typeof column.settings?.pad === 'number' ? (column.settings.pad as number) : 3
+  )
+  const [savingAutonumber, setSavingAutonumber] = useState(false)
+
   // ── Relation state ────────────────────────────────────────────────────────
   const [boards,          setBoards]          = useState<RemoteBoard[]>([])
   const [targetBoardId,   setTargetBoardId]   = useState<string>(
@@ -355,6 +364,22 @@ const [savingButton,    setSavingButton]    = useState(false)
       if (updated) onUpdated(updated)
     } finally {
       setSavingFormat(false)
+    }
+  }
+
+  async function handleSaveAutonumber() {
+    setSavingAutonumber(true)
+    try {
+      const updated = await patchColumn({
+        settings: {
+          ...column.settings,
+          prefix: autoPrefix.trim().toUpperCase().slice(0, 8) || null,
+          pad:    Math.max(0, Math.min(8, Math.floor(autoPad || 0))),
+        },
+      })
+      if (updated) onUpdated(updated)
+    } finally {
+      setSavingAutonumber(false)
     }
   }
 
@@ -759,6 +784,44 @@ const [savingButton,    setSavingButton]    = useState(false)
                       {savingFormat ? '...' : 'Guardar'}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Autonumber prefix + pad — inline in General (usado para Folio) */}
+              {kind === 'autonumber' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Prefijo del folio</label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      value={autoPrefix}
+                      onChange={e => setAutoPrefix(e.target.value.toUpperCase())}
+                      maxLength={8}
+                      placeholder="OPP"
+                      className="w-24 border border-gray-200 rounded-md px-2.5 py-1.5 text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    />
+                    <span className="text-sm text-gray-400">-</span>
+                    <input
+                      type="number"
+                      value={autoPad}
+                      onChange={e => setAutoPad(parseInt(e.target.value, 10) || 0)}
+                      min={0}
+                      max={8}
+                      className="w-16 border border-gray-200 rounded-md px-2.5 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+                    />
+                    <span className="text-xs text-gray-500">dígitos</span>
+                    <button
+                      onClick={handleSaveAutonumber}
+                      disabled={savingAutonumber}
+                      className="ml-auto px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {savingAutonumber ? '...' : 'Guardar'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Ejemplo: <span className="font-mono">{(autoPrefix || 'ITEM')}-{'1'.padStart(Math.max(0, Math.min(8, autoPad)) || 0, '0')}</span>
+                    {' · '}máx 8 caracteres.
+                  </p>
                 </div>
               )}
 

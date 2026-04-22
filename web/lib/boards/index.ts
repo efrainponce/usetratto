@@ -49,6 +49,10 @@ export type BoardItem = {
   territory_id:     string | null
   deadline:         string | null
   position:         number
+  created_by:       string | null
+  created_at:       string
+  updated_at:       string | null
+  folio_number:     number | null
   item_values:      ItemValue[]
   sub_items_count?: number    // L1 count for badge in BoardView
   sub_items_rollup?: Record<string, number | null>  // col_key → valor pre-computado
@@ -213,7 +217,7 @@ export const getBoardItems = unstable_cache(
     const { data, error } = await supabase
       .from('items')
       .select(
-        'id, sid, name, stage_id, owner_id, territory_id, deadline, position,' +
+        'id, sid, name, stage_id, owner_id, territory_id, deadline, position, created_by, created_at, updated_at, folio_number,' +
         'item_values(column_id, value_text, value_number, value_date, value_json)'
       )
       .eq('board_id', boardId)

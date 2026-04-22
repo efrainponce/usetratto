@@ -91,6 +91,14 @@ export interface TotalBlock extends BaseBlock {
   format?: 'money' | 'number' | 'percent'
 }
 
+export interface QuoteTotalsBlock extends BaseBlock {
+  type: 'quote_totals'
+  /** col_key del sub_item cuya suma = subtotal del documento. Típicamente 'subtotal'. */
+  subtotal_col_key: string
+  /** Tasa de IVA (0.16 = 16%). Si es 0 → no se muestra la fila de IVA. */
+  iva_rate: number
+}
+
 export interface SignatureBlock extends BaseBlock {
   type: 'signature'
   role: string
@@ -112,6 +120,7 @@ export type Block =
   | RepeatBlock
   | SubitemsTableBlock
   | TotalBlock
+  | QuoteTotalsBlock
   | SignatureBlock
 
 export type BlockType = Block['type']

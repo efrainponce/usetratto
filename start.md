@@ -105,12 +105,14 @@ territories (id, sid, workspace_id, name, parent_id SELF-REF, created_at)
 user_territories (user_id, territory_id)  -- M2M
 
 -- ─── BOARDS ───
-boards (id, sid, slug, workspace_id, name, type, description, system_key, created_at)
+boards (id, sid, slug, workspace_id, name, type, description, system_key,
+        folio_prefix, folio_counter, folio_pad, created_at)
   -- type: 'pipeline' | 'table'
   --   pipeline = tiene stages (oportunidades, soporte, proyectos)
   --   table    = sin stages, es directorio/catálogo (contactos, productos, vendors)
   -- system_key: NULL para boards custom, string para boards de sistema
   -- slug: identificador legible, UNIQUE per workspace, solo para referencia interna — NO en URLs
+  -- folio_*: prefix (ej 'OPP') + counter monotónico + pad (3 → 'OPP-001')
 
 board_stages (id, sid, board_id, name, color, position, is_closed, created_at)
 
@@ -150,7 +152,9 @@ column_permissions (id, column_id NULL, sub_item_column_id NULL, user_id NULL, t
   -- Ejemplo: costo_interno en catálogo con default='restricted' + override Compras='edit'
 
 -- ─── ITEMS (registros de cualquier board) ───
-items (id, sid, workspace_id, board_id, stage_id, name, owner_id, territory_id, deadline, position, created_at, updated_at)
+items (id, sid, workspace_id, board_id, stage_id, name, owner_id, territory_id, deadline, position,
+       folio_number, created_by, created_at, updated_at)
+  -- folio_number: secuencial per-board, asignado por trigger assign_item_folio (monotónico, nunca reutiliza)
   -- stage_id: NULL para boards tipo 'table'
   -- territory_id: FK física para RLS por zona
   -- Relaciones a otros boards (contacto, cuenta) → columnas tipo 'relation' en board_columns
@@ -192,8 +196,10 @@ document_templates (id, sid, workspace_id, name, target_board_id, body_json, sty
                     signature_config, pre_conditions, folio_format, status, created_by,
                     created_at, updated_at)
   -- body_json: array de blocks (heading/text/field/image/columns/spacer/divider/
-  --            repeat/subitems_table/total/signature) — ver lib/document-blocks/types.ts
+  --            repeat/subitems_table/total/quote_totals/signature) — ver lib/document-blocks/types.ts
   -- Templates apuntan a cualquier target_board. Docs generados = items en system board 'quotes'.
+  -- style_json.quote_config: { tableColumns, showThumbnail, ivaRate, notes, showClientSignature, showVendorSignature }
+  --   source of truth del editor — body_json se regenera desde config via buildQuoteBody().
 
 document_audit_events (id, document_item_id, workspace_id, event_type, actor_id, metadata, created_at)
 ```
@@ -218,9 +224,13 @@ Estos boards se crean con `seed_system_boards(workspace_id)` al crear un workspa
 ### Columnas de sistema por board
 
 ```
--- Todos los boards:
+-- Todos los boards (auto-inyectadas por trigger inject_system_board_columns):
+folio (autonumber, is_system, pos -1)  -- Folio monotónico per-board, formato {prefix}-{padded}
 name (text, is_system)
 owner (people, is_system)
+created_by (people, is_system, read_only)
+created_at (date, is_system, relative, read_only)
+updated_at (date, is_system, relative, read_only)
 
 -- Boards tipo pipeline:
 stage (select, is_system)  -- mapeado a board_stages

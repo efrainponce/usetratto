@@ -2,6 +2,13 @@
 
 ## 2026-04-22
 
+**~sesión 4 — Quote editor simplified + folio per board + sid → folio swap**
+- Editor cotización reescrito: sidebar 4 secciones (Productos checkboxes, IVA %, Notas, Firmas). Fuera BlockPalette/BlockCanvas/SlashMenu + 11 BlockEditors (-1500 LOC). Body regenerado desde `QuoteConfig` en `style_json.quote_config` — single source of truth. Nuevo block `quote_totals` (Subtotal + IVA 16% + Total, suma sub_items en render). Migración `20260422000008_catalog_system_cols.sql`: catalog cols (foto/sku/descripcion/unit_price/unidad) → `is_system=true` + nueva col `unidad`; seed_system_boards rewrite.
+- Folio por board (`20260422000009_folio_per_board.sql`): `boards.folio_{prefix,counter,pad}` + `items.folio_number` + trigger `assign_item_folio` BEFORE INSERT (monotónico, nunca reutiliza). Prefijos default por system board (OPP/QUO/CON/INS/PRO/CAT). Col `folio` (kind=autonumber, is_system, pos -1) auto-inyectada vía trigger `inject_system_board_columns`. Backfill items existentes ordenados por created_at.
+- Removido virtual `__sid` de BoardView — folio es ahora la primera columna default. AutonumberCell ahora formatea `{prefix}-{padded}`. ColumnSettingsPanel: inputs prefijo (uppercase, max 8) + dígitos pad (0-8). Nueva opción "ID del sistema" en + columna → crea autonumber con `settings.source='sid'` (toRow resuelve desde `items.sid`).
+- Fix bonus: `created_by/created_at/updated_at` mostraban vacío — faltaban en SELECT de `getBoardItems` + `BoardItem` type + `getItemsFieldMap`. Agregado también `folio_number` al SELECT.
+- Migraciones 8 y 9 aplicadas a prod. Build verde, typecheck limpio.
+
 **~sesión 3 — Chat files+privacy + kind `image` con thumbnails**
 - Chat: upload de archivos en canales (endpoint `/api/channels/[id]/attachments` multipart + bucket privado `channel-attachments`, signed URLs 1h, preview imágenes inline + card para otros), visibilidad public/private en `item_channels` con RLS filtrando privados por membership. Hotfix: recursión RLS (item_channels↔channel_members) resuelta con helper `auth_channel_ids()` SECURITY DEFINER. Fix pre-existente: `channel_members` insertaba `workspace_id` inexistente.
 - Kind nuevo `image`: celda dedicada (`ImageCell.tsx`) con thumbnails 48×48 (56 en sub-items), canvas genera webp 128px 0.7 client-side al subir, ring índigo en la primera (cover). Endpoints `/files` extendidos con `thumb_filename/thumb_path`, batch `/files/signed-urls`, paralelos en `/api/sub-items/[id]/files`. Dispatch wireado en `ColumnCell` + `SubItemsView` (value_json).

@@ -389,6 +389,33 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
       )
     }
 
+    case 'quote_totals': {
+      const subtotal = context.subItems.reduce((acc, item) => {
+        const v = parseFloat(String(item.values[block.subtotal_col_key] ?? 0))
+        return acc + (isNaN(v) ? 0 : v)
+      }, 0)
+      const ivaRate = Math.max(0, Number(block.iva_rate) || 0)
+      const iva     = subtotal * ivaRate
+      const total   = subtotal + iva
+      const fmt = (n: number) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n)
+
+      return (
+        <View key={block.id} style={{ marginLeft: 'auto', width: 260, marginTop: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', fontSize: 11, paddingVertical: 3 }}>
+            <Text>Subtotal</Text><Text>{fmt(subtotal)}</Text>
+          </View>
+          {ivaRate > 0 && (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', fontSize: 11, paddingVertical: 3 }}>
+              <Text>IVA ({Math.round(ivaRate * 100)}%)</Text><Text>{fmt(iva)}</Text>
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', fontSize: 14, fontWeight: 'bold', borderTopWidth: 2, borderTopColor: '#000', paddingTop: 8, marginTop: 4 }}>
+            <Text>Total</Text><Text>{fmt(total)}</Text>
+          </View>
+        </View>
+      )
+    }
+
     case 'signature': {
       const sig = context.document?.signatures?.find(s => s.role === block.role)
       const roleLabel = block.label || `Firma de ${block.role}`
