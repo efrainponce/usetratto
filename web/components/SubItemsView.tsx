@@ -989,34 +989,38 @@ function NativeRenderer({
 
       {/* ── Generar cotización CTA ─────────────────────────────────────── */}
       <div className="flex-none border-t border-[var(--border)] px-4 py-3 flex items-center gap-2.5 bg-[var(--surface-2)]">
-        <button
-          onClick={generateDoc}
-          disabled={generating || templates.length === 0 || rows.length === 0}
-          title={templates.length === 0 ? 'No hay plantilla de cotización configurada' : rows.length === 0 ? 'Añade al menos una partida' : undefined}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        <a
+          href={templates[0] && workspaceSid ? `/app/w/${workspaceSid}/settings/boards/${boardId}/templates/${templates[0].id}` : undefined}
+          aria-disabled={templates.length === 0 || !workspaceSid}
+          title={templates.length === 0 ? 'No hay plantilla de cotización configurada' : `Editar plantilla: ${templates[0]?.name}`}
+          className={[
+            'inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] rounded-sm transition-colors',
+            templates.length === 0 || !workspaceSid
+              ? 'opacity-40 cursor-not-allowed pointer-events-none'
+              : 'hover:bg-[var(--brand-deep)]',
+          ].join(' ')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
-          {generating ? 'Generando…' : 'Abrir cotización en editor'}
-        </button>
+          Abrir cotización en editor
+        </a>
         <button
           onClick={generateDoc}
           disabled={generating || templates.length === 0 || rows.length === 0}
+          title={templates.length === 0 ? 'No hay plantilla' : rows.length === 0 ? 'Añade al menos una partida' : undefined}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] hover:bg-[var(--surface)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
           </svg>
-          Generar PDF
+          {generating ? 'Generando…' : 'Generar PDF'}
         </button>
         <span className="flex-1 text-right text-[11.5px] text-[var(--ink-4)]">
           {templates.length === 0 ? 'Configura una plantilla en Configuración → Boards' : 'Bloques drag-and-drop · firma en canvas · estampa al PDF'}
         </span>
       </div>
-      {/* preserve variable reference */}
-      {false && templates[0]?.name}
       {generateErrors.length > 0 && (
         <div className="flex-none border-t border-[var(--stage-lost)] px-4 py-2 bg-[color-mix(in_oklab,var(--stage-lost)_8%,var(--surface)_92%)] text-[11.5px] text-[var(--stage-lost)] space-y-0.5">
           {generateErrors.map((err, i) => (
