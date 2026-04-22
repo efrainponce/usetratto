@@ -363,24 +363,56 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
         context.subItemColumns.find(c => c.col_key === col_key) || { col_key, name: col_key, kind: 'text' as any }
       )
 
+      // Per-column width / align (from block.column_configs, with sensible defaults)
+      const cfgFor = (k: string) => block.column_configs?.find(c => c.col_key === k) ?? { col_key: k }
+      const widthMap: Record<string, string> = { sm: '80px', md: '120px', lg: '180px' }
+      const gridCols = [
+        block.show_thumbnail ? '48px' : null,
+        ...columns.map(k => {
+          const meta = columnMetas[columns.indexOf(k)]
+          const w = cfgFor(k).width
+          if (w && w !== 'auto' && widthMap[w]) return widthMap[w]
+          // Numeric/currency default medium, text flex
+          if (['number', 'currency'].includes(meta?.kind || '')) return '110px'
+          return '1fr'
+        }),
+      ].filter(Boolean).join(' ')
+
+      const alignFor = (k: string, meta: any): 'left' | 'right' => {
+        const a = cfgFor(k).align
+        if (a === 'left' || a === 'right') return a
+        return ['number', 'currency'].includes(meta?.kind || '') ? 'right' : 'left'
+      }
+
+      // Deterministic color for thumbnail based on sub-item name
+      const hashHue = (s: string) => s.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 360
+      const Thumbnail = ({ name }: { name: string }) => (
+        <div style={{
+          width: 40, height: 40, borderRadius: '2px', border: '1px solid var(--border)',
+          background: `repeating-linear-gradient(45deg, hsl(${hashHue(name)}, 40%, 82%) 0 6px, hsl(${hashHue(name)}, 35%, 74%) 6px 8px)`,
+        }} />
+      )
+
       return (
         <div key={block.id} style={baseStyles.tableContainer}>
-          <div style={{...baseStyles.table, display: 'flex', flexDirection: 'column'}}>
+          <div style={{display: 'flex', flexDirection: 'column'}}>
             {/* Header */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '48px 1fr 100px 100px 110px',
+              gridTemplateColumns: gridCols,
               gap: '12px',
               fontSize: '10.5px',
               color: 'var(--ink-4)',
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
-              fontWeight: '600',
+              fontWeight: 600,
               padding: '8px 0',
-              borderBottom: '1px solid var(--border)'
+              borderBottom: '1px solid var(--border)',
+              alignItems: 'center',
             }}>
+              {block.show_thumbnail && <div />}
               {columnMetas.map(meta => (
-                <div key={meta.col_key} style={{textAlign: ['cantidad', 'precio', 'importe'].includes(meta.col_key) ? 'right' : 'left'}}>
+                <div key={meta.col_key} style={{textAlign: alignFor(meta.col_key, meta)}}>
                   {meta.name}
                 </div>
               ))}
@@ -390,13 +422,14 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
             {context.subItems.map(item => (
               <div key={item.id} style={{
                 display: 'grid',
-                gridTemplateColumns: '48px 1fr 100px 100px 110px',
+                gridTemplateColumns: gridCols,
                 gap: '12px',
                 alignItems: 'center',
                 padding: '10px 0',
                 borderBottom: '1px solid var(--border)',
-                fontSize: '13px'
+                fontSize: '13px',
               }}>
+                {block.show_thumbnail && <Thumbnail name={item.name} />}
                 {columns.map((col_key, idx) => {
                   const meta = columnMetas[idx]
                   const value = item.values[col_key] ?? ''
@@ -405,8 +438,9 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
                     <div
                       key={col_key}
                       style={{
-                        textAlign: isNumeric ? 'right' : 'left',
-                        fontFamily: isNumeric ? 'var(--font-geist-mono, monospace)' : 'inherit'
+                        textAlign: alignFor(col_key, meta),
+                        fontFamily: isNumeric ? 'var(--font-geist-mono, monospace)' : 'inherit',
+                        color: 'var(--ink)',
                       }}
                     >
                       {value}
@@ -420,14 +454,16 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
             {block.show_totals && block.total_col_keys && block.total_col_keys.length > 0 && (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '48px 1fr 100px 100px 110px',
+                gridTemplateColumns: gridCols,
                 gap: '12px',
                 alignItems: 'center',
                 padding: '10px 0',
-                borderTop: '1px solid var(--border)',
+                borderTop: '2px solid var(--ink)',
                 fontSize: '13px',
-                fontWeight: '600'
+                fontWeight: 600,
+                color: 'var(--ink)',
               }}>
+                {block.show_thumbnail && <div />}
                 {columns.map((col_key, idx) => {
                   const meta = columnMetas[idx]
                   if (block.total_col_keys?.includes(col_key)) {
@@ -440,12 +476,11 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
                       <div
                         key={col_key}
                         style={{
-                          textAlign: isNumeric ? 'right' : 'left',
+                          textAlign: alignFor(col_key, meta),
                           fontFamily: isNumeric ? 'var(--font-geist-mono, monospace)' : 'inherit',
-                          color: 'var(--ink)'
                         }}
                       >
-                        {sum.toFixed(2)}
+                        {sum.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                       </div>
                     )
                   }

@@ -71,6 +71,13 @@ export interface RepeatBlock extends BaseBlock {
 export interface SubitemsTableBlock extends BaseBlock {
   type: 'subitems_table'
   columns: string[]
+  column_configs?: Array<{
+    col_key: string
+    width?:  'auto' | 'sm' | 'md' | 'lg'
+    align?:  'left' | 'right' | 'auto'
+  }>
+  show_thumbnail?: boolean
+  thumbnail_col_key?: string
   show_totals?: boolean
   total_col_keys?: string[]
 }
