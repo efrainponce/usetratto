@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Tratto · Oportunidades</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="themes.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="board.jsx"></script>
+<script type="text/babel" src="opp-detail.jsx"></script>
+<script type="text/babel" src="quote-editor.jsx"></script>
+<script type="text/babel" src="views.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "taller",
+  "density": "cómoda"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [theme,    setTheme]    = React.useState(() => localStorage.getItem('tratto.theme')    || TWEAK_DEFAULTS.theme);
+  const [density,  setDensity]  = React.useState(() => localStorage.getItem('tratto.density')  || TWEAK_DEFAULTS.density);
+  const [view,     setView]     = React.useState(() => localStorage.getItem('tratto.view')     || 'tabla');
+  const [search,   setSearch]   = React.useState('');
+  const [filter,   setFilter]   = React.useState('todas');
+  const [expanded, setExpanded] = React.useState(() => new Set(['22109672']));
+  const [selected, setSelected] = React.useState(null);
+  const [editing,  setEditing]  = React.useState(null);
+  const [tweaksOn, setTweaksOn] = React.useState(false);
+  const [detailOp, setDetailOp] = React.useState(null);
+
+  React.useEffect(() => { applyTheme(theme); localStorage.setItem('tratto.theme', theme); }, [theme]);
+  React.useEffect(() => { localStorage.setItem('tratto.density', density); }, [density]);
+  React.useEffect(() => { localStorage.setItem('tratto.view', view); }, [view]);
+
+  // Tweaks protocol
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      if (!e.data || !e.data.type) return;
+      if (e.data.type === '__activate_edit_mode')   setTweaksOn(true);
+      if (e.data.type === '__deactivate_edit_mode') setTweaksOn(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const setThemeTweak = (t) => {
+    setTheme(t);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { theme: t } }, '*');
+  };
+  const setDensityTweak = (d) => {
+    setDensity(d);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { density: d } }, '*');
+  };
+
+  const toggleExpand = (id) => {
+    setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  // Filtros
+  const ops = OPORTUNIDADES.filter(op => {
+    if (filter === 'abiertas'    && op.etapa === 'cerrada')    return false;
+    if (filter === 'mias'        && op.responsable !== 'ep')   return false;
+    if (filter === 'cierra-mes'  && !op.fecha.includes('may')) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const hay = (op.nombre + ' ' + INSTITUCIONES[op.institucion].nombre + ' ' + op.id).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  return (
+    <div className="tr-app" data-screen-label="Oportunidades">
+      <Sidebar active="oportunidades" onNav={() => {}}/>
+      <main className="tr-main">
+        {detailOp ? (
+          <OppDetail op={detailOp} onClose={() => setDetailOp(null)} onOpenQuote={setEditing}/>
+        ) : (
+          <>
+            <BoardHeader ops={ops}/>
+            <Toolbar
+              view={view} setView={setView}
+              search={search} setSearch={setSearch}
+              density={density} setDensity={setDensity}
+              filter={filter} setFilter={setFilter}
+            />
+            {view === 'tabla' && (
+              <Board ops={ops}
+                expanded={expanded}
+                selected={selected}
+                onToggle={toggleExpand}
+                onSelect={(id) => setDetailOp(OPORTUNIDADES.find(o => o.id === id))}
+                onOpen={setEditing}
+                density={density}/>
+            )}
+            {view === 'kanban' && <KanbanView ops={ops} onSelect={(id) => setDetailOp(OPORTUNIDADES.find(o => o.id === id))} onOpen={setEditing}/>}
+            {view === 'fichas' && <FichasView ops={ops} onSelect={(id) => setDetailOp(OPORTUNIDADES.find(o => o.id === id))} onOpen={setEditing}/>}
+          </>
+        )}
+      </main>
+      <QuoteEditor op={editing} onClose={() => setEditing(null)}/>
+      <TweaksPanel theme={theme} setTheme={setThemeTweak} density={density} setDensity={setDensityTweak} visible={tweaksOn}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
