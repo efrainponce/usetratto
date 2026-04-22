@@ -20,6 +20,7 @@ import { ColumnCell } from './cells/ColumnCell'
 const ROW_HEIGHT = 36
 const EXPAND_W   = 32   // > chevron column
 const OPEN_W     = 36   // → open item column
+const CHAT_W     = 36   // 💬 channels column
 
 type EditingCell = { rowId: string; colKey: string } | null
 
@@ -31,6 +32,8 @@ type Props = {
   expandedSubItemId?:   string | null
   renderRowExpansion?:  (rowId: string) => ReactNode
   onOpenItem?:          (rowId: string) => void
+  onOpenChannels?:      (rowId: string) => void
+  channelSummary?:      Record<string, { message_count: number }>
   onBulkDelete?:        (ids: string[]) => void
   onColumnSettings?:    (colKey: string) => void
   onAddColumn?:         (name: string, kind: string) => Promise<void>
@@ -46,6 +49,8 @@ export function GenericDataTable({
   expandedSubItemId,
   renderRowExpansion,
   onOpenItem,
+  onOpenChannels,
+  channelSummary,
   onBulkDelete,
   onColumnSettings,
   onAddColumn,
@@ -237,6 +242,50 @@ export function GenericDataTable({
       })
     )
 
+    // 💬 open channels modal
+    const chatCol = onOpenChannels ? helper.display({
+      id:             '__chat',
+      size:           CHAT_W,
+      enableSorting:  false,
+      enableResizing: false,
+      header: () => (
+        <span className="flex items-center justify-center w-full" title="Canales">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3.5c0-.6.5-1 1-1h8c.5 0 1 .4 1 1V8c0 .6-.5 1-1 1H6L4 11V9H3c-.6 0-1-.4-1-1V3.5z" />
+          </svg>
+        </span>
+      ),
+      cell: ({ row }) => {
+        const count = channelSummary?.[row.original.id]?.message_count ?? 0
+        const hasMessages = count > 0
+        return (
+          <button
+            onClick={e => { e.stopPropagation(); onOpenChannels(row.original.id) }}
+            title={hasMessages ? `${count} mensaje${count !== 1 ? 's' : ''}` : 'Canales'}
+            className={[
+              'w-full h-full flex items-center justify-center relative transition-colors',
+              hasMessages
+                ? 'text-[var(--brand)] hover:text-[var(--brand-deep)]'
+                : 'text-[var(--ink-4)] hover:text-[var(--brand)] opacity-0 group-hover/row:opacity-100',
+            ].join(' ')}
+          >
+            {hasMessages ? (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" strokeWidth="0.6" strokeLinejoin="round">
+                <path d="M2 3.5c0-.6.5-1 1-1h8c.5 0 1 .4 1 1V8c0 .6-.5 1-1 1H6L4 11V9H3c-.6 0-1-.4-1-1V3.5z" />
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3.5c0-.6.5-1 1-1h8c.5 0 1 .4 1 1V8c0 .6-.5 1-1 1H6L4 11V9H3c-.6 0-1-.4-1-1V3.5z" />
+              </svg>
+            )}
+            {hasMessages && (
+              <span className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-[var(--brand)]" />
+            )}
+          </button>
+        )
+      },
+    }) : null
+
     // ↗ open item detail
     const openCol = helper.display({
       id:             '__open',
@@ -263,8 +312,8 @@ export function GenericDataTable({
       ),
     })
 
-    return [expandCol, openCol, ...dataCols]
-  }, [columns, editingCell, expandedSubItemId, handleCommit, handleStartEdit, handleCancel, handleNavigate, onExpandSubItems, onOpenItem])
+    return [expandCol, ...(chatCol ? [chatCol] : []), openCol, ...dataCols]
+  }, [columns, editingCell, expandedSubItemId, channelSummary, handleCommit, handleStartEdit, handleCancel, handleNavigate, onExpandSubItems, onOpenItem, onOpenChannels])
 
   const table = useReactTable({
     data:                   rows,
@@ -375,7 +424,7 @@ export function GenericDataTable({
                     <th
                       key={header.id}
                       className={[
-                        'text-left text-[10.5px] font-semibold text-[var(--ink-4)] uppercase tracking-[0.08em]',
+                        'text-left text-[10.5px] font-bold text-[var(--ink-2)] uppercase tracking-[0.08em]',
                         'border-r border-[var(--border)] select-none px-2.5 py-2 group/th overflow-visible',
                         isSticky ? 'z-30' : '',
                         header.column.getCanSort() ? 'cursor-pointer hover:bg-[var(--surface-2)]' : '',

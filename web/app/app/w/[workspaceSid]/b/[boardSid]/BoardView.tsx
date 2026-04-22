@@ -18,6 +18,7 @@ const SubItemViewWizard  = dynamic(() => import('@/components/SubItemViewWizard'
 const SourceColumnMapper = dynamic(() => import('@/components/SourceColumnMapper').then(m => m.SourceColumnMapper), { ssr: false, loading: modalLoader })
 const ImportWizard       = dynamic(() => import('@/components/import/ImportWizard').then(m => m.ImportWizard),      { ssr: false, loading: modalLoader })
 const ColumnSettingsPanel = dynamic(() => import('@/components/ColumnSettingsPanel').then(m => m.ColumnSettingsPanel), { ssr: false, loading: modalLoader })
+const ItemChannelsModal   = dynamic(() => import('@/components/ItemChannelsModal').then(m => m.ItemChannelsModal),    { ssr: false, loading: modalLoader })
 import type { BoardStage, BoardColumn, WorkspaceUser, BoardItem, ItemValue, SubItemColumn, BoardView, SubItemView } from '@/lib/boards'
 import type { ColPermission } from '@/lib/boards/types'
 import { getPrimaryStageColKey, getOwnerColKey } from '@/lib/boards/helpers'
@@ -145,6 +146,10 @@ export function BoardView({
   const [viewMemberTeamsLoaded, setViewMemberTeamsLoaded] = useState(false)
   // Column settings panel
   const [colSettingsCol, setColSettingsCol] = useState<BoardColumn | null>(null)
+
+  // Channels modal + summary
+  const [channelsItemId, setChannelsItemId] = useState<string | null>(null)
+  const [channelSummary, setChannelSummary] = useState<Record<string, { message_count: number }>>({})
 
   const newViewInputRef    = useRef<HTMLInputElement>(null)
   const colPickerRef       = useRef<HTMLDivElement>(null)
@@ -486,6 +491,20 @@ export function BoardView({
     if (!item?.sid) return
     router.push(`/app/w/${workspaceSid}/b/${boardSid}/${item.sid}`)
   }, [rawItems, boardSid, workspaceSid, router])
+
+  const handleOpenChannels = useCallback((rowId: string) => {
+    setChannelsItemId(rowId)
+  }, [])
+
+  // ── Channel summary (message count per item) ──────────────────────────────
+  const refreshChannelSummary = useCallback(async () => {
+    const res = await fetch(`/api/boards/${boardId}/channel-summary`)
+    if (!res.ok) return
+    const data = await res.json() as { items: Record<string, { message_count: number }> }
+    setChannelSummary(data.items ?? {})
+  }, [boardId])
+
+  useEffect(() => { refreshChannelSummary() }, [refreshChannelSummary])
 
   // Fetch source items for ref columns
   useEffect(() => {
@@ -1043,6 +1062,8 @@ export function BoardView({
           expandedSubItemId={expandedItemId}
           renderRowExpansion={renderRowExpansion}
           onOpenItem={handleOpenItem}
+          onOpenChannels={handleOpenChannels}
+          channelSummary={channelSummary}
           onBulkDelete={handleBulkDelete}
           onColumnSettings={colKey => {
             const col = rawCols.find(c => c.col_key === colKey)
@@ -1052,6 +1073,16 @@ export function BoardView({
           loading={false}
         />
       </div>
+
+      {/* Channels modal */}
+      {channelsItemId && (
+        <ItemChannelsModal
+          itemId={channelsItemId}
+          itemName={rawItems.find(i => i.id === channelsItemId)?.name}
+          workspaceUsers={users}
+          onClose={() => { setChannelsItemId(null); refreshChannelSummary() }}
+        />
+      )}
 
       {/* SubItemViewWizard modal */}
       {showViewWizard && (

@@ -230,7 +230,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       const res = await fetch('/api/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, name: newChannelName.trim() }),
+        body: JSON.stringify({ item_id: itemId, name: newChannelName.trim() }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const newChannel = (await res.json()) as Channel
