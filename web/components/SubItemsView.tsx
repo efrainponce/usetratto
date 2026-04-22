@@ -2,8 +2,11 @@
 
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { createPortal } from 'react-dom'
+import dynamic from 'next/dynamic'
 import type { SubItemColumn as BaseSubItemColumn } from '@/lib/boards'
 import { ProductPicker } from './ProductPicker'
+
+const QuoteEditorModal = dynamic(() => import('./templates/QuoteEditorModal').then(m => m.QuoteEditorModal), { ssr: false })
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 import { evaluateCondition, type FormulaCondition } from '../lib/formula-engine'
 import { ColumnSettingsPanel, type PanelUser } from './ColumnSettingsPanel'
@@ -230,6 +233,7 @@ function NativeRenderer({
   const [templates,    setTemplates]    = useState<Array<{ id: string; name: string }>>([])
   const [generating,   setGenerating]   = useState(false)
   const [generateErrors, setGenerateErrors] = useState<string[]>([])
+  const [editorOpen,   setEditorOpen]   = useState(false)
 
   // Templates that target the parent board — enable "Generar cotización" CTA at the bottom of the card
   useEffect(() => {
@@ -989,23 +993,18 @@ function NativeRenderer({
 
       {/* ── Generar cotización CTA ─────────────────────────────────────── */}
       <div className="flex-none border-t border-[var(--border)] px-4 py-3 flex items-center gap-2.5 bg-[var(--surface-2)]">
-        <a
-          href={templates[0] && workspaceSid ? `/app/w/${workspaceSid}/settings/boards/${boardId}/templates/${templates[0].id}` : undefined}
-          aria-disabled={templates.length === 0 || !workspaceSid}
+        <button
+          onClick={() => templates[0] && setEditorOpen(true)}
+          disabled={templates.length === 0 || !workspaceSid}
           title={templates.length === 0 ? 'No hay plantilla de cotización configurada' : `Editar plantilla: ${templates[0]?.name}`}
-          className={[
-            'inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] rounded-sm transition-colors',
-            templates.length === 0 || !workspaceSid
-              ? 'opacity-40 cursor-not-allowed pointer-events-none'
-              : 'hover:bg-[var(--brand-deep)]',
-          ].join(' ')}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
           Abrir cotización en editor
-        </a>
+        </button>
         <button
           onClick={generateDoc}
           disabled={generating || templates.length === 0 || rows.length === 0}
@@ -1084,6 +1083,13 @@ function NativeRenderer({
           onSelect={agg => saveRollupUp(rollupTarget, agg)}
           onRemove={rollupTarget.currentAggregate ? () => removeRollupUp(rollupTarget) : undefined}
           onClose={() => setRollupTarget(null)}
+        />
+      )}
+      {editorOpen && templates[0] && workspaceSid && (
+        <QuoteEditorModal
+          templateId={templates[0].id}
+          workspaceSid={workspaceSid}
+          onClose={() => setEditorOpen(false)}
         />
       )}
     </div>

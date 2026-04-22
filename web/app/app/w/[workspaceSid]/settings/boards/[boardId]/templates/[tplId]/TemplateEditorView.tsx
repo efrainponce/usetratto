@@ -58,6 +58,7 @@ type TemplateEditorViewProps = {
   }>
   workspace: WorkspaceData
   workspaceSid: string
+  onClose?: () => void
 }
 
 function convertToBoardColumnMeta(cols: any[]): BoardColumnMeta[] {
@@ -76,8 +77,10 @@ export default function TemplateEditorView({
   subItemColumns,
   workspace,
   workspaceSid,
+  onClose,
 }: TemplateEditorViewProps) {
   const router = useRouter()
+  const handleClose = onClose ?? (() => router.back())
 
   const [blocks, setBlocks] = useState<Block[]>(
     Array.isArray(template.body_json) ? (template.body_json as Block[]) : []
@@ -208,7 +211,7 @@ export default function TemplateEditorView({
             PDF
           </button>
           <button
-            onClick={() => router.back()}
+            onClick={handleClose}
             title="Cerrar"
             className="inline-flex items-center justify-center w-8 h-8 text-[var(--ink-3)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] rounded-sm transition-colors"
           >
