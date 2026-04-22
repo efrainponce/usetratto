@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { BlockPalette } from '@/components/templates/BlockPalette'
 import { DocumentHtmlPreview } from '@/lib/document-blocks/html-preview'
 import { buildSampleContext } from '@/lib/document-blocks/sample-context'
+import { basicQuoteTemplateBody } from '@/lib/document-blocks/defaults'
 import type { Block, BoardColumnMeta, RenderContext } from '@/lib/document-blocks'
 
 // BlockCanvas uses @dnd-kit which generates unique IDs on mount → hydration mismatch if SSR'd
@@ -174,6 +175,11 @@ export default function TemplateEditorView({
     alert('Para generar PDF final, usa el botón "Generar PDF" en la vista de sub-items de la oportunidad.')
   }
 
+  const handleResetToBasic = () => {
+    if (blocks.length > 0 && !confirm('¿Reemplazar los bloques actuales con la plantilla básica? Esta acción no se puede deshacer.')) return
+    handleBlocksChange(basicQuoteTemplateBody())
+  }
+
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-2)]">
       {/* Top bar */}
@@ -201,6 +207,16 @@ export default function TemplateEditorView({
             <option value="active">Activo</option>
             <option value="archived">Archivado</option>
           </select>
+          <button
+            onClick={handleResetToBasic}
+            title="Reemplazar bloques por plantilla básica (encabezado, Para, tabla, total, firmas)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] rounded-sm transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/>
+            </svg>
+            Plantilla básica
+          </button>
           <button
             onClick={handleDownloadPdf}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] rounded-sm transition-colors"
@@ -263,10 +279,19 @@ export default function TemplateEditorView({
           />
         </div>
 
-        {/* Right: paper preview */}
+        {/* Right: paper preview — tamaño Carta (816×1056 @ 96dpi) con indicador multi-página */}
         <div className="flex-1 overflow-auto bg-[var(--bg-2)] p-8">
-          <div className="max-w-[780px] mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius)] shadow-[var(--shadow-md)]">
+          <div
+            className="w-[816px] mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius)] shadow-[var(--shadow-md)] relative"
+            style={{
+              minHeight: '1056px',
+              backgroundImage: `repeating-linear-gradient(to bottom, transparent 0px, transparent 1040px, color-mix(in oklab, var(--ink-4) 25%, transparent) 1040px, color-mix(in oklab, var(--ink-4) 25%, transparent) 1041px, transparent 1041px, transparent 1056px)`,
+            }}
+          >
             <DocumentHtmlPreview blocks={blocks} context={sampleContext} style={style} />
+          </div>
+          <div className="text-center text-[10.5px] text-[var(--ink-4)] mt-4 font-[family-name:var(--font-geist-mono)]">
+            Carta · 8.5 × 11 in · se divide automáticamente si se requiere
           </div>
         </div>
       </div>
