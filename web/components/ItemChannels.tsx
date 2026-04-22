@@ -123,6 +123,12 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     loadChannels()
   }, [reloadChannels])
 
+  // ── Mark channel as read ──────────────────────────────────────────────────
+
+  const markAsRead = useCallback(async (channelId: string) => {
+    try { await fetch(`/api/channels/${channelId}/read`, { method: 'POST' }) } catch {}
+  }, [])
+
   // ── Load messages when channel changes ──────────────────────────────────────
 
   useEffect(() => {
@@ -143,6 +149,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
           const lastNew  = sorted[sorted.length - 1]?.id
           return lastPrev === lastNew && prev.length === sorted.length ? prev : sorted
         })
+        markAsRead(selectedChannelId)
       } catch (e) {
         if (initial) setMessagesError(e instanceof Error ? e.message : 'Error loading messages')
       } finally {
@@ -158,7 +165,7 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
-  }, [selectedChannelId])
+  }, [selectedChannelId, markAsRead])
 
   // Reset pending attachments when switching channels
   useEffect(() => {
@@ -313,13 +320,14 @@ export function ItemChannels({ itemId, workspaceUsers }: Props) {
       if (messagesRes.ok) {
         const data = (await messagesRes.json()) as { messages: Message[] }
         setMessages((data.messages ?? []).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()))
+        markAsRead(selectedChannelId)
       }
     } catch (e) {
       setSendError(e instanceof Error ? e.message : 'Error al enviar')
       setInputValue(savedBody)
       setPendingAttachments(savedAttachments)
     }
-  }, [selectedChannelId, inputValue, pendingAttachments])
+  }, [selectedChannelId, inputValue, pendingAttachments, markAsRead])
 
   // ── Channel management ─────────────────────────────────────────────────────
 

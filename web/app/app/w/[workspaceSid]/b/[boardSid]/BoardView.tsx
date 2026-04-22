@@ -149,7 +149,7 @@ export function BoardView({
 
   // Channels modal + summary
   const [channelsItemId, setChannelsItemId] = useState<string | null>(null)
-  const [channelSummary, setChannelSummary] = useState<Record<string, { message_count: number }>>({})
+  const [channelSummary, setChannelSummary] = useState<Record<string, { message_count: number; unread_count: number }>>({})
 
   const newViewInputRef    = useRef<HTMLInputElement>(null)
   const colPickerRef       = useRef<HTMLDivElement>(null)
@@ -500,7 +500,7 @@ export function BoardView({
   const refreshChannelSummary = useCallback(async () => {
     const res = await fetch(`/api/boards/${boardId}/channel-summary`)
     if (!res.ok) return
-    const data = await res.json() as { items: Record<string, { message_count: number }> }
+    const data = await res.json() as { items: Record<string, { message_count: number; unread_count: number }> }
     setChannelSummary(data.items ?? {})
   }, [boardId])
 

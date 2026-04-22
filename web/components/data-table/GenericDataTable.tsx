@@ -33,7 +33,7 @@ type Props = {
   renderRowExpansion?:  (rowId: string) => ReactNode
   onOpenItem?:          (rowId: string) => void
   onOpenChannels?:      (rowId: string) => void
-  channelSummary?:      Record<string, { message_count: number }>
+  channelSummary?:      Record<string, { message_count: number; unread_count: number }>
   onBulkDelete?:        (ids: string[]) => void
   onColumnSettings?:    (colKey: string) => void
   onAddColumn?:         (name: string, kind: string) => Promise<void>
@@ -257,19 +257,29 @@ export function GenericDataTable({
       ),
       cell: ({ row }) => {
         const count = channelSummary?.[row.original.id]?.message_count ?? 0
+        const unread = channelSummary?.[row.original.id]?.unread_count ?? 0
         const hasMessages = count > 0
+        const hasUnread = unread > 0
         return (
           <button
             onClick={e => { e.stopPropagation(); onOpenChannels(row.original.id) }}
-            title={hasMessages ? `${count} mensaje${count !== 1 ? 's' : ''}` : 'Canales'}
+            title={
+              hasUnread
+                ? `${unread} sin leer`
+                : hasMessages
+                ? `${count} mensaje${count !== 1 ? 's' : ''}`
+                : 'Canales'
+            }
             className={[
               'w-full h-full flex items-center justify-center relative transition-colors',
-              hasMessages
+              hasUnread
                 ? 'text-[var(--brand)] hover:text-[var(--brand-deep)]'
+                : hasMessages
+                ? 'text-[var(--ink-4)] hover:text-[var(--brand)]'
                 : 'text-[var(--ink-4)] hover:text-[var(--brand)] opacity-0 group-hover/row:opacity-100',
             ].join(' ')}
           >
-            {hasMessages ? (
+            {hasUnread || hasMessages ? (
               <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" strokeWidth="0.6" strokeLinejoin="round">
                 <path d="M2 3.5c0-.6.5-1 1-1h8c.5 0 1 .4 1 1V8c0 .6-.5 1-1 1H6L4 11V9H3c-.6 0-1-.4-1-1V3.5z" />
               </svg>
@@ -278,8 +288,10 @@ export function GenericDataTable({
                 <path d="M2 3.5c0-.6.5-1 1-1h8c.5 0 1 .4 1 1V8c0 .6-.5 1-1 1H6L4 11V9H3c-.6 0-1-.4-1-1V3.5z" />
               </svg>
             )}
-            {hasMessages && (
-              <span className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-[var(--brand)]" />
+            {hasUnread && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1 rounded-full bg-[var(--brand)] text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                {unread > 9 ? '9+' : unread}
+              </span>
             )}
           </button>
         )
