@@ -4,16 +4,22 @@ import { jsonError, jsonOk } from '@/lib/api-helpers'
 
 type Context = { params: Promise<{ id: string }> }
 
+type RawVal = { column_id: string; value_text: string | null; value_number: number | null; value_date: string | null; value_json: unknown }
+type RawColumn = { id: string; col_key: string; name: string; kind: string; settings?: Record<string, unknown> | null }
+
 /**
  * GET /api/document-templates/[id]/context
- * Returns template + board + board_columns + sub_item_columns + workspace in one call.
- * Used by QuoteEditorModal to hydrate the editor client-side.
+ * Returns template + board + board_columns + sub_item_columns + workspace.
+ * Optional query param ?item_id=<uuid> — if provided, also returns the real
+ * rootValues + subItems so the editor preview uses live data instead of dummies.
  */
-export async function GET(_req: Request, { params }: Context) {
+export async function GET(req: Request, { params }: Context) {
   const auth = await requireAuthApi()
   if (isAuthError(auth)) return auth
 
   const { id } = await params
+  const url = new URL(req.url)
+  const itemId = url.searchParams.get('item_id')
   const service = createServiceClient()
 
   const { data: template, error: tplErr } = await service
@@ -46,11 +52,96 @@ export async function GET(_req: Request, { params }: Context) {
 
   if (!board) return jsonError('Board not found', 404)
 
+  // Optional: live data when item_id is passed
+  let liveItem: {
+    rootItem: { id: string; sid: number; name: string; values: Record<string, string | number | null> }
+    subItems: Array<{ id: string; sid: number; name: string; values: Record<string, string | number | null> }>
+  } | null = null
+
+  if (itemId) {
+    const { data: item } = await service
+      .from('items')
+      .select('id, sid, name, workspace_id, item_values(column_id, value_text, value_number, value_date, value_json)')
+      .eq('id', itemId)
+      .eq('workspace_id', auth.workspaceId)
+      .maybeSingle()
+
+    if (item) {
+      const rootValues = await flattenValues(service, (columns ?? []) as RawColumn[], (item.item_values ?? []) as RawVal[], auth.workspaceId)
+
+      // Fetch sub_items of this item
+      const { data: rawSubItems } = await service
+        .from('sub_items')
+        .select('id, sid, name, position, sub_item_values(column_id, value_text, value_number, value_date, value_json)')
+        .eq('item_id', itemId)
+        .eq('depth', 0)
+        .order('position', { ascending: true })
+
+      const subItems = await Promise.all(
+        (rawSubItems ?? []).map(async si => ({
+          id:     si.id,
+          sid:    si.sid,
+          name:   si.name,
+          values: await flattenValues(service, (subItemColumns ?? []) as RawColumn[], (si.sub_item_values ?? []) as RawVal[], auth.workspaceId),
+        }))
+      )
+
+      liveItem = {
+        rootItem: { id: item.id, sid: item.sid, name: item.name, values: rootValues },
+        subItems,
+      }
+    }
+  }
+
   return jsonOk({
     template,
     board,
     columns: columns ?? [],
     subItemColumns: subItemColumns ?? [],
     workspace: workspace ?? { id: auth.workspaceId, name: 'Workspace' },
+    liveItem,
   })
+}
+
+/**
+ * Build { col_key → resolved value } from raw values; resolves relation → name, people → user name, select → label.
+ */
+async function flattenValues(
+  service: ReturnType<typeof createServiceClient>,
+  columns: RawColumn[],
+  values: RawVal[],
+  workspaceId: string
+): Promise<Record<string, string | number | null>> {
+  const out: Record<string, string | number | null> = {}
+  const byColumnId = new Map(columns.map(c => [c.id, c]))
+
+  for (const v of values) {
+    const col = byColumnId.get(v.column_id)
+    if (!col) continue
+    const raw = v.value_text ?? v.value_number ?? v.value_date ?? null
+
+    if (col.kind === 'relation' && typeof raw === 'string') {
+      const { data: rel } = await service
+        .from('items')
+        .select('name')
+        .eq('id', raw)
+        .eq('workspace_id', workspaceId)
+        .maybeSingle()
+      out[col.col_key] = rel?.name ?? raw
+    } else if (col.kind === 'people' && typeof raw === 'string') {
+      const { data: u } = await service
+        .from('users')
+        .select('name')
+        .eq('id', raw)
+        .maybeSingle()
+      out[col.col_key] = u?.name ?? raw
+    } else if (col.kind === 'select' && typeof raw === 'string') {
+      const opts = (col.settings?.options as Array<{ value: string; label: string }> | undefined) ?? []
+      out[col.col_key] = opts.find(o => o.value === raw)?.label ?? raw
+    } else {
+      out[col.col_key] = typeof raw === 'string' || typeof raw === 'number' ? raw : null
+    }
+  }
+
+  return out
 }

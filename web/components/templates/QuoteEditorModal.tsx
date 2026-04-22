@@ -16,6 +16,11 @@ type BoardColumn = {
   settings?: Record<string, unknown>
 }
 
+type LiveItem = {
+  rootItem: { id: string; sid: number; name: string; values: Record<string, string | number | null> }
+  subItems: Array<{ id: string; sid: number; name: string; values: Record<string, string | number | null> }>
+} | null
+
 type ContextData = {
   template: {
     id: string
@@ -32,21 +37,24 @@ type ContextData = {
   columns:        BoardColumn[]
   subItemColumns: BoardColumn[]
   workspace:      { id: string; name: string; logo_url?: string }
+  liveItem:       LiveItem
 }
 
 type Props = {
   templateId:    string
   workspaceSid:  number
+  itemId?:       string
   onClose:       () => void
 }
 
-export function QuoteEditorModal({ templateId, workspaceSid, onClose }: Props) {
+export function QuoteEditorModal({ templateId, workspaceSid, itemId, onClose }: Props) {
   const [data, setData]   = useState<ContextData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/document-templates/${templateId}/context`)
+    const qs = itemId ? `?item_id=${encodeURIComponent(itemId)}` : ''
+    fetch(`/api/document-templates/${templateId}/context${qs}`)
       .then(async r => {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText)
         return r.json() as Promise<ContextData>
@@ -54,7 +62,7 @@ export function QuoteEditorModal({ templateId, workspaceSid, onClose }: Props) {
       .then(d => { if (!cancelled) setData(d) })
       .catch(e => { if (!cancelled) setError(e.message ?? 'Error al cargar plantilla') })
     return () => { cancelled = true }
-  }, [templateId])
+  }, [templateId, itemId])
 
   // ESC key to close
   useEffect(() => {
@@ -80,6 +88,7 @@ export function QuoteEditorModal({ templateId, workspaceSid, onClose }: Props) {
             subItemColumns={data.subItemColumns}
             workspace={data.workspace}
             workspaceSid={String(workspaceSid)}
+            liveItem={data.liveItem}
             onClose={onClose}
           />
         ) : error ? (

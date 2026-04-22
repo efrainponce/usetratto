@@ -60,6 +60,10 @@ type TemplateEditorViewProps = {
   workspace: WorkspaceData
   workspaceSid: string
   onClose?: () => void
+  liveItem?: {
+    rootItem: { id: string; sid: number; name: string; values: Record<string, string | number | null> }
+    subItems: Array<{ id: string; sid: number; name: string; values: Record<string, string | number | null> }>
+  } | null
 }
 
 function convertToBoardColumnMeta(cols: any[]): BoardColumnMeta[] {
@@ -79,6 +83,7 @@ export default function TemplateEditorView({
   workspace,
   workspaceSid,
   onClose,
+  liveItem,
 }: TemplateEditorViewProps) {
   const router = useRouter()
   const handleClose = onClose ?? (() => router.back())
@@ -95,7 +100,16 @@ export default function TemplateEditorView({
   const rootColsMeta = convertToBoardColumnMeta(columns)
   const subColsMeta = convertToBoardColumnMeta(subItemColumns)
 
-  const sampleContext: RenderContext = buildSampleContext(rootColsMeta, subColsMeta, workspace)
+  // Use real item data when available; fall back to dummy sample
+  const sampleContext: RenderContext = liveItem
+    ? {
+        rootItem: liveItem.rootItem,
+        rootColumns: rootColsMeta,
+        subItems: liveItem.subItems,
+        subItemColumns: subColsMeta,
+        workspace: { name: workspace.name, logo_url: workspace.logo_url },
+      }
+    : buildSampleContext(rootColsMeta, subColsMeta, workspace)
 
   const style = (template.style_json ?? {}) as Record<string, unknown>
 

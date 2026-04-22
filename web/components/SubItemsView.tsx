@@ -1089,6 +1089,7 @@ function NativeRenderer({
         <QuoteEditorModal
           templateId={templates[0].id}
           workspaceSid={workspaceSid}
+          itemId={itemId}
           onClose={() => setEditorOpen(false)}
         />
       )}
