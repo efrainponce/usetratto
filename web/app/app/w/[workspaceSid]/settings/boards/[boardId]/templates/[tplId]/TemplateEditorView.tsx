@@ -1,12 +1,18 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { BlockCanvas } from '@/components/templates/BlockCanvas'
 import { BlockPalette } from '@/components/templates/BlockPalette'
 import { DocumentHtmlPreview } from '@/lib/document-blocks/html-preview'
 import { buildSampleContext } from '@/lib/document-blocks/sample-context'
 import type { Block, BoardColumnMeta, RenderContext } from '@/lib/document-blocks'
+
+// BlockCanvas uses @dnd-kit which generates unique IDs on mount → hydration mismatch if SSR'd
+const BlockCanvas = dynamic(
+  () => import('@/components/templates/BlockCanvas').then(m => m.BlockCanvas),
+  { ssr: false, loading: () => <div className="p-8 text-center text-[13px] text-[var(--ink-4)]">Cargando editor…</div> }
+)
 
 type TemplateData = {
   id: string
