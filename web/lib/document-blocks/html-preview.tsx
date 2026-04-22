@@ -29,65 +29,68 @@ function getFieldValue(context: RenderContext, col_key: string): string {
 
 const baseStyles = {
   container: {
-    fontFamily: 'Helvetica, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    maxWidth: '800px',
-    margin: '0 auto',
-    padding: '48px',
-    backgroundColor: '#fff',
-    color: '#000',
-    lineHeight: '1.4',
-    fontSize: '11pt'
+    fontFamily: 'var(--font-geist-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)',
+    padding: '48px 56px',
+    backgroundColor: 'var(--surface)',
+    color: 'var(--ink)',
+    lineHeight: '1.5',
+    fontSize: '13px'
   },
   heading: {
-    marginBottom: '12px',
+    fontWeight: 'bold',
     marginTop: '8px',
-    fontWeight: 'bold'
+    marginBottom: '12px'
   },
-  h1: { fontSize: '24pt' },
-  h2: { fontSize: '18pt' },
-  h3: { fontSize: '14pt' },
+  h1: { fontSize: '22px', fontWeight: '600', color: 'var(--ink)' },
+  h2: { fontSize: '16px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.02em', color: 'var(--ink-2)', marginTop: '24px', marginBottom: '12px' },
+  h3: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)' },
   text: {
-    marginBottom: '8px'
+    marginBottom: '8px',
+    fontSize: '13px',
+    color: 'var(--ink-2)',
+    lineHeight: '1.5'
   },
   label: {
-    color: '#6b7280',
-    fontSize: '10pt',
+    color: 'var(--ink-3)',
+    fontSize: '10px',
     marginBottom: '2px',
     display: 'block'
   },
   fieldValue: {
-    color: '#000',
-    fontSize: '11pt'
+    color: 'var(--ink)',
+    fontSize: '13px',
+    fontWeight: '500'
   },
   fieldInline: {
     display: 'flex',
     gap: '8px',
     marginBottom: '8px',
-    alignItems: 'flex-start'
+    alignItems: 'flex-start',
+    fontSize: '13px'
   },
   fieldInlineLabel: {
-    color: '#6b7280',
-    fontSize: '10pt'
+    color: 'var(--ink-3)',
+    fontSize: '13px'
   },
   fieldStacked: {
     marginBottom: '12px'
   },
   imagePlaceholder: {
-    backgroundColor: '#f3f4f6',
-    border: '1px solid #e5e7eb',
+    backgroundColor: 'var(--bg-2)',
+    border: '1px solid var(--border)',
     marginBottom: '8px'
   },
   divider: {
-    borderBottom: '1px solid #e5e7eb',
-    margin: '8px 0'
+    borderBottom: '1px solid var(--border)',
+    margin: '16px 0'
   },
   columnsContainer: {
-    display: 'flex',
-    gap: '8px',
+    display: 'grid',
+    gap: '16px',
     marginBottom: '8px'
   },
   tableContainer: {
-    margin: '8px 0',
+    margin: '24px 0',
     overflowX: 'auto' as const
   },
   table: {
@@ -95,47 +98,80 @@ const baseStyles = {
     borderCollapse: 'collapse' as const
   },
   tableHeaderCell: {
-    textAlign: 'left' as const,
-    padding: '4px',
-    backgroundColor: '#f9fafb',
-    borderBottom: '1px solid #e5e7eb',
-    fontWeight: 'bold',
-    fontSize: '10pt'
+    textAlign: 'right' as const,
+    padding: '8px 0',
+    fontSize: '10.5px',
+    color: 'var(--ink-4)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    fontWeight: '600',
+    borderBottom: '1px solid var(--border)'
   },
   tableCell: {
-    padding: '4px',
-    borderBottom: '1px solid #e5e7eb',
-    fontSize: '10pt'
+    padding: '10px 0',
+    borderBottom: '1px solid var(--border)',
+    fontSize: '13px'
   },
   totalContainer: {
     display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '16px',
-    margin: '12px 0',
-    alignItems: 'flex-end'
+    flexDirection: 'column' as const,
+    gap: '4px',
+    marginLeft: 'auto',
+    width: '280px',
+    marginTop: '16px'
   },
   totalLabel: {
-    color: '#6b7280',
-    fontSize: '11pt'
+    color: 'var(--ink-2)',
+    fontSize: '13px',
+    display: 'flex',
+    justifyContent: 'space-between'
   },
   totalValue: {
-    fontSize: '16pt',
-    fontWeight: 'bold',
-    color: '#000'
+    fontSize: '18px',
+    fontWeight: '600',
+    color: 'var(--ink)',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    paddingTop: '8px',
+    borderTop: '2px solid var(--ink)',
+    marginTop: '4px'
   },
   signatureBox: {
-    border: '1px solid #e5e7eb',
-    padding: '40px 8px 8px 8px',
-    marginBottom: '12px'
+    marginTop: '60px',
+    width: '320px'
+  },
+  signatureSlot: {
+    height: '60px',
+    display: 'flex',
+    alignItems: 'flex-end',
+    fontSize: '11px',
+    fontStyle: 'italic',
+    color: 'var(--ink-3)'
+  },
+  signatureLine: {
+    height: '1px',
+    backgroundColor: 'var(--ink)',
+    width: '100%',
+    marginTop: '8px'
   },
   signatureLabel: {
-    color: '#6b7280',
-    fontSize: '10pt',
-    marginBottom: '32px'
+    color: 'var(--ink-3)',
+    fontSize: '11px',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.08em',
+    fontWeight: '600',
+    marginBottom: '8px'
   },
   signatureName: {
-    fontSize: '10pt',
-    marginTop: '8px'
+    fontSize: '13px',
+    marginTop: '6px',
+    fontWeight: '500'
+  },
+  signaturePosition: {
+    fontSize: '11px',
+    marginTop: '1px',
+    color: 'var(--ink-3)'
   }
 }
 
@@ -143,15 +179,15 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
   switch (block.type) {
     case 'heading': {
       const resolved = resolveTemplate(context, block.text)
+      const levelStyles = block.level === 1
+        ? baseStyles.h1
+        : block.level === 2
+          ? baseStyles.h2
+          : baseStyles.h3
       const headingStyle = {
         ...baseStyles.heading,
-        ...(block.level === 1
-          ? baseStyles.h1
-          : block.level === 2
-            ? baseStyles.h2
-            : baseStyles.h3),
-        textAlign: block.align || 'left',
-        color: (style?.primaryColor as string) || '#000'
+        ...levelStyles,
+        textAlign: block.align || 'left'
       }
       const Tag = (`h${block.level}` as unknown) as React.ElementType
       return (
@@ -176,19 +212,27 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
     case 'field': {
       const label = block.label || getFieldLabel(context, block.col_key)
       const value = getFieldValue(context, block.col_key)
+      const colMeta = context.current?.scope === 'sub_item'
+        ? context.subItemColumns.find(c => c.col_key === block.col_key)
+        : context.rootColumns.find(c => c.col_key === block.col_key)
+      const isMonoKind = colMeta?.kind && ['number', 'currency', 'date', 'phone'].includes(colMeta.kind)
 
       if (block.layout === 'inline') {
         return (
           <div key={block.id} style={baseStyles.fieldInline}>
             <span style={baseStyles.fieldInlineLabel}>{label}:</span>
-            <span style={baseStyles.fieldValue}>{value}</span>
+            <span style={{...baseStyles.fieldValue, fontFamily: isMonoKind ? 'var(--font-geist-mono, monospace)' : 'inherit'}}>
+              {value}
+            </span>
           </div>
         )
       }
       return (
         <div key={block.id} style={baseStyles.fieldStacked}>
           <label style={baseStyles.label}>{label}</label>
-          <div style={baseStyles.fieldValue}>{value}</div>
+          <div style={{...baseStyles.fieldValue, fontFamily: isMonoKind ? 'var(--font-geist-mono, monospace)' : 'inherit'}}>
+            {value}
+          </div>
         </div>
       )
     }
@@ -211,50 +255,52 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
         }
       }
 
+      const width = block.width ? `${block.width}px` : '200px'
+      const height = block.height ? `${block.height}px` : '150px'
+
       if (!source) {
         return (
           <div
             key={block.id}
             style={{
               ...baseStyles.imagePlaceholder,
-              width: block.width ? `${block.width}px` : '200px',
-              height: block.height ? `${block.height}px` : '150px'
+              width,
+              height,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
-          />
+          >
+            <span style={{fontSize: '10px', color: 'var(--ink-3)'}}>Sin imagen</span>
+          </div>
         )
       }
 
       return (
-        <div key={block.id} style={{ marginBottom: '8px', textAlign: block.align || 'left' }}>
-          <img src={source} style={{ width: block.width ? `${block.width}px` : '200px', height: block.height ? `${block.height}px` : '150px' }} />
+        <div key={block.id} style={{ marginBottom: '16px', textAlign: block.align || 'left' }}>
+          <img src={source} style={{ width, height, objectFit: 'cover' }} alt="" />
         </div>
       )
     }
 
     case 'columns': {
-      const childrenViews = block.children.map((col, idx) => {
-        let colWidth = col.width
-        if (col.width.endsWith('fr')) {
-          const frValue = parseInt(col.width.split('fr')[0])
-          colWidth = `${(frValue / block.children.length) * 100}%`
-        }
+      const numCols = block.children.length
+      const gridTemplate = block.children
+        .map(col => col.width.endsWith('fr') ? col.width : `${col.width}`)
+        .join(' ')
 
-        return (
-          <div
-            key={idx}
-            style={{
-              flex: col.width.endsWith('fr') ? parseInt(col.width.split('fr')[0]) : undefined,
-              width: col.width.endsWith('fr') ? undefined : colWidth,
-              gap: `${block.gap || 8}px`
-            }}
-          >
-            {col.blocks.map(childBlock => renderBlock(childBlock, context, style))}
-          </div>
-        )
-      })
+      const childrenViews = block.children.map((col, idx) => (
+        <div key={idx}>
+          {col.blocks.map(childBlock => renderBlock(childBlock, context, style))}
+        </div>
+      ))
 
       return (
-        <div key={block.id} style={{ ...baseStyles.columnsContainer, gap: `${block.gap || 8}px` }}>
+        <div key={block.id} style={{
+          ...baseStyles.columnsContainer,
+          gridTemplateColumns: gridTemplate,
+          gap: `${block.gap || 16}px`
+        }}>
           {childrenViews}
         </div>
       )
@@ -288,7 +334,7 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
 
       if (items.length === 0) {
         if (block.empty_text) {
-          return <p key={block.id}>{block.empty_text}</p>
+          return <p key={block.id} style={baseStyles.text}>{block.empty_text}</p>
         }
         return <div key={block.id} />
       }
@@ -296,11 +342,14 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
       const scope = block.source === 'sub_items' ? 'sub_item' : ('relation' as const)
       return (
         <div key={block.id}>
-          {items.map((item: any) => {
+          {items.map((item: any, idx: number) => {
             const itemContext = withRepeatScope(context, scope, item as any)
             return (
               <div key={item.id}>
                 {block.blocks.map(childBlock => renderBlock(childBlock, itemContext, style))}
+                {idx < items.length - 1 && (
+                  <div style={{borderBottom: '1px solid var(--border)', margin: '16px 0'}} />
+                )}
               </div>
             )
           })}
@@ -316,50 +365,95 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
 
       return (
         <div key={block.id} style={baseStyles.tableContainer}>
-          <table style={baseStyles.table}>
-            <thead>
-              <tr>
-                {columnMetas.map(meta => (
-                  <th key={meta.col_key} style={baseStyles.tableHeaderCell}>
-                    {meta.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {context.subItems.map(item => (
-                <tr key={item.id}>
-                  {columns.map(col_key => (
-                    <td key={col_key} style={baseStyles.tableCell}>
-                      {item.values[col_key] ?? ''}
-                    </td>
-                  ))}
-                </tr>
+          <div style={{...baseStyles.table, display: 'flex', flexDirection: 'column'}}>
+            {/* Header */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '48px 1fr 100px 100px 110px',
+              gap: '12px',
+              fontSize: '10.5px',
+              color: 'var(--ink-4)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              fontWeight: '600',
+              padding: '8px 0',
+              borderBottom: '1px solid var(--border)'
+            }}>
+              {columnMetas.map(meta => (
+                <div key={meta.col_key} style={{textAlign: ['cantidad', 'precio', 'importe'].includes(meta.col_key) ? 'right' : 'left'}}>
+                  {meta.name}
+                </div>
               ))}
-              {block.show_totals && block.total_col_keys && block.total_col_keys.length > 0 && (
-                <tr>
-                  {columns.map(col_key => {
-                    if (block.total_col_keys?.includes(col_key)) {
-                      const sum = context.subItems.reduce((acc, item) => {
-                        const val = parseFloat(String(item.values[col_key] ?? 0))
-                        return acc + (isNaN(val) ? 0 : val)
-                      }, 0)
-                      return (
-                        <td key={col_key} style={{ ...baseStyles.tableCell, fontWeight: 'bold' }}>
-                          {sum.toFixed(2)}
-                        </td>
-                      )
-                    }
-                    return (
-                      <td key={col_key} style={baseStyles.tableCell}>
+            </div>
 
-                      </td>
+            {/* Body rows */}
+            {context.subItems.map(item => (
+              <div key={item.id} style={{
+                display: 'grid',
+                gridTemplateColumns: '48px 1fr 100px 100px 110px',
+                gap: '12px',
+                alignItems: 'center',
+                padding: '10px 0',
+                borderBottom: '1px solid var(--border)',
+                fontSize: '13px'
+              }}>
+                {columns.map((col_key, idx) => {
+                  const meta = columnMetas[idx]
+                  const value = item.values[col_key] ?? ''
+                  const isNumeric = ['number', 'currency'].includes(meta?.kind || '')
+                  return (
+                    <div
+                      key={col_key}
+                      style={{
+                        textAlign: isNumeric ? 'right' : 'left',
+                        fontFamily: isNumeric ? 'var(--font-geist-mono, monospace)' : 'inherit'
+                      }}
+                    >
+                      {value}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+
+            {/* Totals row */}
+            {block.show_totals && block.total_col_keys && block.total_col_keys.length > 0 && (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '48px 1fr 100px 100px 110px',
+                gap: '12px',
+                alignItems: 'center',
+                padding: '10px 0',
+                borderTop: '1px solid var(--border)',
+                fontSize: '13px',
+                fontWeight: '600'
+              }}>
+                {columns.map((col_key, idx) => {
+                  const meta = columnMetas[idx]
+                  if (block.total_col_keys?.includes(col_key)) {
+                    const sum = context.subItems.reduce((acc, item) => {
+                      const val = parseFloat(String(item.values[col_key] ?? 0))
+                      return acc + (isNaN(val) ? 0 : val)
+                    }, 0)
+                    const isNumeric = ['number', 'currency'].includes(meta?.kind || '')
+                    return (
+                      <div
+                        key={col_key}
+                        style={{
+                          textAlign: isNumeric ? 'right' : 'left',
+                          fontFamily: isNumeric ? 'var(--font-geist-mono, monospace)' : 'inherit',
+                          color: 'var(--ink)'
+                        }}
+                      >
+                        {sum.toFixed(2)}
+                      </div>
                     )
-                  })}
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  }
+                  return <div key={col_key}></div>
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )
     }
@@ -381,8 +475,13 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
 
       return (
         <div key={block.id} style={baseStyles.totalContainer}>
-          <div style={baseStyles.totalLabel}>{label}</div>
-          <div style={baseStyles.totalValue}>{displayValue}</div>
+          <div style={{...baseStyles.totalLabel, display: 'flex', justifyContent: 'space-between'}}>
+            <span>{label}</span>
+          </div>
+          <div style={{...baseStyles.totalValue, fontFamily: 'var(--font-geist-mono, monospace)', display: 'flex', justifyContent: 'space-between'}}>
+            <span></span>
+            <span>{displayValue}</span>
+          </div>
         </div>
       )
     }
@@ -395,9 +494,12 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
         return (
           <div key={block.id} style={baseStyles.signatureBox}>
             <div style={baseStyles.signatureLabel}>{roleLabel}</div>
-            <img src={sig.image_url} style={{ width: '100px', height: '50px', marginBottom: '8px' }} />
+            <div style={baseStyles.signatureSlot}>
+              <img src={sig.image_url} style={{ width: '100px', height: '50px' }} />
+            </div>
+            <div style={baseStyles.signatureLine}></div>
             {sig.user_name && <div style={baseStyles.signatureName}>{sig.user_name}</div>}
-            {sig.signed_at && <div style={{ fontSize: '9pt', color: '#9ca3af' }}>{sig.signed_at}</div>}
+            {sig.signed_at && <div style={baseStyles.signaturePosition}>{sig.signed_at}</div>}
           </div>
         )
       }
@@ -405,6 +507,11 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
       return (
         <div key={block.id} style={baseStyles.signatureBox}>
           <div style={baseStyles.signatureLabel}>{roleLabel}</div>
+          <div style={baseStyles.signatureSlot}>
+            Esperando firma
+          </div>
+          <div style={baseStyles.signatureLine}></div>
+          <div style={baseStyles.signatureName}></div>
         </div>
       )
     }
@@ -428,8 +535,8 @@ export function DocumentHtmlPreview({
   return (
     <div className="document-preview" style={baseStyles.container as React.CSSProperties}>
       {style && (style.logo_url as string) && (
-        <div style={{ marginBottom: '16px' }}>
-          <img src={style.logo_url as string} style={{ width: '60px', height: '60px' }} />
+        <div style={{ marginBottom: '24px' }}>
+          <img src={style.logo_url as string} style={{ width: '60px', height: '60px' }} alt="Logo" />
         </div>
       )}
       {blocks.map(block => renderBlock(block, context, style))}

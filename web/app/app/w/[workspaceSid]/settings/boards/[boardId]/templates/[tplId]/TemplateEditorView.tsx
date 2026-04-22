@@ -166,58 +166,92 @@ export default function TemplateEditorView({
     return `hace ${Math.round(diff / 86400)}d`
   }
 
-  return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => router.back()}
-            className="text-gray-600 hover:text-gray-900 transition-colors"
-            title="Volver"
-          >
-            ← Volver
-          </button>
+  const handleDownloadPdf = async () => {
+    // Placeholder: el user puede ver el preview; la generación real es desde el item (no template)
+    alert('Para generar PDF final, usa el botón "Generar PDF" en la vista de sub-items de la oportunidad.')
+  }
 
+  return (
+    <div className="h-screen flex flex-col bg-[var(--bg-2)]">
+      {/* Top bar */}
+      <div className="flex items-start justify-between gap-4 px-6 py-3.5 border-b border-[var(--border)] bg-[var(--bg)] flex-none">
+        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+          <div className="font-[family-name:var(--font-geist-mono)] text-[11.5px] text-[var(--ink-4)] tabular-nums tracking-tight">
+            COT-{String(template.sid).padStart(4, '0')} · v1
+            {isSaving && <span className="ml-2">· guardando…</span>}
+            {!isSaving && savedAt && <span className="ml-2">· guardado {formatSavedTime()}</span>}
+          </div>
           <input
-            type="text"
             value={name}
             onChange={(e) => handleNameChange(e.target.value)}
-            className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+            className="font-[family-name:var(--font-geist-mono)] text-[18px] font-semibold uppercase tracking-[0.02em] text-[var(--ink)] bg-transparent border-0 outline-none px-0 py-0 w-full"
             placeholder="Nombre del template"
           />
         </div>
-
-        <div className="flex items-center gap-3 ml-4">
+        <div className="flex items-center gap-1.5 flex-none">
           <select
             value={status}
             onChange={(e) => handleStatusChange(e.target.value as 'draft' | 'active' | 'archived')}
-            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-900/20"
+            className="px-2.5 py-1.5 text-[12px] text-[var(--ink-2)] bg-[var(--surface-2)] border border-[var(--border)] rounded-sm outline-none"
           >
             <option value="draft">Borrador</option>
             <option value="active">Activo</option>
             <option value="archived">Archivado</option>
           </select>
-
-          <div className="text-xs text-gray-500">
-            {isSaving ? (
-              <span>Guardando...</span>
-            ) : savedAt ? (
-              <span>Guardado {formatSavedTime()}</span>
-            ) : null}
-          </div>
+          <button
+            onClick={handleDownloadPdf}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] rounded-sm transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            PDF
+          </button>
+          <button
+            onClick={() => router.back()}
+            title="Cerrar"
+            className="inline-flex items-center justify-center w-8 h-8 text-[var(--ink-3)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] rounded-sm transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
       </div>
 
-      {/* 3-panel layout: Palette | Canvas | Preview */}
-      <div className="flex flex-1 gap-4 overflow-hidden p-4">
-        {/* Left: Palette */}
-        <div className="w-80 overflow-y-auto">
-          <BlockPalette onAdd={(block) => setBlocks([...blocks, block])} />
+      {/* Body: left sidebar (palette + variables) + middle (canvas) + right (preview paper) */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar */}
+        <div className="w-[220px] flex-none flex flex-col bg-[var(--bg-2)] border-r border-[var(--border)] overflow-y-auto p-3 gap-4">
+          <div>
+            <div className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] uppercase tracking-[0.08em] font-semibold px-1 pb-2">Bloques</div>
+            <BlockPalette onAdd={(block) => setBlocks([...blocks, block])} />
+          </div>
+          <div>
+            <div className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] uppercase tracking-[0.08em] font-semibold px-1 pb-2">Variables</div>
+            <div className="flex flex-col gap-1">
+              {[
+                '{{contacto.nombre}}',
+                '{{institucion.nombre}}',
+                '{{fecha.hoy}}',
+                '{{cotizacion.total}}',
+                '{{oportunidad.nombre}}',
+                '{{monto|currency}}',
+              ].map(v => (
+                <div
+                  key={v}
+                  className="font-[family-name:var(--font-geist-mono)] text-[11.5px] text-[var(--ink-3)] bg-[var(--surface)] border border-dashed border-[var(--border)] rounded-sm px-2 py-1"
+                >
+                  {v}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Center: Canvas */}
-        <div className="flex-1 overflow-y-auto bg-white border border-gray-200 rounded-lg p-4">
+        {/* Middle: canvas (block list, editable) */}
+        <div className="w-[320px] flex-none bg-[var(--bg)] border-r border-[var(--border)] overflow-y-auto p-3">
+          <div className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] uppercase tracking-[0.08em] font-semibold px-1 pb-2">Estructura</div>
           <BlockCanvas
             blocks={blocks}
             onChange={handleBlocksChange}
@@ -226,15 +260,9 @@ export default function TemplateEditorView({
           />
         </div>
 
-        {/* Right: Preview */}
-        <div className="w-96 overflow-y-auto bg-white border border-gray-200 rounded-lg p-4">
-          <div className="mb-3">
-            <label className="text-xs font-medium text-gray-600 block mb-2">Vista previa</label>
-            <select className="w-full px-2 py-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-900/20">
-              <option>Datos de muestra</option>
-            </select>
-          </div>
-          <div className="border border-gray-200 rounded-lg overflow-auto max-h-[calc(100vh-200px)]">
+        {/* Right: paper preview */}
+        <div className="flex-1 overflow-auto bg-[var(--bg-2)] p-8">
+          <div className="max-w-[780px] mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius)] shadow-[var(--shadow-md)]">
             <DocumentHtmlPreview blocks={blocks} context={sampleContext} style={style} />
           </div>
         </div>
