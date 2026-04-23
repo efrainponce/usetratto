@@ -1127,7 +1127,7 @@ export function BoardView({
             )}
           </button>
           {showFilter && activeView && (
-            <div className="absolute top-full left-0 mt-1 z-40">
+            <div className="absolute top-full right-0 mt-1 z-40">
               <FilterPanel
                 columns={columns}
                 filters={effectiveConfig.filters ?? []}
@@ -1153,7 +1153,7 @@ export function BoardView({
             )}
           </button>
           {showSort && activeView && (
-            <div className="absolute top-full left-0 mt-1 z-40">
+            <div className="absolute top-full right-0 mt-1 z-40">
               <SortPanel
                 columns={columns}
                 sorts={effectiveConfig.sort ?? []}
@@ -1179,7 +1179,7 @@ export function BoardView({
             )}
           </button>
           {showGroup && activeView && (
-            <div className="absolute top-full left-0 mt-1 z-40">
+            <div className="absolute top-full right-0 mt-1 z-40">
               <GroupPanel
                 columns={columns}
                 groupBy={effectiveConfig.group_by ?? null}
