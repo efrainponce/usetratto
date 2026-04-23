@@ -70,7 +70,7 @@ export async function POST() {
     .select('id, name')
     .eq('board_id', catalogBoardId ?? '')
 
-  // ── 5. Get column IDs for relation columns (contacto, institucion, monto) ──
+  // ── 5. Get column IDs for relation columns (contacto, cuenta, monto) ──
   const { data: oppCols } = await supabase
     .from('board_columns')
     .select('id, col_key')
@@ -198,7 +198,7 @@ export async function POST() {
     .eq('workspace_id', WS)
     .order('position', { ascending: true })
 
-  // ── 10. Set item_values for contacto, institucion, monto ─────────────────
+  // ── 10. Set item_values for contacto, cuenta, monto ─────────────────────
   if (allOpps && colMap['contacto'] && contacts?.length) {
     const contactValues = allOpps.map(opp => ({
       item_id: opp.id,
@@ -214,10 +214,10 @@ export async function POST() {
     log.push('contacto values set')
   }
 
-  if (allOpps && colMap['institucion'] && accounts?.length) {
+  if (allOpps && colMap['cuenta'] && accounts?.length) {
     const accountValues = allOpps.map(opp => ({
       item_id: opp.id,
-      column_id: colMap['institucion'],
+      column_id: colMap['cuenta'],
       value_text: pick(accounts).id,
     }))
     for (let i = 0; i < accountValues.length; i += 50) {
@@ -225,7 +225,7 @@ export async function POST() {
         onConflict: 'item_id,column_id',
       })
     }
-    log.push('institucion values set')
+    log.push('cuenta values set')
   }
 
   if (allOpps && colMap['monto']) {

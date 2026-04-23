@@ -33,22 +33,22 @@ const baseStyles = {
     padding: '48px 56px',
     backgroundColor: 'var(--surface)',
     color: 'var(--ink)',
-    lineHeight: '1.5',
+    lineHeight: '1.3',
     fontSize: '13px'
   },
   heading: {
     fontWeight: 'bold',
-    marginTop: '8px',
-    marginBottom: '12px'
+    marginTop: '4px',
+    marginBottom: '6px'
   },
-  h1: { fontSize: '22px', fontWeight: '600', color: 'var(--ink)' },
-  h2: { fontSize: '16px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.02em', color: 'var(--ink-2)', marginTop: '24px', marginBottom: '12px' },
-  h3: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)' },
+  h1: { fontSize: '22px', fontWeight: '600', color: 'var(--ink)', marginTop: '0', marginBottom: '4px', lineHeight: '1.2' },
+  h2: { fontSize: '16px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.02em', color: 'var(--ink-2)', marginTop: '16px', marginBottom: '8px', lineHeight: '1.2' },
+  h3: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)', marginTop: '4px', marginBottom: '4px', lineHeight: '1.2' },
   text: {
-    marginBottom: '8px',
-    fontSize: '13px',
+    marginTop: '0',
+    marginBottom: '2px',
     color: 'var(--ink-2)',
-    lineHeight: '1.5'
+    lineHeight: '1.35'
   },
   label: {
     color: 'var(--ink-3)',
@@ -370,9 +370,15 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
         block.show_thumbnail ? '48px' : null,
         ...columns.map(k => {
           const meta = columnMetas[columns.indexOf(k)]
-          const w = cfgFor(k).width
+          const cfg  = cfgFor(k)
+          // 1) Prefer explicit width_pct (relative fr weight)
+          if (typeof cfg.width_pct === 'number' && cfg.width_pct > 0) {
+            return `${cfg.width_pct}fr`
+          }
+          // 2) Legacy preset widths
+          const w = cfg.width
           if (w && w !== 'auto' && widthMap[w]) return widthMap[w]
-          // Numeric/currency default medium, text flex
+          // 3) Numeric/currency default medium, text flex
           if (['number', 'currency'].includes(meta?.kind || '')) return '110px'
           return '1fr'
         }),
@@ -384,14 +390,29 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
         return ['number', 'currency'].includes(meta?.kind || '') ? 'right' : 'left'
       }
 
-      // Deterministic color for thumbnail based on sub-item name
+      // Thumbnail: si hay thumbnail_col_key y el item tiene URL, renderiza imagen; fallback a placeholder.
+      const thumbKey = block.thumbnail_col_key
+      const thumbUrlFor = (item: { values: Record<string, any> }): string | null => {
+        if (!thumbKey) return null
+        const raw = item.values[thumbKey]
+        if (typeof raw === 'string' && raw) return raw
+        if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'object' && raw[0]?.url) return String(raw[0].url)
+        return null
+      }
       const hashHue = (s: string) => s.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 360
-      const Thumbnail = ({ name }: { name: string }) => (
-        <div style={{
-          width: 40, height: 40, borderRadius: '2px', border: '1px solid var(--border)',
-          background: `repeating-linear-gradient(45deg, hsl(${hashHue(name)}, 40%, 82%) 0 6px, hsl(${hashHue(name)}, 35%, 74%) 6px 8px)`,
-        }} />
-      )
+      const Thumbnail = ({ name, url }: { name: string; url: string | null }) =>
+        url ? (
+          <img
+            src={url}
+            alt={name}
+            style={{ width: 40, height: 40, borderRadius: '2px', border: '1px solid var(--border)', objectFit: 'cover' }}
+          />
+        ) : (
+          <div style={{
+            width: 40, height: 40, borderRadius: '2px', border: '1px solid var(--border)',
+            background: `repeating-linear-gradient(45deg, hsl(${hashHue(name)}, 40%, 82%) 0 6px, hsl(${hashHue(name)}, 35%, 74%) 6px 8px)`,
+          }} />
+        )
 
       return (
         <div key={block.id} style={baseStyles.tableContainer}>
@@ -429,7 +450,7 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
                 borderBottom: '1px solid var(--border)',
                 fontSize: '13px',
               }}>
-                {block.show_thumbnail && <Thumbnail name={item.name} />}
+                {block.show_thumbnail && <Thumbnail name={item.name} url={thumbUrlFor(item)} />}
                 {columns.map((col_key, idx) => {
                   const meta = columnMetas[idx]
                   const value = item.values[col_key] ?? ''
@@ -552,11 +573,15 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
     case 'signature': {
       const sig = context.document?.signatures?.find(s => s.role === block.role)
       const roleLabel = block.label || `Firma de ${block.role}`
+      const fallbackName =
+        block.fallback_name === 'generated_by' ? (context.document?.generated_by_name ?? '') :
+        block.fallback_name === 'owner'        ? (String(context.rootItem.values.owner ?? '')) :
+        (block.fallback_name ?? '')
 
       if (sig && sig.image_url) {
         return (
           <div key={block.id} style={baseStyles.signatureBox}>
-            <div style={baseStyles.signatureLabel}>{roleLabel}</div>
+            {!block.hide_label && <div style={baseStyles.signatureLabel}>{roleLabel}</div>}
             <div style={baseStyles.signatureSlot}>
               <img src={sig.image_url} style={{ width: '100px', height: '50px' }} />
             </div>
@@ -569,12 +594,12 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
 
       return (
         <div key={block.id} style={baseStyles.signatureBox}>
-          <div style={baseStyles.signatureLabel}>{roleLabel}</div>
+          {!block.hide_label && <div style={baseStyles.signatureLabel}>{roleLabel}</div>}
           <div style={baseStyles.signatureSlot}>
-            Esperando firma
+            {block.hide_label ? '' : 'Esperando firma'}
           </div>
           <div style={baseStyles.signatureLine}></div>
-          <div style={baseStyles.signatureName}></div>
+          <div style={baseStyles.signatureName}>{fallbackName}</div>
         </div>
       )
     }
@@ -595,8 +620,13 @@ export function DocumentHtmlPreview({
   context: RenderContext
   style?: Record<string, unknown>
 }): React.ReactElement {
+  const qc = (style?.quote_config ?? {}) as { fontSize?: number }
+  const containerStyle: React.CSSProperties = {
+    ...(baseStyles.container as React.CSSProperties),
+    ...(typeof qc.fontSize === 'number' ? { fontSize: `${qc.fontSize}px` } : {}),
+  }
   return (
-    <div className="document-preview" style={baseStyles.container as React.CSSProperties}>
+    <div className="document-preview" style={containerStyle}>
       {style && (style.logo_url as string) && (
         <div style={{ marginBottom: '24px' }}>
           <img src={style.logo_url as string} style={{ width: '60px', height: '60px' }} alt="Logo" />

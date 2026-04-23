@@ -18,7 +18,7 @@ export function ContactCard({
   variant = 'contact', header, extras, subtitle,
 }: Props) {
   const isInstitution = variant === 'institution'
-  const defaultHeader = isInstitution ? 'Institución' : 'Contacto principal'
+  const defaultHeader = isInstitution ? 'Cuenta' : 'Contacto principal'
   const subLine = subtitle ?? [role, institution].filter(Boolean).join(' · ')
 
   const telHref = phone ? `tel:${phone.replace(/\s+/g, '')}` : null

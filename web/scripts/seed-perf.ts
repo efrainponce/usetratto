@@ -119,12 +119,12 @@ async function main() {
     console.log('  ✅ contacto values set')
   }
 
-  if (cm['institucion'] && accounts?.length) {
-    const vals = allOpps.map(o => ({ item_id: o.id, column_id: cm['institucion'], value_text: pick(accounts!).id }))
+  if (cm['cuenta'] && accounts?.length) {
+    const vals = allOpps.map(o => ({ item_id: o.id, column_id: cm['cuenta'], value_text: pick(accounts!).id }))
     for (let i = 0; i < vals.length; i += 50) {
       await supabase.from('item_values').upsert(vals.slice(i, i + 50), { onConflict: 'item_id,column_id' })
     }
-    console.log('  ✅ institucion values set')
+    console.log('  ✅ cuenta values set')
   }
 
   if (cm['monto']) {

@@ -321,27 +321,48 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
       const columnMetas = columns.map(col_key =>
         context.subItemColumns.find(c => c.col_key === col_key) || { col_key, name: col_key, kind: 'text' as any }
       )
+      const flexFor = (k: string) => {
+        const cfg = block.column_configs?.find(c => c.col_key === k)
+        return typeof cfg?.width_pct === 'number' && cfg.width_pct > 0 ? cfg.width_pct : 1
+      }
+      const thumbKey = block.thumbnail_col_key
+      const thumbUrlFor = (item: { values: Record<string, any> }): string | null => {
+        if (!thumbKey) return null
+        const raw = item.values[thumbKey]
+        if (typeof raw === 'string' && raw) return raw
+        if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'object' && raw[0]?.url) return String(raw[0].url)
+        return null
+      }
 
       return (
         <View key={block.id} style={styles.tableContainer}>
           <View style={{ ...styles.tableRow, ...styles.tableHeaderRow }}>
+            {block.show_thumbnail && <View style={{ width: 40 }} />}
             {columnMetas.map(meta => (
-              <Text key={meta.col_key} style={{ ...styles.tableCell, flex: 1 }}>
+              <Text key={meta.col_key} style={{ ...styles.tableCell, flex: flexFor(meta.col_key) }}>
                 {meta.name}
               </Text>
             ))}
           </View>
-          {context.subItems.map(item => (
+          {context.subItems.map(item => {
+            const url = thumbUrlFor(item)
+            return (
             <View key={item.id} style={styles.tableRow}>
+              {block.show_thumbnail && (
+                <View style={{ width: 40, marginRight: 8 }}>
+                  {url ? <Image src={url} style={{ width: 36, height: 36 }} /> : null}
+                </View>
+              )}
               {columns.map(col_key => (
-                <Text key={col_key} style={{ ...styles.tableCell, flex: 1 }}>
+                <Text key={col_key} style={{ ...styles.tableCell, flex: flexFor(col_key) }}>
                   {item.values[col_key] ?? ''}
                 </Text>
               ))}
             </View>
-          ))}
+          )})}
           {block.show_totals && block.total_col_keys && block.total_col_keys.length > 0 && (
             <View style={styles.tableRow}>
+              {block.show_thumbnail && <View style={{ width: 40 }} />}
               {columns.map(col_key => {
                 if (block.total_col_keys?.includes(col_key)) {
                   const sum = context.subItems.reduce((acc, item) => {
@@ -349,13 +370,13 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
                     return acc + (isNaN(val) ? 0 : val)
                   }, 0)
                   return (
-                    <Text key={col_key} style={{ ...styles.tableCell, flex: 1, fontWeight: 'bold' }}>
+                    <Text key={col_key} style={{ ...styles.tableCell, flex: flexFor(col_key), fontWeight: 'bold' }}>
                       {sum.toFixed(2)}
                     </Text>
                   )
                 }
                 return (
-                  <Text key={col_key} style={{ ...styles.tableCell, flex: 1 }}>
+                  <Text key={col_key} style={{ ...styles.tableCell, flex: flexFor(col_key) }}>
 
                   </Text>
                 )
@@ -419,11 +440,15 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
     case 'signature': {
       const sig = context.document?.signatures?.find(s => s.role === block.role)
       const roleLabel = block.label || `Firma de ${block.role}`
+      const fallbackName =
+        block.fallback_name === 'generated_by' ? (context.document?.generated_by_name ?? '') :
+        block.fallback_name === 'owner'        ? (String(context.rootItem.values.owner ?? '')) :
+        (block.fallback_name ?? '')
 
       if (sig && sig.image_url) {
         return (
           <View key={block.id} style={styles.signatureBox}>
-            <Text style={styles.signatureLabel}>{roleLabel}</Text>
+            {!block.hide_label && <Text style={styles.signatureLabel}>{roleLabel}</Text>}
             <Image src={sig.image_url} style={{ width: 100, height: 50, marginBottom: 8 }} />
             {sig.user_name && <Text style={styles.signatureName}>{sig.user_name}</Text>}
             {sig.signed_at && <Text style={{ fontSize: 9, color: '#9ca3af' }}>{sig.signed_at}</Text>}
@@ -433,7 +458,8 @@ function renderBlock(block: Block, context: RenderContext, style?: Record<string
 
       return (
         <View key={block.id} style={styles.signatureBox}>
-          <Text style={styles.signatureLabel}>{roleLabel}</Text>
+          {!block.hide_label && <Text style={styles.signatureLabel}>{roleLabel}</Text>}
+          {fallbackName ? <Text style={styles.signatureName}>{fallbackName}</Text> : null}
         </View>
       )
     }

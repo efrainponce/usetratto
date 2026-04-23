@@ -159,6 +159,7 @@ items (id, sid, workspace_id, board_id, stage_id, name, owner_id, territory_id, 
   -- territory_id: FK física para RLS por zona
   -- Relaciones a otros boards (contacto, cuenta) → columnas tipo 'relation' en board_columns
   --   valor en item_values.value_text = item_id del item relacionado
+  --   NOTA: la cuenta en quotes/opps se resuelve via chain desde contacto, no link directo
 
 item_values (id, item_id, column_id, value_text, value_number, value_date, value_json, created_at)
   -- UNIQUE(item_id, column_id)
@@ -198,7 +199,8 @@ document_templates (id, sid, workspace_id, name, target_board_id, body_json, sty
   -- body_json: array de blocks (heading/text/field/image/columns/spacer/divider/
   --            repeat/subitems_table/total/quote_totals/signature) — ver lib/document-blocks/types.ts
   -- Templates apuntan a cualquier target_board. Docs generados = items en system board 'quotes'.
-  -- style_json.quote_config: { tableColumns, showThumbnail, ivaRate, notes, showClientSignature, showVendorSignature }
+  -- style_json.quote_config: { tableColumns, columnWidths, showThumbnail, fontSize, ivaRate,
+  --                            header, notesLabel, notes, showClientSignature, showVendorSignature }
   --   source of truth del editor — body_json se regenera desde config via buildQuoteBody().
 
 document_audit_events (id, document_item_id, workspace_id, event_type, actor_id, metadata, created_at)
@@ -209,13 +211,13 @@ document_audit_events (id, document_item_id, workspace_id, event_type, actor_id,
 | system_key     | type     | Propósito |
 |----------------|----------|-----------|
 | `opportunities`| pipeline | Ventas, pipeline principal — stages Nueva/Cotización/Presentada/Cerrada |
-| `contacts`     | table    | Personas (phone + email + institucion como cols de sistema) |
-| `accounts`     | table    | Organizaciones (display: "Instituciones") |
+| `contacts`     | table    | Personas (phone + email + cargo + cuenta como cols de sistema) |
+| `accounts`     | table    | Organizaciones (display: "Cuentas") |
 | `vendors`      | table    | Proveedores |
 | `catalog`      | table    | Catálogo de productos (name + descripcion + foto + unit_price) |
 | `quotes`       | pipeline | Cotizaciones generadas — stages Borrador/Enviada/Pendiente firma/Firmada/Anulada |
 
-**Opinionated knowledge graph:** cada system board trae `sub_item_views` por defecto (ver Fase 18.5 en plan.md). Ej: Oportunidades → {Catálogo, Cotizaciones}. Contactos → {Oportunidades, Cotizaciones}. System boards NO se pueden borrar.
+**Opinionated knowledge graph:** cada system board trae `sub_item_views` por defecto (ver Fase 18.5 en plan.md). Ej: Oportunidades → {Catálogo, Cotizaciones}. Contactos → {Oportunidades, Cotizaciones}. Cuentas → {Contactos}. La cuenta de una oportunidad/cotización se resuelve via chain lookup desde el contacto (no link directo). System boards NO se pueden borrar.
 
 Estos boards se crean con `seed_system_boards(workspace_id)` al crear un workspace. Cada uno tiene sus `board_columns` de sistema pre-configuradas.
 
@@ -237,11 +239,12 @@ stage (select, is_system)  -- mapeado a board_stages
 deadline (date, is_system)
 
 -- Board contacts:
+cargo (text, is_system)
 phone (phone, is_system)
 email (email, is_system)
-institucion (relation → accounts board, is_system)
+cuenta (relation → accounts board, is_system)
 
--- Board accounts (display: "Instituciones"):
+-- Board accounts (display: "Cuentas"):
 type (select, is_system)
 
 -- Board vendors:

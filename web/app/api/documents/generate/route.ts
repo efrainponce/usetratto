@@ -416,7 +416,7 @@ export async function POST(req: Request) {
 
     // Read source opp item_values for contacto, monto
     let sourceContactoId: string | null = null
-    let sourceInstitucionId: string | null = null
+    let sourceCuentaId:   string | null = null
     let sourceMontoValue: number | null = null
 
     if (oppColKeyToId['contacto'] && oppColKeyToId['monto']) {
@@ -438,10 +438,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Resolve institucion from contacto via chain lookup
+    // Chain lookup: cuenta + cargo desde el contacto relacionado
     if (sourceContactoId) {
       try {
-        // Find Contacts board
         const { data: contactsBoard } = await service
           .from('boards')
           .select('id')
@@ -450,30 +449,45 @@ export async function POST(req: Request) {
           .maybeSingle()
 
         if (contactsBoard) {
-          // Find institucion column in Contacts board
-          const { data: institucionCol } = await service
+          const { data: cols } = await service
             .from('board_columns')
-            .select('id')
+            .select('id, col_key')
             .eq('board_id', contactsBoard.id)
-            .eq('col_key', 'institucion')
-            .maybeSingle()
+            .in('col_key', ['cuenta', 'cargo'])
 
-          if (institucionCol) {
-            // Get institucion value from contact item
-            const { data: contactInstitucionValue } = await service
+          const cuentaColId = cols?.find(c => c.col_key === 'cuenta')?.id
+          const cargoColId  = cols?.find(c => c.col_key === 'cargo')?.id
+          const targetIds   = [cuentaColId, cargoColId].filter(Boolean) as string[]
+
+          if (targetIds.length) {
+            const { data: contactValues } = await service
               .from('item_values')
-              .select('value_text')
+              .select('column_id, value_text')
               .eq('item_id', sourceContactoId)
-              .eq('column_id', institucionCol.id)
-              .maybeSingle()
+              .in('column_id', targetIds)
 
-            if (contactInstitucionValue?.value_text) {
-              sourceInstitucionId = contactInstitucionValue.value_text
+            for (const iv of contactValues ?? []) {
+              if (iv.column_id === cuentaColId && iv.value_text) {
+                sourceCuentaId = iv.value_text
+              } else if (iv.column_id === cargoColId && iv.value_text) {
+                rootValues.cargo = iv.value_text
+              }
             }
+          }
+
+          // Resolver el nombre de la cuenta para que {{cuenta}} en la plantilla tenga valor
+          if (sourceCuentaId) {
+            const { data: cuentaItem } = await service
+              .from('items')
+              .select('name')
+              .eq('id', sourceCuentaId)
+              .eq('workspace_id', auth.workspaceId)
+              .maybeSingle()
+            if (cuentaItem?.name) rootValues.cuenta = cuentaItem.name
           }
         }
       } catch (err) {
-        console.error('[documents/generate] Error resolving institucion from contacto:', err)
+        console.error('[documents/generate] Error resolving cuenta/cargo from contacto:', err)
       }
     }
 
@@ -527,15 +541,6 @@ export async function POST(req: Request) {
         item_id: docItem.id,
         column_id: colKeyToId['contacto'],
         value_text: sourceContactoId
-      })
-    }
-
-    // Add relation to institucion
-    if (colKeyToId['institucion'] && sourceInstitucionId) {
-      itemValuesInserts.push({
-        item_id: docItem.id,
-        column_id: colKeyToId['institucion'],
-        value_text: sourceInstitucionId
       })
     }
 

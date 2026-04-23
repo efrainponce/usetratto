@@ -69,6 +69,16 @@ export async function GET(req: Request, { params }: Context) {
     if (item) {
       const rootValues = await flattenValues(service, (columns ?? []) as RawColumn[], (item.item_values ?? []) as RawVal[], auth.workspaceId)
 
+      // Chain lookup: cargo + cuenta desde el contacto relacionado
+      const contactoCol = (columns ?? []).find(c => c.col_key === 'contacto' && c.kind === 'relation')
+      const contactoIv  = contactoCol ? (item.item_values ?? []).find((iv: RawVal) => iv.column_id === contactoCol.id) : null
+      const contactoId  = contactoIv && typeof contactoIv.value_text === 'string' ? contactoIv.value_text : null
+      if (contactoId) {
+        const chain = await fetchContactChain(service, contactoId, auth.workspaceId)
+        rootValues.cargo  = chain.cargo
+        rootValues.cuenta = chain.cuenta
+      }
+
       // Fetch sub_items of this item
       const { data: rawSubItems } = await service
         .from('sub_items')
@@ -104,6 +114,60 @@ export async function GET(req: Request, { params }: Context) {
 }
 
 /**
+ * Jala cargo (text) + cuenta (nombre del item relacionado) del contacto.
+ * Regresa `{cargo, cuenta}` con null cuando no aplica.
+ */
+async function fetchContactChain(
+  service: ReturnType<typeof createServiceClient>,
+  contactId: string,
+  workspaceId: string
+): Promise<{ cargo: string | null; cuenta: string | null }> {
+  const { data: contactsBoard } = await service
+    .from('boards')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('system_key', 'contacts')
+    .maybeSingle()
+  if (!contactsBoard) return { cargo: null, cuenta: null }
+
+  const { data: cols } = await service
+    .from('board_columns')
+    .select('id, col_key')
+    .eq('board_id', contactsBoard.id)
+    .in('col_key', ['cargo', 'cuenta'])
+
+  const cargoColId  = cols?.find(c => c.col_key === 'cargo')?.id
+  const cuentaColId = cols?.find(c => c.col_key === 'cuenta')?.id
+  const ids         = [cargoColId, cuentaColId].filter(Boolean) as string[]
+  if (!ids.length) return { cargo: null, cuenta: null }
+
+  const { data: ivs } = await service
+    .from('item_values')
+    .select('column_id, value_text')
+    .eq('item_id', contactId)
+    .in('column_id', ids)
+
+  let cargo: string | null = null
+  let cuentaId: string | null = null
+  for (const iv of ivs ?? []) {
+    if (iv.column_id === cargoColId)  cargo    = iv.value_text ?? null
+    if (iv.column_id === cuentaColId) cuentaId = iv.value_text ?? null
+  }
+
+  let cuenta: string | null = null
+  if (cuentaId) {
+    const { data: cuentaItem } = await service
+      .from('items')
+      .select('name')
+      .eq('id', cuentaId)
+      .eq('workspace_id', workspaceId)
+      .maybeSingle()
+    cuenta = cuentaItem?.name ?? null
+  }
+  return { cargo, cuenta }
+}
+
+/**
  * Build { col_key → resolved value } from raw values; resolves relation → name, people → user name, select → label.
  */
 async function flattenValues(
@@ -119,6 +183,22 @@ async function flattenValues(
     const col = byColumnId.get(v.column_id)
     if (!col) continue
     const raw = v.value_text ?? v.value_number ?? v.value_date ?? null
+
+    // image/file kinds store URLs en value_json como [{url, ...}] — aplanamos a primer URL string.
+    if (col.kind === 'image' || col.kind === 'file') {
+      const j = v.value_json
+      let url: string | null = null
+      if (Array.isArray(j) && j.length > 0) {
+        const first = j[0]
+        if (typeof first === 'object' && first !== null && 'url' in first && typeof (first as { url?: unknown }).url === 'string') {
+          url = (first as { url: string }).url
+        }
+      } else if (typeof j === 'string') {
+        url = j
+      }
+      out[col.col_key] = url
+      continue
+    }
 
     if (col.kind === 'relation' && typeof raw === 'string') {
       const { data: rel } = await service

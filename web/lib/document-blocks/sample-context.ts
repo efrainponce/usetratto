@@ -13,6 +13,11 @@ export function buildSampleContext(
   rootColumns.forEach((col) => {
     rootValues[col.col_key] = getDummyValue(col.kind as string)
   })
+  // Garantizar que cuenta/contacto aparezcan en preview aunque no existan como columnas.
+  if (!('cuenta'      in rootValues)) rootValues.cuenta      = 'Hospital General de México'
+  if (!('contacto'    in rootValues)) rootValues.contacto    = 'Dra. María González'
+  if (!('cargo'       in rootValues)) rootValues.cargo       = 'Directora de Compras'
+  if (!('owner'       in rootValues)) rootValues.owner       = 'Angel Omar Canto Cural'
 
   // Build dummy sub-items
   const subItems = [
@@ -21,10 +26,22 @@ export function buildSampleContext(
     { id: 'sub3', sid: 3, name: 'Sub-item 3', values: {} as Record<string, ResolvedValue> },
   ]
 
-  subItems.forEach((item) => {
+  // URLs públicas de picsum.photos (sin autenticación, cache-friendly) para thumbnails en preview.
+  const sampleThumbs = [
+    'https://picsum.photos/seed/tratto1/80',
+    'https://picsum.photos/seed/tratto2/80',
+    'https://picsum.photos/seed/tratto3/80',
+  ]
+  subItems.forEach((item, idx) => {
     subItemColumns.forEach((col) => {
-      item.values[col.col_key] = getDummyValue(col.kind as string)
+      if (col.kind === 'image' || col.kind === 'file') {
+        item.values[col.col_key] = sampleThumbs[idx % sampleThumbs.length]
+      } else {
+        item.values[col.col_key] = getDummyValue(col.kind as string)
+      }
     })
+    // Si no hay columna foto pero el template la pide, la inyectamos para que el preview muestre algo.
+    if (!('foto' in item.values)) item.values.foto = sampleThumbs[idx % sampleThumbs.length]
   })
 
   return {
@@ -40,6 +57,11 @@ export function buildSampleContext(
     workspace: {
       name: workspace.name,
       logo_url: workspace.logo_url,
+    },
+    document: {
+      folio:             'COT-2026-0001',
+      created_at:        new Date().toISOString(),
+      generated_by_name: 'Angel Omar Canto Cural',
     },
   }
 }

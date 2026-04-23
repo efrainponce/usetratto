@@ -74,6 +74,8 @@ export interface SubitemsTableBlock extends BaseBlock {
   column_configs?: Array<{
     col_key: string
     width?:  'auto' | 'sm' | 'md' | 'lg'
+    /** Ancho relativo (1-100). Si está set, toma precedencia sobre `width` y se usa como `fr`. */
+    width_pct?: number
     align?:  'left' | 'right' | 'auto'
   }>
   show_thumbnail?: boolean
@@ -105,6 +107,13 @@ export interface SignatureBlock extends BaseBlock {
   label?: string
   required?: boolean
   auto_sign_by_owner?: boolean
+  /** Si true, omite el título "Firma de…" arriba. Usado cuando el nombre basta. */
+  hide_label?: boolean
+  /** Nombre a mostrar debajo de la línea cuando no hay firma capturada.
+   *  `'owner'` → `rootItem.values.owner` (responsable del item).
+   *  `'generated_by'` → usuario que generó el PDF.
+   *  Otro string → se usa literal. */
+  fallback_name?: 'generated_by' | 'owner' | string
 }
 
 // ─── Union ──────────────────────────────────────────────────────────────────────

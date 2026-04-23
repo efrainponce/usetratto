@@ -118,10 +118,9 @@ DECLARE
   v_quotes_id     uuid;
 
   v_opp_contacto_col_id         uuid;
-  v_contacts_institucion_col_id uuid;
+  v_contacts_cuenta_col_id      uuid;
   v_quote_oportunidad_col_id    uuid;
   v_quote_contacto_col_id       uuid;
-  v_quote_institucion_col_id    uuid;
 
   v_catalogo_view_id            uuid;
   v_default_template_id         uuid;
@@ -136,7 +135,7 @@ BEGIN
   RETURNING id INTO v_contacts_id;
 
   INSERT INTO boards (workspace_id, slug, name, type, system_key)
-  VALUES (p_workspace_id, 'instituciones', 'Instituciones', 'table', 'accounts')
+  VALUES (p_workspace_id, 'cuentas', 'Cuentas', 'table', 'accounts')
   RETURNING id INTO v_accounts_id;
 
   INSERT INTO boards (workspace_id, slug, name, type, system_key)
@@ -180,16 +179,17 @@ BEGIN
   -- Contactos
   INSERT INTO board_columns (board_id, col_key, name, kind, position, is_system, settings) VALUES
     (v_contacts_id, 'name',  'Nombre',   'text',   0, true, '{}'::jsonb),
-    (v_contacts_id, 'phone', 'Teléfono', 'phone',  1, true, '{}'::jsonb),
-    (v_contacts_id, 'email', 'Email',    'email',  2, true, '{}'::jsonb),
-    (v_contacts_id, 'owner', 'Dueño',    'people', 3, true, '{"role":"owner"}'::jsonb);
+    (v_contacts_id, 'cargo', 'Cargo',    'text',   1, true, '{}'::jsonb),
+    (v_contacts_id, 'phone', 'Teléfono', 'phone',  2, true, '{}'::jsonb),
+    (v_contacts_id, 'email', 'Email',    'email',  3, true, '{}'::jsonb),
+    (v_contacts_id, 'owner', 'Dueño',    'people', 4, true, '{"role":"owner"}'::jsonb);
 
   INSERT INTO board_columns (board_id, col_key, name, kind, position, is_system, settings)
-  VALUES (v_contacts_id, 'institucion', 'Institución', 'relation', 4, true,
+  VALUES (v_contacts_id, 'cuenta', 'Cuenta', 'relation', 5, true,
           jsonb_build_object('target_board_id', v_accounts_id))
-  RETURNING id INTO v_contacts_institucion_col_id;
+  RETURNING id INTO v_contacts_cuenta_col_id;
 
-  -- Instituciones
+  -- Cuentas
   INSERT INTO board_columns (board_id, col_key, name, kind, position, is_system, settings) VALUES
     (v_accounts_id, 'name',  'Nombre', 'text',   0, true, '{}'::jsonb),
     (v_accounts_id, 'type',  'Tipo',   'select', 1, true, '{}'::jsonb),
@@ -229,18 +229,15 @@ BEGIN
           jsonb_build_object('target_board_id', v_contacts_id))
   RETURNING id INTO v_quote_contacto_col_id;
 
-  INSERT INTO board_columns (board_id, col_key, name, kind, position, is_system, settings)
-  VALUES (v_quotes_id, 'institucion', 'Institución', 'relation', 4, true,
-          jsonb_build_object('target_board_id', v_accounts_id))
-  RETURNING id INTO v_quote_institucion_col_id;
+  -- Nota: `cuenta` NO es columna directa aquí — se resuelve a través del contacto.
 
   INSERT INTO board_columns (board_id, col_key, name, kind, position, is_system, settings) VALUES
-    (v_quotes_id, 'monto',         'Monto',        'number', 5, true, '{"format":"currency"}'::jsonb),
-    (v_quotes_id, 'pdf_url',       'PDF',          'file',   6, true, '{}'::jsonb),
-    (v_quotes_id, 'folio',         'Folio',        'text',   7, true, '{}'::jsonb),
-    (v_quotes_id, 'signatures',    'Firmas',       'text',   8, true, '{"display":"json"}'::jsonb),
-    (v_quotes_id, 'template_id',   'Plantilla',    'text',   9, true, '{}'::jsonb),
-    (v_quotes_id, 'generated_by',  'Generado por', 'people', 10, true, '{}'::jsonb);
+    (v_quotes_id, 'monto',         'Monto',        'number', 4, true, '{"format":"currency"}'::jsonb),
+    (v_quotes_id, 'pdf_url',       'PDF',          'file',   5, true, '{}'::jsonb),
+    (v_quotes_id, 'folio',         'Folio',        'text',   6, true, '{}'::jsonb),
+    (v_quotes_id, 'signatures',    'Firmas',       'text',   7, true, '{"display":"json"}'::jsonb),
+    (v_quotes_id, 'template_id',   'Plantilla',    'text',   8, true, '{}'::jsonb),
+    (v_quotes_id, 'generated_by',  'Generado por', 'people', 9, true, '{}'::jsonb);
 
   -- Default template — body_json vacío, el frontend lo construye desde config
   INSERT INTO document_templates
@@ -282,9 +279,7 @@ BEGIN
 
   INSERT INTO sub_item_views (board_id, workspace_id, name, position, type, config) VALUES
     (v_accounts_id, p_workspace_id, 'Contactos', 0, 'board_items',
-      jsonb_build_object('source_board_id', v_contacts_id, 'relation_col_id', v_contacts_institucion_col_id)),
-    (v_accounts_id, p_workspace_id, 'Cotizaciones', 1, 'board_items',
-      jsonb_build_object('source_board_id', v_quotes_id, 'relation_col_id', v_quote_institucion_col_id));
+      jsonb_build_object('source_board_id', v_contacts_id, 'relation_col_id', v_contacts_cuenta_col_id));
 
   INSERT INTO sub_item_views (board_id, workspace_id, name, position, type, config) VALUES
     (v_catalog_id, p_workspace_id, 'Variantes', 0, 'native', '{}'::jsonb);

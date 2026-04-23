@@ -385,18 +385,19 @@ UI: ColumnSettingsPanel tab General → dropdown "Rol del sistema" (None / Owner
 
 Beneficio: un board custom puede tener columna "Vendedor" con `role=owner` y funciona idéntico a oportunidades sin hacks.
 
-### 16.5.C — Defaults de oportunidades (Oportunidad → Contacto → Institución)
+### 16.5.C — Defaults de oportunidades (Oportunidad → Contacto → Cuenta)
 
 Seeder extendido para system boards:
 - `opportunities`:
   - `contacto` relation → `contacts` (required)
-  - `institucion` relation → `accounts` (required)
+  - (cuenta ya NO es columna directa — viene del contacto via chain lookup, ver sesión 5 2026-04-22)
 - `contacts`:
-  - `institucion` relation → `accounts` (opcional)
+  - `cuenta` relation → `accounts` (opcional)
+  - `cargo` text (opcional)
 
-**Cascade auto-fill:** al seleccionar un contacto en una oportunidad, el campo `institucion` se pre-rellena desde `contact.institucion` si existe. Editable después. Implementación: `RelationCell.settings.auto_fill_from: 'col_key_source'`.
+**Chain lookup:** la cuenta de una oportunidad/cotización se resuelve al generar/renderizar desde `contacto.cuenta`. No se duplica como relation propia del item. Ver `generate/route.ts` y `context/route.ts` `fetchContactChain()`.
 
-**Required enforcement:** reusa sistema de validación de Fase 15 (`settings.required: true`). Items sin contacto/institucion muestran overlay rojo y bloquean stage gates.
+**Required enforcement:** reusa sistema de validación de Fase 15 (`settings.required: true`). Items sin contacto muestran overlay rojo y bloquean stage gates.
 
 ### 16.5.D — Activity audit (sub-item events)
 
@@ -801,10 +802,10 @@ documents system board (auto-seeded):
 - [x] **18.5.4** Default sub_item_views auto-seeded per board:
   - Oportunidades: Catálogo (native con source=catalog) + Cotizaciones (board_items via oportunidad rel)
   - Contactos: Oportunidades + Cotizaciones (board_items via contacto rel en ambos)
-  - Instituciones: Contactos + Oportunidades + Cotizaciones (board_items via institucion rel)
+  - Instituciones: Contactos + Oportunidades + Cotizaciones (board_items via institucion rel)  *(later: 2026-04-22 sesión 5 → display "Cuentas", solo view Contactos; cotizaciones/opps ya no linkean cuenta directa)*
   - Catálogo: Variantes (native L2)
   - Cotizaciones: terminal (sin sub-views)
-- [x] **18.5.5** Rename `accounts` → "Instituciones" (display name; `system_key='accounts'` inmutable); slug='instituciones'
+- [x] **18.5.5** Rename `accounts` → "Instituciones" (display name; `system_key='accounts'` inmutable); slug='instituciones'  *(later renombrado a "Cuentas", slug='cuentas' en sesión 5 2026-04-22)*
 - [x] **18.5.6** Catálogo columns por defecto: `name` + `descripcion` + `foto` (file) + `unit_price` (currency) + `owner`
 - [x] **18.5.7** Default template "Cotización estándar" auto-seeded via `document_templates` (heading + field contacto/institucion + repeat sub_items con columns image+heading+text+field unit_price + total monto + 2 signatures cliente/vendedor)
 - [x] **18.5.8** Button column "Generar cotización" auto-seeded en Oportunidades (kind='button', action='generate_document', template_id apunta al default template, confirm=true)
@@ -1484,10 +1485,10 @@ Knowledge graph real: los system boards están conectados por defecto (Fase 18.5
 - [ ] **22.4** `RelationCell` click handler: en lugar de abrir RelationPicker (cambiar cuál item), abrir RelatedItemDrawer si hay value. Picker se abre con icono dedicado `⚙` o via double-click.
 - [ ] **22.5** Igual tratamiento en `SubItemsView` type=`board_items` — click en row del sub-item abre drawer
 - [ ] **22.6** ESC + click outside cierran; botón X en header
-- [ ] **22.7** Breadcrumb/back si usuario navega nested (contacto → institución → contactos de esa institución)
+- [ ] **22.7** Breadcrumb/back si usuario navega nested (contacto → cuenta → contactos de esa cuenta)
 
 ### Verificación
-- [ ] Desde Oportunidad, click en chip de contacto → drawer muestra campos (phone, email, institucion, owner, etc) editables
+- [ ] Desde Oportunidad, click en chip de contacto → drawer muestra campos (phone, email, cuenta, cargo, owner, etc) editables
 - [ ] Editar `email` del contacto desde drawer → al cerrar, al reabrir contacto en board Contactos muestra el nuevo email
 - [ ] Column permissions respetadas: si user sólo puede ver phone (no email), drawer sólo muestra phone editable
 - [ ] ESC cierra drawer sin perder cambios pendientes (optimistic ya pushed)
@@ -1527,9 +1528,9 @@ Knowledge graph real: los system boards están conectados por defecto (Fase 18.5
 - [ ] **23.15** Inline edit en cada field (reusa ColumnCell) — mismo patrón que row
 
 **Presets por board de sistema:**
-- [ ] **23.16** Contactos: Record Details (phone/email/owner/institucion) + Social (linkedin/twitter col opcionales) + Activity
-- [ ] **23.17** Oportunidades: Record Details (stage/monto/owner/deadline) + Related (contacto/institucion como chips) + Products (sub-item view Catálogo embed) + Quotes (sub-item view Cotizaciones embed) + Activity
-- [ ] **23.18** Instituciones: Record Details + Enrichment (industry/size/founded cols, opcional) + People (sub-item view Contactos) + Activity
+- [ ] **23.16** Contactos: Record Details (phone/email/owner/cargo/cuenta) + Social (linkedin/twitter col opcionales) + Activity
+- [ ] **23.17** Oportunidades: Record Details (stage/monto/owner/deadline) + Related (contacto + cuenta vía chain como chips) + Products (sub-item view Catálogo embed) + Quotes (sub-item view Cotizaciones embed) + Activity
+- [ ] **23.18** Cuentas: Record Details + Enrichment (industry/size/founded cols, opcional) + People (sub-item view Contactos) + Activity
 - [ ] **23.19** Cotizaciones: Record Details (folio/monto/stage/signatures status) + Line items (sub-items native) + PDF preview embed + Audit log
 
 ### Verificación

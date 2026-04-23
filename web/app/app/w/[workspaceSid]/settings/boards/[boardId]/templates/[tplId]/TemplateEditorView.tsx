@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { DocumentHtmlPreview } from '@/lib/document-blocks/html-preview'
 import { buildSampleContext } from '@/lib/document-blocks/sample-context'
-import { buildQuoteBody, DEFAULT_QUOTE_CONFIG, type QuoteConfig } from '@/lib/document-blocks/defaults'
+import { buildQuoteBody, DEFAULT_QUOTE_CONFIG, DEFAULT_COLUMN_WIDTHS, type QuoteConfig } from '@/lib/document-blocks/defaults'
 import type { BoardColumnMeta, RenderContext } from '@/lib/document-blocks'
 
 type TemplateData = {
@@ -47,8 +47,12 @@ function readConfig(style: unknown): QuoteConfig {
   const cfg = obj.quote_config as Partial<QuoteConfig> | undefined
   return {
     tableColumns:        Array.isArray(cfg?.tableColumns) && cfg!.tableColumns.length ? cfg!.tableColumns as string[] : DEFAULT_QUOTE_CONFIG.tableColumns,
+    columnWidths:        (cfg?.columnWidths && typeof cfg.columnWidths === 'object') ? cfg.columnWidths as Record<string, number> : { ...DEFAULT_COLUMN_WIDTHS },
     showThumbnail:       cfg?.showThumbnail       ?? DEFAULT_QUOTE_CONFIG.showThumbnail,
+    fontSize:            typeof cfg?.fontSize === 'number' ? cfg!.fontSize as number : DEFAULT_QUOTE_CONFIG.fontSize,
     ivaRate:             typeof cfg?.ivaRate === 'number' ? cfg!.ivaRate as number : DEFAULT_QUOTE_CONFIG.ivaRate,
+    header:              cfg?.header              ?? DEFAULT_QUOTE_CONFIG.header,
+    notesLabel:          cfg?.notesLabel          ?? DEFAULT_QUOTE_CONFIG.notesLabel,
     notes:               cfg?.notes               ?? DEFAULT_QUOTE_CONFIG.notes,
     showClientSignature: cfg?.showClientSignature ?? DEFAULT_QUOTE_CONFIG.showClientSignature,
     showVendorSignature: cfg?.showVendorSignature ?? DEFAULT_QUOTE_CONFIG.showVendorSignature,
@@ -145,10 +149,52 @@ export default function TemplateEditorView({
 
   const toggleTableCol = (col_key: string) => {
     const exists = config.tableColumns.includes(col_key)
-    const next   = exists
-      ? config.tableColumns.filter(k => k !== col_key)
-      : [...availableTableCols.filter(c => c.col_key === col_key || config.tableColumns.includes(c.col_key)).map(c => c.col_key)]
+    if (exists) {
+      patchConfig({ tableColumns: config.tableColumns.filter(k => k !== col_key) })
+    } else {
+      // Append al final conservando orden existente
+      patchConfig({ tableColumns: [...config.tableColumns, col_key] })
+    }
+  }
+
+  const setColumnWidth = (col_key: string, pct: number) => {
+    patchConfig({
+      columnWidths: { ...config.columnWidths, [col_key]: Math.max(1, Math.min(100, pct)) },
+    })
+  }
+
+  // ── Drag & drop para reordenar columnas activas ──────────────────────────
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
+
+  const handleDrop = (targetKey: string) => {
+    if (!dragKey || dragKey === targetKey) {
+      setDragKey(null); setDragOverKey(null); return
+    }
+    const activeOrdered = config.tableColumns.filter(k => k !== dragKey)
+    const targetIdx = activeOrdered.indexOf(targetKey)
+    if (targetIdx < 0) {
+      setDragKey(null); setDragOverKey(null); return
+    }
+    const next = [...activeOrdered]
+    next.splice(targetIdx, 0, dragKey)
     patchConfig({ tableColumns: next })
+    setDragKey(null); setDragOverKey(null)
+  }
+
+  // Ancho total relativo (para normalizar visualmente a %)
+  const activeWidthSum = useMemo(
+    () => config.tableColumns.reduce((acc, k) => acc + (config.columnWidths[k] ?? 10), 0),
+    [config.tableColumns, config.columnWidths]
+  )
+
+  const distributeEvenly = () => {
+    const n = config.tableColumns.length
+    if (!n) return
+    const each = Math.max(1, Math.round(100 / n))
+    const next: Record<string, number> = { ...config.columnWidths }
+    for (const k of config.tableColumns) next[k] = each
+    patchConfig({ columnWidths: next })
   }
 
   // ── UI helpers ───────────────────────────────────────────────────────────
@@ -196,23 +242,98 @@ export default function TemplateEditorView({
         {/* Sidebar */}
         <aside className="w-[300px] flex-none flex flex-col bg-[var(--bg-2)] border-r border-[var(--border)] overflow-y-auto">
           <Section title="Productos">
-            <p className="text-[11.5px] text-[var(--ink-4)] leading-relaxed mb-3">
-              Columnas del catálogo que aparecen en la tabla de productos.
-            </p>
-            <div className="flex flex-col gap-1">
-              {availableTableCols.map(col => (
-                <label key={col.col_key} className="flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-[var(--surface)] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={config.tableColumns.includes(col.col_key)}
-                    onChange={() => toggleTableCol(col.col_key)}
-                    className="accent-[var(--brand)]"
-                  />
-                  <span className="text-[13px] text-[var(--ink)] flex-1">{col.name}</span>
-                  <span className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)]">{col.col_key}</span>
-                </label>
-              ))}
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <p className="text-[11.5px] text-[var(--ink-4)] leading-relaxed flex-1">
+                Arrastra para reordenar. Ajusta el ancho relativo con el slider.
+              </p>
+              <button
+                type="button"
+                onClick={distributeEvenly}
+                disabled={config.tableColumns.length === 0}
+                className="font-[family-name:var(--font-geist-mono)] text-[10.5px] uppercase tracking-[0.06em] text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--surface)] disabled:opacity-40 disabled:cursor-not-allowed border border-[var(--border)] rounded-sm px-2 py-1 whitespace-nowrap"
+                title="Aplica el mismo ancho a todas las columnas activas"
+              >
+                distribuir
+              </button>
             </div>
+
+            {/* Columnas activas (ordenables) */}
+            <div className="flex flex-col gap-0.5 mb-3">
+              {config.tableColumns.map(colKey => {
+                const col = availableTableCols.find(c => c.col_key === colKey)
+                if (!col) return null
+                const pct     = config.columnWidths[colKey] ?? 10
+                const pctNorm = activeWidthSum > 0 ? Math.round((pct / activeWidthSum) * 100) : 0
+                const isDragging = dragKey === colKey
+                const isOver     = dragOverKey === colKey && dragKey !== colKey
+                return (
+                  <div
+                    key={colKey}
+                    onDragOver={e  => { e.preventDefault(); setDragOverKey(colKey) }}
+                    onDrop={e      => { e.preventDefault(); handleDrop(colKey) }}
+                    className={`group rounded-sm border transition-colors ${
+                      isOver ? 'border-[var(--brand)] bg-[var(--surface)]'
+                             : 'border-transparent hover:bg-[var(--surface)]'
+                    } ${isDragging ? 'opacity-40' : ''}`}
+                  >
+                    <div className="flex items-center gap-2 px-1.5 py-1.5">
+                      <span
+                        draggable
+                        onDragStart={() => setDragKey(colKey)}
+                        onDragEnd={()   => { setDragKey(null); setDragOverKey(null) }}
+                        className="cursor-grab active:cursor-grabbing text-[var(--ink-4)] group-hover:text-[var(--ink-3)] select-none"
+                        title="Arrastra para reordenar"
+                      >
+                        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2" cy="2" r="1.2"/><circle cx="2" cy="7" r="1.2"/><circle cx="2" cy="12" r="1.2"/><circle cx="8" cy="2" r="1.2"/><circle cx="8" cy="7" r="1.2"/><circle cx="8" cy="12" r="1.2"/></svg>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked
+                        onChange={() => toggleTableCol(colKey)}
+                        className="accent-[var(--brand)]"
+                      />
+                      <span className="text-[13px] text-[var(--ink)] flex-1 truncate">{col.name}</span>
+                      <span className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)] tabular-nums w-[28px] text-right">{pctNorm}%</span>
+                    </div>
+                    <div className="px-2 pb-2">
+                      <input
+                        type="range"
+                        min={1}
+                        max={60}
+                        step={1}
+                        value={pct}
+                        onChange={e => setColumnWidth(colKey, parseInt(e.target.value, 10))}
+                        className="w-full accent-[var(--brand)] h-1"
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Columnas disponibles (no activas) */}
+            {availableTableCols.some(c => !config.tableColumns.includes(c.col_key)) && (
+              <>
+                <div className="font-[family-name:var(--font-geist-mono)] text-[10px] text-[var(--ink-4)] uppercase tracking-[0.08em] px-1 pb-1">
+                  disponibles
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {availableTableCols.filter(c => !config.tableColumns.includes(c.col_key)).map(col => (
+                    <label key={col.col_key} className="flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-[var(--surface)] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={() => toggleTableCol(col.col_key)}
+                        className="accent-[var(--brand)]"
+                      />
+                      <span className="text-[13px] text-[var(--ink-3)] flex-1">{col.name}</span>
+                      <span className="font-[family-name:var(--font-geist-mono)] text-[10.5px] text-[var(--ink-4)]">{col.col_key}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
             <label className="flex items-center gap-2 mt-3 px-2 py-1.5 rounded-sm hover:bg-[var(--surface)] cursor-pointer">
               <input
                 type="checkbox"
@@ -221,6 +342,36 @@ export default function TemplateEditorView({
                 className="accent-[var(--brand)]"
               />
               <span className="text-[13px] text-[var(--ink)]">Miniatura a la izquierda</span>
+            </label>
+          </Section>
+
+          <Section title="Encabezado">
+            <p className="text-[11.5px] text-[var(--ink-4)] leading-relaxed mb-2">
+              Texto que aparece arriba (intro, vigencia, términos generales).
+            </p>
+            <textarea
+              value={config.header}
+              onChange={e => patchConfig({ header: e.target.value })}
+              rows={3}
+              placeholder="Ej: Estimado cliente, a continuación presentamos nuestra propuesta…"
+              className="w-full text-[13px] text-[var(--ink)] bg-[var(--surface)] border border-[var(--border)] rounded-sm px-2 py-1.5 outline-none focus:border-[var(--brand)] resize-y"
+            />
+          </Section>
+
+          <Section title="Tipografía">
+            <label className="flex items-center gap-3 px-2 py-1.5">
+              <span className="text-[13px] text-[var(--ink)] flex-1">Tamaño</span>
+              <input
+                type="range"
+                min={10}
+                max={16}
+                step={1}
+                value={config.fontSize}
+                onChange={e => patchConfig({ fontSize: parseInt(e.target.value, 10) })}
+                className="flex-1 accent-[var(--brand)] h-1"
+              />
+              <span className="font-[family-name:var(--font-geist-mono)] text-[13px] tabular-nums text-[var(--ink)] w-[28px] text-right">{config.fontSize}</span>
+              <span className="text-[11.5px] text-[var(--ink-3)]">px</span>
             </label>
           </Section>
 
@@ -248,8 +399,15 @@ export default function TemplateEditorView({
 
           <Section title="Notas">
             <p className="text-[11.5px] text-[var(--ink-4)] leading-relaxed mb-2">
-              Texto libre que aparece al final del documento (términos, condiciones).
+              Título + texto libre al final del documento (términos, condiciones).
             </p>
+            <input
+              type="text"
+              value={config.notesLabel}
+              onChange={e => patchConfig({ notesLabel: e.target.value })}
+              placeholder="Notas"
+              className="w-full text-[13px] font-semibold text-[var(--ink)] bg-[var(--surface)] border border-[var(--border)] rounded-sm px-2 py-1.5 mb-1.5 outline-none focus:border-[var(--brand)]"
+            />
             <textarea
               value={config.notes}
               onChange={e => patchConfig({ notes: e.target.value })}
