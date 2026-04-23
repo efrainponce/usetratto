@@ -1191,39 +1191,6 @@ export function BoardView({
           )}
         </div>
 
-        {/* Fase 19 — local changes indicator and save/discard buttons */}
-        {hasLocalChanges && (
-          <>
-            <span className="mx-1 text-[var(--ink-4)] text-[12px]">·</span>
-            <span
-              className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-[var(--brand-deep)] bg-[color-mix(in_oklab,var(--brand)_10%,var(--surface)_90%)] rounded-sm"
-              title="Estos cambios solo aplican para ti. Guárdalos en la vista para que todos los vean."
-            >
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--brand)]" />
-              Aplicado solo para ti
-            </span>
-            {isBoardAdmin && (
-              <button
-                onClick={handleSaveToView}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] rounded-sm hover:bg-[var(--brand-deep)] transition-colors"
-                title="Persistir en la vista — todos los miembros del board lo verán"
-              >
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
-                  <path d="M2 3v7h8V5L8 3H2z M4 3v2h3V3 M4 8h4" strokeWidth="1.3" strokeLinejoin="round" strokeLinecap="round"/>
-                </svg>
-                Guardar en vista
-              </button>
-            )}
-            <button
-              onClick={handleDiscardLocal}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-[var(--ink-3)] hover:text-[var(--ink)] rounded-sm hover:bg-[var(--surface-2)] transition-colors"
-              title="Volver a lo guardado en la vista"
-            >
-              Descartar
-            </button>
-          </>
-        )}
-
         {/* Column picker */}
         <div className="relative py-1" ref={colPickerRef}>
           <button
@@ -1278,6 +1245,36 @@ export function BoardView({
           )}
         </div>
       </div>
+
+      {/* Fase 19 — local changes banner (below subheader, above table) */}
+      {hasLocalChanges && (
+        <div className="flex items-center gap-2 px-8 py-2 bg-[color-mix(in_oklab,var(--brand)_6%,var(--surface)_94%)] border-b border-[var(--brand-soft)] flex-none">
+          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--brand-deep)]">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--brand)]" />
+            Filtros/orden/grupo aplicados solo para ti
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={handleDiscardLocal}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[var(--ink-3)] hover:text-[var(--ink)] rounded-sm hover:bg-[var(--surface-2)] transition-colors"
+            title="Volver a lo guardado en la vista"
+          >
+            Descartar
+          </button>
+          {isBoardAdmin && (
+            <button
+              onClick={handleSaveToView}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] rounded-sm hover:bg-[var(--brand-deep)] transition-colors"
+              title="Persistir en la vista — todos los miembros del board lo verán"
+            >
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+                <path d="M2 3v7h8V5L8 3H2z M4 3v2h3V3 M4 8h4" strokeWidth="1.3" strokeLinejoin="round" strokeLinecap="round"/>
+              </svg>
+              Guardar en vista
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Table with inline expansion */}
       <div className="flex-1 overflow-hidden">
