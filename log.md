@@ -2,6 +2,15 @@
 
 ## 2026-04-22
 
+**~sesión 7 — Fase 19 UX refinement: subheader + local vs vista + permiso**
+- Botones Filtrar/Ordenar/Agrupar reubicados del top header al subheader (junto a Columnas) con estilo compacto — quedan claramente asociados a la vista activa
+- Modelo dual: edits en paneles → `localConfig` (preview inmediato, solo para el usuario). Chip "• Aplicado solo para ti" + "Descartar" aparecen cuando hay cambios locales
+- Botón "Guardar en vista" gateado por `isBoardAdmin` — solo board admins promueven el config local a `board_views.config` via PATCH. No-admins pueden explorar/descartar pero nunca persisten globalmente
+- Removido el debounced auto-save anterior. `localConfig` resetea al cambiar de vista (silent drop)
+- `effectiveConfig = localConfig ?? savedConfig` alimenta el engine; paneles siguen recibiendo arrays vía effective
+- Permiso basado en el modelo existente `board_members.access='admin'` (ya propagado como prop `isBoardAdmin`)
+- Typecheck limpio, build verde
+
 **~sesión 6 — Fase 19 Filter/Sort/Group per view CLOSED**
 - Migration `20260422000012_board_views_config.sql`: `board_views.config jsonb DEFAULT '{}'` — aplicada a remote
 - `lib/view-engine.ts` (511 LOC): `applyFilters` (11 operators AND), `applySort` (multi-col estable, nulls al final), `groupRows` (explode multiselect, bucket date day/week/month, option-order-aware), `dateBucketKey` helper
