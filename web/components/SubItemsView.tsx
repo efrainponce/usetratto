@@ -708,8 +708,9 @@ function NativeRenderer({
         {displayCols.map(c => {
           const hasRollup = !!(c.settings as Record<string, unknown>)?.rollup_up
           const rollupEligible = c.kind === 'number' || c.kind === 'select'
+          const kindDefault = c.kind === 'image' || c.kind === 'file' ? 180 : 96
           return (
-            <div key={c.id} className="relative flex-none group/col" style={{ width: cw(c.id) }}>
+            <div key={c.id} className="relative flex-none group/col" style={{ width: cw(c.id, kindDefault) }}>
               <div className="flex items-center gap-1 overflow-hidden pr-3">
                 <span className="flex-1 truncate min-w-0">{c.name}</span>
                 {rollupEligible && (
@@ -860,14 +861,15 @@ function NativeRenderer({
           <div className="flex-none" style={{ width: cw('__sid') }} />
           <div className="flex-none text-[var(--ink-4)] italic" style={{ width: cw('__name') }}>Totales</div>
           {displayCols.map(col => {
-            if (col.kind !== 'number') return <div key={col.id} className="flex-none" style={{ width: cw(col.id) }} />
+            const kindDefault = col.kind === 'image' || col.kind === 'file' ? 180 : 96
+            if (col.kind !== 'number') return <div key={col.id} className="flex-none" style={{ width: cw(col.id, kindDefault) }} />
             const fn = colAggregates[col.id] ?? null
             const val = fn ? computeFooterAgg(col.id, col.kind, fn) : null
             return (
               <div
                 key={col.id}
                 className="flex-none text-right cursor-pointer group"
-                style={{ width: cw(col.id) }}
+                style={{ width: cw(col.id, kindDefault) }}
                 onClick={() => cycleAgg(col.id)}
                 title={fn ? `${fn} — click para cambiar` : 'Click para agregar totales'}
               >
