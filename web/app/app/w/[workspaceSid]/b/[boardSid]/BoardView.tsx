@@ -7,6 +7,11 @@ import { createClient } from '@/lib/supabase/client'
 import { GenericDataTable } from '@/components/data-table/GenericDataTable'
 import { SubItemsView } from '@/components/SubItemsView'
 import type { ColumnDef, Row, CellValue, CellKind, ColumnSettings } from '@/components/data-table/types'
+import { applyFilters, applySort, groupRows } from '@/lib/view-engine'
+import type { ViewConfig, ViewFilter, ViewSort, DateBucket, GroupedRows } from '@/components/data-table/types'
+import { FilterPanel } from '@/components/view-config/FilterPanel'
+import { SortPanel } from '@/components/view-config/SortPanel'
+import { GroupPanel } from '@/components/view-config/GroupPanel'
 
 const modalLoader = () => (
   <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center">
@@ -141,6 +146,14 @@ export function BoardView({
   // Column settings panel
   const [colSettingsCol, setColSettingsCol] = useState<BoardColumn | null>(null)
 
+  // Fase 19 — filter/sort/group popovers
+  const [showFilter, setShowFilter] = useState(false)
+  const [showSort,   setShowSort]   = useState(false)
+  const [showGroup,  setShowGroup]  = useState(false)
+  const filterBtnRef = useRef<HTMLDivElement>(null)
+  const sortBtnRef   = useRef<HTMLDivElement>(null)
+  const groupBtnRef  = useRef<HTMLDivElement>(null)
+
   // Channels modal + summary
   const [channelsItemId, setChannelsItemId] = useState<string | null>(null)
   const [channelSummary, setChannelSummary] = useState<Record<string, { message_count: number; unread_count: number }>>({})
@@ -149,6 +162,7 @@ export function BoardView({
   const colPickerRef       = useRef<HTMLDivElement>(null)
   const viewMembersPanelRef = useRef<HTMLDivElement>(null)
   const viewSubmittingRef  = useRef(false)
+  const configSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ─── Ref columns: mirror/lookup support ────────────────────────────────────
   type RefColMeta = {
@@ -223,6 +237,43 @@ export function BoardView({
   // Active view lookup
   const activeView = views.find(v => v.id === activeViewId) ?? null
 
+  // Fase 19 — derive config from active view (default to empty)
+  const viewConfig: ViewConfig = activeView?.config ?? {}
+
+  // Fase 19 — config persistence (debounced)
+  const persistViewConfig = useCallback((viewId: string, nextConfig: ViewConfig) => {
+    // Optimistic local update
+    setViews(prev => prev.map(v => v.id === viewId ? { ...v, config: nextConfig } : v))
+    // Debounce API call
+    if (configSaveTimerRef.current) clearTimeout(configSaveTimerRef.current)
+    configSaveTimerRef.current = setTimeout(() => {
+      fetch(`/api/boards/${boardId}/views/${viewId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: nextConfig }),
+      }).catch(err => console.error('[persistViewConfig]', err))
+    }, 500)
+  }, [boardId])
+
+  // Fase 19 — filter/sort/group handlers
+  const handleFiltersChange = useCallback((filters: ViewFilter[]) => {
+    if (!activeViewId) return
+    persistViewConfig(activeViewId, { ...viewConfig, filters })
+  }, [activeViewId, viewConfig, persistViewConfig])
+
+  const handleSortsChange = useCallback((sort: ViewSort[]) => {
+    if (!activeViewId) return
+    persistViewConfig(activeViewId, { ...viewConfig, sort })
+  }, [activeViewId, viewConfig, persistViewConfig])
+
+  const handleGroupChange = useCallback((group_by: string | null, group_bucket?: DateBucket) => {
+    if (!activeViewId) return
+    const next: ViewConfig = { ...viewConfig, group_by, group_bucket }
+    if (!group_by) { delete next.group_bucket }
+    persistViewConfig(activeViewId, next)
+    setShowGroup(false)
+  }, [activeViewId, viewConfig, persistViewConfig])
+
   // ColumnDef[] — board columns (folio is_system lives en board_columns con pos -1, aparece primero)
   const columns = useMemo((): ColumnDef[] => {
     return rawCols
@@ -248,6 +299,19 @@ export function BoardView({
   const rows = useMemo((): Row[] => {
     return rawItems.map(item => toRow(item, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap, refNestedBoardId))
   }, [rawItems, colIdMap, columns, ITEMS_FIELD, refColsMeta, refMap, relationLabelMap, refNestedBoardId])
+
+  // Fase 19 — filter + sort pipeline
+  const processedRows = useMemo((): Row[] => {
+    const filtered = applyFilters(rows, viewConfig.filters, columns)
+    const sorted   = applySort(filtered, viewConfig.sort)
+    return sorted
+  }, [rows, viewConfig.filters, viewConfig.sort, columns])
+
+  // Fase 19 — grouping (undefined → flat mode)
+  const groupedRows = useMemo((): GroupedRows[] | undefined => {
+    if (!viewConfig.group_by) return undefined
+    return groupRows(processedRows, viewConfig.group_by, columns, viewConfig.group_bucket as DateBucket | undefined)
+  }, [processedRows, viewConfig.group_by, viewConfig.group_bucket, columns])
 
   // ── Cell change ────────────────────────────────────────────────────────────
   const handleCellChange = useCallback(async (rowId: string, colKey: string, value: CellValue) => {
@@ -754,6 +818,42 @@ export function BoardView({
     return () => document.removeEventListener('mousedown', handler)
   }, [viewMembersOpen])
 
+  // Fase 19 — close filter popover on click outside
+  useEffect(() => {
+    if (!showFilter) return
+    const handler = (e: MouseEvent) => {
+      if (filterBtnRef.current && !filterBtnRef.current.contains(e.target as Node)) {
+        setShowFilter(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showFilter])
+
+  // Fase 19 — close sort popover on click outside
+  useEffect(() => {
+    if (!showSort) return
+    const handler = (e: MouseEvent) => {
+      if (sortBtnRef.current && !sortBtnRef.current.contains(e.target as Node)) {
+        setShowSort(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showSort])
+
+  // Fase 19 — close group popover on click outside
+  useEffect(() => {
+    if (!showGroup) return
+    const handler = (e: MouseEvent) => {
+      if (groupBtnRef.current && !groupBtnRef.current.contains(e.target as Node)) {
+        setShowGroup(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showGroup])
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -766,7 +866,7 @@ export function BoardView({
               {boardName}
             </h1>
             <span className="mt-1 block text-[13px] text-[var(--ink-3)]">
-              <b className="font-[family-name:var(--font-geist-mono)] font-semibold text-[var(--ink)]">{rows.length}</b> registros
+              <b className="font-[family-name:var(--font-geist-mono)] font-semibold text-[var(--ink)]">{processedRows.length}</b> registros
               {stages.length > 0 && (
                 <> · pipeline con <b className="font-[family-name:var(--font-geist-mono)] font-semibold text-[var(--ink)]">{stages.length}</b> etapas</>
               )}
@@ -783,6 +883,86 @@ export function BoardView({
               </svg>
               Sub-items
             </button>
+
+            {/* Fase 19 — Filter button */}
+            <div className="relative" ref={filterBtnRef}>
+              <button
+                onClick={() => setShowFilter(p => !p)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-sm border border-transparent ${showFilter || (viewConfig.filters?.length ?? 0) > 0 ? 'text-[var(--brand)] bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)]' : 'text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]'}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+                  <path d="M1 2h10l-3.5 4.5V11L4.5 9.5V6.5L1 2z" strokeWidth="1.3" strokeLinejoin="round" strokeLinecap="round"/>
+                </svg>
+                Filtrar
+                {(viewConfig.filters?.length ?? 0) > 0 && (
+                  <span className="ml-1 text-[10px] font-bold bg-[var(--brand)] text-[var(--brand-ink)] rounded-full px-1.5 leading-none py-0.5">{viewConfig.filters?.length}</span>
+                )}
+              </button>
+              {showFilter && activeView && (
+                <div className="absolute top-full left-0 mt-1 z-40">
+                  <FilterPanel
+                    columns={columns}
+                    filters={viewConfig.filters ?? []}
+                    onChange={handleFiltersChange}
+                    onClose={() => setShowFilter(false)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Fase 19 — Sort button */}
+            <div className="relative" ref={sortBtnRef}>
+              <button
+                onClick={() => setShowSort(p => !p)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-sm border border-transparent ${showSort || (viewConfig.sort?.length ?? 0) > 0 ? 'text-[var(--brand)] bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)]' : 'text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]'}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+                  <path d="M3 2v8M1 8l2 2 2-2M9 10V2M7 4l2-2 2 2" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Ordenar
+                {(viewConfig.sort?.length ?? 0) > 0 && (
+                  <span className="ml-1 text-[10px] font-bold bg-[var(--brand)] text-[var(--brand-ink)] rounded-full px-1.5 leading-none py-0.5">{viewConfig.sort?.length}</span>
+                )}
+              </button>
+              {showSort && activeView && (
+                <div className="absolute top-full left-0 mt-1 z-40">
+                  <SortPanel
+                    columns={columns}
+                    sorts={viewConfig.sort ?? []}
+                    onChange={handleSortsChange}
+                    onClose={() => setShowSort(false)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Fase 19 — Group button */}
+            <div className="relative" ref={groupBtnRef}>
+              <button
+                onClick={() => setShowGroup(p => !p)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-sm border border-transparent ${showGroup || viewConfig.group_by ? 'text-[var(--brand)] bg-[color-mix(in_oklab,var(--brand)_8%,var(--surface)_92%)]' : 'text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]'}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current flex-none">
+                  <path d="M1 2h4M1 5h4M1 8h4M7 2h4M7 5h4M7 8h4" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+                Agrupar
+                {viewConfig.group_by && (
+                  <span className="ml-1 text-[10px] font-bold bg-[var(--brand)] text-[var(--brand-ink)] rounded-full px-1.5 leading-none py-0.5">1</span>
+                )}
+              </button>
+              {showGroup && activeView && (
+                <div className="absolute top-full left-0 mt-1 z-40">
+                  <GroupPanel
+                    columns={columns}
+                    groupBy={viewConfig.group_by ?? null}
+                    groupBucket={viewConfig.group_bucket as DateBucket | undefined}
+                    onChange={handleGroupChange}
+                    onClose={() => setShowGroup(false)}
+                  />
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setShowImport(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] rounded-sm border border-transparent hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
@@ -1046,7 +1226,9 @@ export function BoardView({
       <div className="flex-1 overflow-hidden">
         <GenericDataTable
           columns={columns}
-          rows={rows}
+          rows={processedRows}
+          groups={groupedRows}
+          groupedStorageKey={`${boardId}-${activeViewId ?? 'default'}`}
           storageKey={`${boardId}-${activeViewId ?? 'default'}`}
           onCellChange={handleCellChange}
           onExpandSubItems={handleExpandSubItems}

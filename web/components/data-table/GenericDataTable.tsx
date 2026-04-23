@@ -13,7 +13,7 @@ import {
   type RowSelectionState,
   type ColumnSizingState,
 } from '@tanstack/react-table'
-import type { ColumnDef as ColDef, Row, CellValue, NavDirection } from './types'
+import type { ColumnDef as ColDef, Row, CellValue, NavDirection, GroupedRows } from './types'
 import { DEFAULT_WIDTHS } from './types'
 import { ColumnCell } from './cells/ColumnCell'
 
@@ -39,6 +39,8 @@ type Props = {
   onAddColumn?:         (name: string, kind: string, settings?: Record<string, unknown>) => Promise<void>
   loading?:             boolean
   storageKey?:          string   // if provided, column widths are persisted to localStorage
+  groups?:              GroupedRows[]    // When provided + non-empty, renders grouped mode (disables virtualization)
+  groupedStorageKey?:   string           // localStorage key prefix for group expand/collapse state
 }
 
 export function GenericDataTable({
@@ -56,12 +58,15 @@ export function GenericDataTable({
   onAddColumn,
   loading,
   storageKey,
+  groups,
+  groupedStorageKey,
 }: Props) {
   const [sorting,       setSorting]       = useState<SortingState>([])
   const [selection,     setSelection]     = useState<RowSelectionState>({})
   const [editingCell,   setEditingCell]   = useState<EditingCell>(null)
   const [columnSizing,  setColumnSizing]  = useState<ColumnSizingState>({})
   const [selectedCell,  setSelectedCell]  = useState<{ rowId: string; colKey: string } | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
   const tbodyRef = useRef<HTMLTableSectionElement>(null)
 
@@ -92,6 +97,32 @@ export function GenericDataTable({
       return next
     })
   }, [columns])
+
+  // Load persisted collapse state for groups
+  useEffect(() => {
+    if (!groupedStorageKey) return
+    try {
+      const stored = localStorage.getItem(`group-collapse:${groupedStorageKey}`)
+      if (stored) setCollapsedGroups(new Set(JSON.parse(stored) as string[]))
+    } catch { /* ignore */ }
+  }, [groupedStorageKey])
+
+  // Persist collapse state for groups
+  useEffect(() => {
+    if (!groupedStorageKey) return
+    try {
+      localStorage.setItem(`group-collapse:${groupedStorageKey}`, JSON.stringify([...collapsedGroups]))
+    } catch { /* ignore */ }
+  }, [collapsedGroups, groupedStorageKey])
+
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
 
   const handleCommit = useCallback((rowId: string, colKey: string, value: CellValue) => {
     onCellChange(rowId, colKey, value)
@@ -501,89 +532,176 @@ export function GenericDataTable({
 
           {/* Body — with virtual scrolling, rows with inline expansion */}
           <tbody ref={tbodyRef}>
-            {tableRows.length === 0 && (
-              <tr>
-                <td colSpan={headers.length} className="py-16 text-center text-[13px] text-[var(--ink-3)]">
-                  Sin registros
-                </td>
-              </tr>
-            )}
+            {/* Grouped mode */}
+            {groups && groups.length > 0 ? (
+              groups.map(group => (
+                <Fragment key={`group-${group.key}`}>
+                  {/* Group header */}
+                  <tr className="bg-[var(--surface-2)] border-b border-[var(--border)] sticky" style={{ height: ROW_HEIGHT }}>
+                    <td colSpan={headers.length} className="px-3 text-[12px] font-semibold text-[var(--ink)] select-none cursor-pointer" onClick={() => toggleGroup(group.key)}>
+                      <div className="flex items-center gap-2">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={`stroke-current transition-transform ${collapsedGroups.has(group.key) ? '' : 'rotate-90'}`}>
+                          <path d="M3 2l4 3-4 3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        {group.color && (
+                          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: group.color }} />
+                        )}
+                        <span>{group.label}</span>
+                        <span className="text-[10.5px] font-normal text-[var(--ink-4)] tabular-nums">{group.rows.length}</span>
+                      </div>
+                    </td>
+                  </tr>
 
-            {tableRows.length > 0 && (
+                  {/* Group rows */}
+                  {!collapsedGroups.has(group.key) && group.rows.map(rowData => {
+                    const row = table.getRow(rowData.id)
+                    if (!row) return null
+
+                    return (
+                      <Fragment key={row.id}>
+                        {/* Main row */}
+                        <tr
+                          className="group/row border-b border-[var(--border)] transition-colors hover:bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]"
+                          style={{ height: ROW_HEIGHT }}
+                        >
+                          {row.getVisibleCells().map(cell => {
+                            const isSticky = cell.column.id in stickyLefts
+                            const isThisSelected = !cell.column.id.startsWith('__') &&
+                              selectedCell?.rowId === row.original.id &&
+                              selectedCell?.colKey === cell.column.id
+                            return (
+                              <td
+                                key={cell.id}
+                                className="border-r border-[var(--border)] p-0 cursor-default"
+                                onClick={() => {
+                                  if (!cell.column.id.startsWith('__')) {
+                                    setSelectedCell({ rowId: row.original.id, colKey: cell.column.id })
+                                    containerRef.current?.focus()
+                                  }
+                                }}
+                                style={{
+                                  width:    cell.column.getSize(),
+                                  height:   ROW_HEIGHT,
+                                  position: isSticky ? 'sticky' : undefined,
+                                  left:     isSticky ? stickyLefts[cell.column.id] : undefined,
+                                  background: isSticky
+                                    ? (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : 'var(--bg)')
+                                    : (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : undefined),
+                                  boxShadow: isThisSelected
+                                    ? 'inset 0 0 0 2px var(--brand)'
+                                    : (cell.column.id === lastStickyId(columns) ? '2px 0 4px rgba(0,0,0,0.04)' : undefined),
+                                  zIndex: isSticky ? 10 : undefined,
+                                }}
+                              >
+                                <div className="w-full h-full flex items-center">
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </div>
+                              </td>
+                            )
+                          })}
+                        </tr>
+
+                        {/* Expansion row (inline sub-items) */}
+                        {expandedSubItemId === row.original.id && renderRowExpansion && (
+                          <tr className="border-b border-[var(--border)]">
+                            <td colSpan={headers.length} className="p-0 bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]">
+                              {renderRowExpansion(row.original.id)}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </Fragment>
+              ))
+            ) : (
+              // Flat mode with virtual scrolling
               <>
-                {/* Padding for rows before virtual window */}
-                {paddingTop > 0 && (
-                  <tr style={{ height: paddingTop }}>
-                    <td />
+                {tableRows.length === 0 && (
+                  <tr>
+                    <td colSpan={headers.length} className="py-16 text-center text-[13px] text-[var(--ink-3)]">
+                      Sin registros
+                    </td>
                   </tr>
                 )}
 
-                {/* Virtual rows */}
-                {virtualRows.map(virtualRow => {
-                  const row = tableRows[virtualRow.index]
-                  if (!row) return null
-
-                  return (
-                    <Fragment key={row.id}>
-                      {/* Main row */}
-                      <tr
-                        className="group/row border-b border-[var(--border)] transition-colors hover:bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]"
-                        style={{ height: ROW_HEIGHT }}
-                      >
-                        {row.getVisibleCells().map(cell => {
-                          const isSticky = cell.column.id in stickyLefts
-                          const isThisSelected = !cell.column.id.startsWith('__') &&
-                            selectedCell?.rowId === row.original.id &&
-                            selectedCell?.colKey === cell.column.id
-                          return (
-                            <td
-                              key={cell.id}
-                              className="border-r border-[var(--border)] p-0 cursor-default"
-                              onClick={() => {
-                                if (!cell.column.id.startsWith('__')) {
-                                  setSelectedCell({ rowId: row.original.id, colKey: cell.column.id })
-                                  containerRef.current?.focus()
-                                }
-                              }}
-                              style={{
-                                width:    cell.column.getSize(),
-                                height:   ROW_HEIGHT,
-                                position: isSticky ? 'sticky' : undefined,
-                                left:     isSticky ? stickyLefts[cell.column.id] : undefined,
-                                background: isSticky
-                                  ? (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : 'var(--bg)')
-                                  : (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : undefined),
-                                boxShadow: isThisSelected
-                                  ? 'inset 0 0 0 2px var(--brand)'
-                                  : (cell.column.id === lastStickyId(columns) ? '2px 0 4px rgba(0,0,0,0.04)' : undefined),
-                                zIndex: isSticky ? 10 : undefined,
-                              }}
-                            >
-                              <div className="w-full h-full flex items-center">
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                              </div>
-                            </td>
-                          )
-                        })}
+                {tableRows.length > 0 && (
+                  <>
+                    {/* Padding for rows before virtual window */}
+                    {paddingTop > 0 && (
+                      <tr style={{ height: paddingTop }}>
+                        <td />
                       </tr>
+                    )}
 
-                      {/* Expansion row (inline sub-items) */}
-                      {expandedSubItemId === row.original.id && renderRowExpansion && (
-                        <tr className="border-b border-[var(--border)]">
-                          <td colSpan={headers.length} className="p-0 bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]">
-                            {renderRowExpansion(row.original.id)}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
+                    {/* Virtual rows */}
+                    {virtualRows.map(virtualRow => {
+                      const row = tableRows[virtualRow.index]
+                      if (!row) return null
 
-                {/* Padding for rows after virtual window */}
-                {paddingBottom > 0 && (
-                  <tr style={{ height: paddingBottom }}>
-                    <td />
-                  </tr>
+                      return (
+                        <Fragment key={row.id}>
+                          {/* Main row */}
+                          <tr
+                            className="group/row border-b border-[var(--border)] transition-colors hover:bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]"
+                            style={{ height: ROW_HEIGHT }}
+                          >
+                            {row.getVisibleCells().map(cell => {
+                              const isSticky = cell.column.id in stickyLefts
+                              const isThisSelected = !cell.column.id.startsWith('__') &&
+                                selectedCell?.rowId === row.original.id &&
+                                selectedCell?.colKey === cell.column.id
+                              return (
+                                <td
+                                  key={cell.id}
+                                  className="border-r border-[var(--border)] p-0 cursor-default"
+                                  onClick={() => {
+                                    if (!cell.column.id.startsWith('__')) {
+                                      setSelectedCell({ rowId: row.original.id, colKey: cell.column.id })
+                                      containerRef.current?.focus()
+                                    }
+                                  }}
+                                  style={{
+                                    width:    cell.column.getSize(),
+                                    height:   ROW_HEIGHT,
+                                    position: isSticky ? 'sticky' : undefined,
+                                    left:     isSticky ? stickyLefts[cell.column.id] : undefined,
+                                    background: isSticky
+                                      ? (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : 'var(--bg)')
+                                      : (isThisSelected ? 'color-mix(in oklab, var(--brand) 8%, var(--surface) 92%)' : undefined),
+                                    boxShadow: isThisSelected
+                                      ? 'inset 0 0 0 2px var(--brand)'
+                                      : (cell.column.id === lastStickyId(columns) ? '2px 0 4px rgba(0,0,0,0.04)' : undefined),
+                                    zIndex: isSticky ? 10 : undefined,
+                                  }}
+                                >
+                                  <div className="w-full h-full flex items-center">
+                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                  </div>
+                                </td>
+                              )
+                            })}
+                          </tr>
+
+                          {/* Expansion row (inline sub-items) */}
+                          {expandedSubItemId === row.original.id && renderRowExpansion && (
+                            <tr className="border-b border-[var(--border)]">
+                              <td colSpan={headers.length} className="p-0 bg-[color-mix(in_oklab,var(--brand)_3%,var(--surface)_97%)]">
+                                {renderRowExpansion(row.original.id)}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
+
+                    {/* Padding for rows after virtual window */}
+                    {paddingBottom > 0 && (
+                      <tr style={{ height: paddingBottom }}>
+                        <td />
+                      </tr>
+                    )}
+                  </>
                 )}
               </>
             )}

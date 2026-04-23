@@ -65,9 +65,11 @@ Fase 17.5: Performance & Code Consolidation (speed + menos código + mismas feat
    ↓
 Fase 18: Quote Engine (templates PDF, cotizaciones desde items)
    ↓
-Fase 19: Tratto AI Agent + Sidebar Chat (engine compartido — sidebar, WA, móvil)
+Fase 19: Filter / Sort / Group (vistas configurables)
    ↓
-Fase 20: WhatsApp Integration (adapter sobre el mismo engine)
+Fase 20: Tratto AI Agent + Sidebar Chat (engine compartido — sidebar, WA, móvil)
+   ↓
+Fase 21: WhatsApp Integration (adapter sobre el mismo engine)
 ```
 
 ---
@@ -844,7 +846,86 @@ documents system board (auto-seeded):
 
 ---
 
-## Fase 19 — Tratto AI Agent + Sidebar Chat
+## Fase 19 — Filter / Sort / Group (vistas configurables) ✅ CLOSED (2026-04-22)
+
+**Goal:** Cada vista de un board guarda su propia configuración de filtros, ordenamiento y agrupación. Cliente renderiza en vivo, persistencia en `board_views.config` jsonb. Tipo Monday.
+
+### Arquitectura de datos
+
+```typescript
+// board_views.config extends with:
+type ViewConfig = {
+  filters?: ViewFilter[]       // AND entre filtros
+  sort?:    ViewSort[]         // ordenamiento multi-columna (prioridad por posición)
+  group_by?: string            // col_key por el cual agrupar (null = sin agrupación)
+}
+
+type ViewFilter = {
+  col_key:  string
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains'
+          | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
+          | 'is_empty' | 'is_not_empty' | 'in' | 'not_in'
+  value:    string | number | string[] | [string|number, string|number] | null
+}
+
+type ViewSort = { col_key: string; dir: 'asc' | 'desc' }
+```
+
+### Client-side engine
+
+`lib/view-engine.ts` — funciones puras:
+- `applyFilters(rows, filters, columns)` — retorna subset filtrado
+- `applySort(rows, sort)` — retorna rows ordenados (multi-col)
+- `groupRows(rows, groupBy, columns)` — retorna `{ groupKey, groupLabel, rows[] }[]` (maneja buckets por tipo de columna: select/stage = value, date = day/week/month, number = ranges opcionales, text = first-char opcional)
+
+Todo vive en cliente. Backend no cambia (por ahora — si el board crece a >5k items, se mueve a query).
+
+### UI — Toolbar de BoardView
+
+3 botones nuevos al lado de "+ Nuevo" en el toolbar:
+- **Filtrar** — badge con count si hay filtros activos. Click → popover con filas editables.
+- **Ordenar** — badge con count. Click → lista reorderable de sorts.
+- **Agrupar** — click → dropdown con columnas groupables (select/stage/people/date).
+
+Los tres persisten en `view.config` vía PATCH `/api/boards/[id]/views/[viewId]`.
+
+### Grouping en la tabla
+
+`GenericDataTable` recibe prop opcional `groups?: { key, label, rows }[]`. Cuando se pasa:
+- Renderiza cada grupo como sub-header colapsable con count + footer de agregados del grupo
+- Sub-header color/label según tipo de columna (stage usa color de la etapa, select usa option color, etc.)
+- Empty group (0 rows) se oculta por default
+
+### Tareas
+
+#### 19.A — Engine client-side
+- [x] **19.1** `lib/view-engine.ts` — `applyFilters`, `applySort`, `groupRows` (11 operators, multi-col sort, option-order-aware grouping)
+- [x] **19.2** Types en `components/data-table/types.ts`: `ViewFilter`, `ViewSort`, `ViewConfig`, `GroupedRows`, `DateBucket`
+- [x] **19.3** `dateBucketKey(iso, 'day'|'week'|'month')` helper exportado para reuse en panels
+
+#### 19.B — Persistencia
+- [x] **19.4** Migration `20260422000012_board_views_config.sql` (`config jsonb`) + `PATCH /api/boards/[id]/views/[viewId]` acepta `config`
+- [x] **19.5** `BoardView` lee `activeView.config` → `processedRows` (applyFilters → applySort) → `groupedRows` (si `group_by`)
+
+#### 19.C — UI paneles
+- [x] **19.6** `FilterPanel.tsx` — operators filtrados por kind, value input dinámico (text/number/date/select/people/boolean/between dual input)
+- [x] **19.7** `SortPanel.tsx` — lista con ↑/↓ swap, dir toggle ASC/DESC, prioridad 1./2./3.
+- [x] **19.8** `GroupPanel.tsx` — columnas groupables + DateBucket picker (Día/Semana/Mes) inline cuando kind=date
+- [x] **19.9** 3 botones toolbar de BoardView (Filtrar/Ordenar/Agrupar) con badges activos + estado brand cuando popover abierto
+
+#### 19.D — Grouping render
+- [x] **19.10** `GenericDataTable` acepta `groups?: GroupedRows[]` — headers colapsables con count + color dot (stage/option color)
+- [x] **19.11** `groupedStorageKey` → persist colapsos en `localStorage` por vista
+- [ ] **19.12** DIFERIDO: agregados footer por grupo (reusa rollup_config) — no crítico para MVP
+
+#### 19.E — UX niceties
+- [x] **19.13** Badge numérico junto al label del botón cuando hay filtros/sorts activos (cumple el intento del chip compacto)
+- [x] **19.14** Botón "Limpiar" en FilterPanel + SortPanel; GroupPanel incluye "Sin agrupación" como reset
+- [ ] **19.15** DIFERIDO: Filter/Sort/Group en sub-items — SubItemsView tiene renderers custom (no GenericDataTable), implica wiring aparte
+
+---
+
+## Fase 20 — Tratto AI Agent + Sidebar Chat
 
 **Goal:** Engine de IA compartido que corre idéntico en sidebar web, WhatsApp, y futura app móvil. El transporte cambia; el agente no.
 
@@ -1145,28 +1226,28 @@ Comportamiento:
 
 ### Tareas
 
-#### 17.A — Engine core
-- [ ] **19.1** Migration: `chat_sessions` + `chat_messages` + índice
-- [ ] **19.2** `lib/tratto-agent/types.ts`: `AgentInput`, `AgentOutput`, `ChatMessage`, `TrattoTool`, `ToolResult`, tipos para cada tool input/output
-- [ ] **19.3** `lib/tratto-agent/context.ts`: `buildSystemPrompt(user, workspace, board?)` — inyecta fecha MX, usuario, board activo
-- [ ] **19.4** `lib/tratto-agent/session.ts`: `loadOrCreateSession()`, `loadHistory(sessionId, limit=20)`, `appendMessage()` — usa serviceClient
-- [ ] **19.5** `lib/tratto-agent/tools/search-items.ts`: tool `search_items` — query full-text + filtros (board_key, stage, owner_me, overdue); retorna array con sid, name, stage, owner, deadline
-- [ ] **19.6** `lib/tratto-agent/tools/get-item.ts`: tool `get_item` — fetch item por sid + valores de columnas + count sub-items
-- [ ] **19.7** `lib/tratto-agent/tools/create-item.ts`: tool `create_item` — `POST /api/items` internamente; resuelve board_key→board_id, stage_name→stage_id
-- [ ] **19.8** `lib/tratto-agent/tools/update-item.ts`: tool `update_item` — `PUT /api/items/[id]/values`; acepta `Record<col_key, value>`
-- [ ] **19.9** `lib/tratto-agent/tools/change-stage.ts`: tool `change_stage` — evalúa stage gates antes de ejecutar; retorna error descriptivo si bloquea
-- [ ] **19.10** `lib/tratto-agent/tools/add-message.ts`: tool `add_message` — postea en canal General del item
-- [ ] **19.11** `lib/tratto-agent/tools/list-boards.ts` + `get-board-summary.ts`: tools de consulta de boards
-- [ ] **19.12** `lib/tratto-agent/tools/index.ts`: `TRATTO_TOOLS` — array con `name`, `description`, `input_schema` para cada tool (formato Anthropic tool_use)
-- [ ] **19.13** `lib/tratto-agent/agent.ts`: loop principal — `runAgent(input: AgentInput)` → llama Claude API con `tool_use`, ejecuta tools en loop hasta `stop_reason='end_turn'`, retorna `AgentOutput`; soporta modo streaming y batch
+#### 20.A — Engine core
+- [ ] **20.1** Migration: `chat_sessions` + `chat_messages` + índice
+- [ ] **20.2** `lib/tratto-agent/types.ts`: `AgentInput`, `AgentOutput`, `ChatMessage`, `TrattoTool`, `ToolResult`, tipos para cada tool input/output
+- [ ] **20.3** `lib/tratto-agent/context.ts`: `buildSystemPrompt(user, workspace, board?)` — inyecta fecha MX, usuario, board activo
+- [ ] **20.4** `lib/tratto-agent/session.ts`: `loadOrCreateSession()`, `loadHistory(sessionId, limit=20)`, `appendMessage()` — usa serviceClient
+- [ ] **20.5** `lib/tratto-agent/tools/search-items.ts`: tool `search_items` — query full-text + filtros (board_key, stage, owner_me, overdue); retorna array con sid, name, stage, owner, deadline
+- [ ] **20.6** `lib/tratto-agent/tools/get-item.ts`: tool `get_item` — fetch item por sid + valores de columnas + count sub-items
+- [ ] **20.7** `lib/tratto-agent/tools/create-item.ts`: tool `create_item` — `POST /api/items` internamente; resuelve board_key→board_id, stage_name→stage_id
+- [ ] **20.8** `lib/tratto-agent/tools/update-item.ts`: tool `update_item` — `PUT /api/items/[id]/values`; acepta `Record<col_key, value>`
+- [ ] **20.9** `lib/tratto-agent/tools/change-stage.ts`: tool `change_stage` — evalúa stage gates antes de ejecutar; retorna error descriptivo si bloquea
+- [ ] **20.10** `lib/tratto-agent/tools/add-message.ts`: tool `add_message` — postea en canal General del item
+- [ ] **20.11** `lib/tratto-agent/tools/list-boards.ts` + `get-board-summary.ts`: tools de consulta de boards
+- [ ] **20.12** `lib/tratto-agent/tools/index.ts`: `TRATTO_TOOLS` — array con `name`, `description`, `input_schema` para cada tool (formato Anthropic tool_use)
+- [ ] **20.13** `lib/tratto-agent/agent.ts`: loop principal — `runAgent(input: AgentInput)` → llama Claude API con `tool_use`, ejecuta tools en loop hasta `stop_reason='end_turn'`, retorna `AgentOutput`; soporta modo streaming y batch
 
-#### 17.B — Transport sidebar (web)
-- [ ] **19.14** `app/api/chat/route.ts`: endpoint POST, SSE streaming — `requireAuthApi()`, carga sesión, llama `runAgent()` en modo stream, envía eventos `{ type: 'text_delta' | 'tool_start' | 'tool_end' | 'done' }`
-- [ ] **19.15** `components/ChatPanel.tsx`: drawer derecho 400px, toggle desde header, burbujas user/assistant, streaming render, indicadores de tool calls, scroll automático
-- [ ] **19.16** `hooks/useChat.ts`: maneja SSE stream, estado de mensajes, `sessionId` en sessionStorage, función `sendMessage(text)`
-- [ ] **19.17** Integrar `<ChatPanel>` en layout principal — botón en header, contexto del board activo pasado como prop
+#### 20.B — Transport sidebar (web)
+- [ ] **20.14** `app/api/chat/route.ts`: endpoint POST, SSE streaming — `requireAuthApi()`, carga sesión, llama `runAgent()` en modo stream, envía eventos `{ type: 'text_delta' | 'tool_start' | 'tool_end' | 'done' }`
+- [ ] **20.15** `components/ChatPanel.tsx`: drawer derecho 400px, toggle desde header, burbujas user/assistant, streaming render, indicadores de tool calls, scroll automático
+- [ ] **20.16** `hooks/useChat.ts`: maneja SSE stream, estado de mensajes, `sessionId` en sessionStorage, función `sendMessage(text)`
+- [ ] **20.17** Integrar `<ChatPanel>` en layout principal — botón en header, contexto del board activo pasado como prop
 
-#### 17.C — Verificación
+#### 20.C — Verificación
 - [ ] "busca oportunidades de Juan que estén en propuesta" → lista correcta
 - [ ] "crea un contacto llamado María García, teléfono 5512345678" → item creado, responde con sid
 - [ ] "mueve la oportunidad 10000150 a Ganado" → respeta stage gates; si falla, explica qué columnas bloquean
@@ -1177,9 +1258,9 @@ Comportamiento:
 ---
 
 
-## Fase 20 — WhatsApp Integration
+## Fase 21 — WhatsApp Integration
 
-**Goal:** WhatsApp como transporte adicional del mismo engine de Fase 17. Zero código de IA nuevo — solo adapter Twilio → `runAgent()`.
+**Goal:** WhatsApp como transporte adicional del mismo engine de Fase 20. Zero código de IA nuevo — solo adapter Twilio → `runAgent()`.
 
 ### Arquitectura
 
@@ -1213,24 +1294,24 @@ Twilio WA → Edge Function twilio-webhook
 ```
 
 ### Tareas
-- [ ] **20.1** Edge Function `twilio-webhook`:
+- [ ] **21.1** Edge Function `twilio-webhook`:
   - Recibe mensaje WA entrante (Twilio signature verify)
   - Lookup usuario por `phone` en `users` (E.164)
   - Llama `runAgent({ userId, workspaceId, message, transport: 'whatsapp' })` en modo batch
   - Formatea respuesta para WA (sin markdown, máx 1600 chars)
   - `sendWhatsApp(phone, text)` vía `whatsapp-outbound`
-- [ ] **20.2** Edge Function `mentions-trigger`:
+- [ ] **21.2** Edge Function `mentions-trigger`:
   - Cron cada 2 min
   - Busca `mentions WHERE notified=false`
   - Envía WA con preview del mensaje + link al canal
   - Marca `notified=true`
-- [ ] **20.3** Edge Function `daily-digest`:
+- [ ] **21.3** Edge Function `daily-digest`:
   - Cron 8:30 AM America/Mexico_City
   - Query directa (sin agente): items overdue + items due today + menciones sin responder por usuario
   - Mensaje WA formateado
-- [ ] **20.4** Edge Function `whatsapp-outbound`:
+- [ ] **21.4** Edge Function `whatsapp-outbound`:
   - Sender genérico: `sendWhatsApp(phone, message)` via Twilio REST API
-- [ ] **20.5** UI: Settings → Workspace → tab "WhatsApp"
+- [ ] **21.5** UI: Settings → Workspace → tab "WhatsApp"
   - Conectar número Twilio (webhook URL + auth token)
   - Test de envío manual
   - Log de `chat_messages` donde `session.transport='whatsapp'`
@@ -1378,89 +1459,6 @@ No canvas. Lista simple. Cada fila = 1 trigger + N acciones.
 - [ ] **A.4** Implementar acción `cross_board_copy` (con copy_subitems + expand_variants)
 - [ ] **A.5** UI: Settings → Boards → tab "Automations" (lista de recetas + editor)
 - [ ] **A.6** ButtonCell con `action: 'run_automation'` (completar Fase 11.2)
-
----
-
-
-## Fase 21 — Filter / Sort / Group (vistas configurables)
-
-**Goal:** Cada vista de un board guarda su propia configuración de filtros, ordenamiento y agrupación. Cliente renderiza en vivo, persistencia en `board_views.config` jsonb. Tipo Monday.
-
-### Arquitectura de datos
-
-```typescript
-// board_views.config extends with:
-type ViewConfig = {
-  filters?: ViewFilter[]       // AND entre filtros
-  sort?:    ViewSort[]         // ordenamiento multi-columna (prioridad por posición)
-  group_by?: string            // col_key por el cual agrupar (null = sin agrupación)
-}
-
-type ViewFilter = {
-  col_key:  string
-  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains'
-          | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
-          | 'is_empty' | 'is_not_empty' | 'in' | 'not_in'
-  value:    string | number | string[] | [string|number, string|number] | null
-}
-
-type ViewSort = { col_key: string; dir: 'asc' | 'desc' }
-```
-
-### Client-side engine
-
-`lib/view-engine.ts` — funciones puras:
-- `applyFilters(rows, filters, columns)` — retorna subset filtrado
-- `applySort(rows, sort)` — retorna rows ordenados (multi-col)
-- `groupRows(rows, groupBy, columns)` — retorna `{ groupKey, groupLabel, rows[] }[]` (maneja buckets por tipo de columna: select/stage = value, date = day/week/month, number = ranges opcionales, text = first-char opcional)
-
-Todo vive en cliente. Backend no cambia (por ahora — si el board crece a >5k items, se mueve a query).
-
-### UI — Toolbar de BoardView
-
-3 botones nuevos al lado de "+ Nuevo" en el toolbar:
-- **Filtrar** — badge con count si hay filtros activos. Click → popover con filas editables.
-- **Ordenar** — badge con count. Click → lista reorderable de sorts.
-- **Agrupar** — click → dropdown con columnas groupables (select/stage/people/date).
-
-Los tres persisten en `view.config` vía PATCH `/api/boards/[id]/views/[viewId]`.
-
-### Grouping en la tabla
-
-`GenericDataTable` recibe prop opcional `groups?: { key, label, rows }[]`. Cuando se pasa:
-- Renderiza cada grupo como sub-header colapsable con count + footer de agregados del grupo
-- Sub-header color/label según tipo de columna (stage usa color de la etapa, select usa option color, etc.)
-- Empty group (0 rows) se oculta por default
-
-### Tareas
-
-#### 21.A — Engine client-side
-- [ ] **21.1** `lib/view-engine.ts` — `applyFilters`, `applySort`, `groupRows` con tests de cada operator
-- [ ] **21.2** Types en `components/data-table/types.ts`: `ViewFilter`, `ViewSort`, `ViewConfig`
-- [ ] **21.3** Helpers de bucket por tipo de columna (date → día/semana/mes)
-
-#### 21.B — Persistencia
-- [ ] **21.4** `PATCH /api/boards/[id]/views/[viewId]` acepta `config.filters`, `config.sort`, `config.group_by`
-- [ ] **21.5** `BoardView` lee `activeView.config` y aplica engine antes de pasar a `GenericDataTable`
-
-#### 21.C — UI paneles
-- [ ] **21.6** `FilterPanel.tsx` — popover con filas {col picker, operator, value input}; value input cambia según kind (text → input, select → dropdown, date → date picker)
-- [ ] **21.7** `SortPanel.tsx` — lista reorderable (drag handles) con dir toggle
-- [ ] **21.8** `GroupPanel.tsx` — dropdown simple de columnas groupables
-- [ ] **21.9** 3 botones en toolbar de BoardView con badges activos
-
-#### 21.D — Grouping render
-- [ ] **21.10** `GenericDataTable` acepta prop `groups?: GroupedRows[]` — renderiza headers colapsables + footer por grupo
-- [ ] **21.11** Estado expand/collapse de grupos en localStorage por vista
-- [ ] **21.12** Agregados footer por grupo (reusa colAggregates config ya existente en sub-items)
-
-#### 21.E — UX niceties
-- [ ] **21.13** Chip compacto en toolbar "3 filtros activos · Stage, Owner · Agrupado por Etapa" → click abre el panel correspondiente
-- [ ] **21.14** Botón "Limpiar" en cada panel para resetear ese eje
-- [ ] **21.15** Filter/Sort/Group en sub-items también (reusa engine, UI compacta)
-
----
-
 ## Fase 22 — Bidirectional Graph Editing
 
 **Goal:** Cualquier relation col = edit bidireccional. Desde Oportunidad, click en el contacto → drawer lateral muestra TODAS las cols del contacto editables inline. Cambios escriben al source + revalidan optimísticamente en todas las vistas afectadas. Extiende ref cols / mirror (Fase 16.6) a UX de primera clase, no sólo lookup.

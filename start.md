@@ -567,8 +567,8 @@ whatsapp-outbound   → Sender genérico
 **Done (Fases 0–18):** Schema+Auth · Layout · BoardView · ItemDetail · Sub-items · Import · Channels+Activity · Settings · Permisos granulares · ColumnSettings · Files/Buttons/Signature · Variantes L2 · Formula · Rollup · Stage gates · Column perm inheritance · System cols + metatags · Ref cols · Invites + Email auth · Perf + consolidation · **Document Templates + Opinionated Knowledge Graph (quotes pipeline + default sub_item_views + default template + button)**
 
 **Backlog:**
-- **Fase 19:** Tratto AI Agent + Sidebar Chat
-- **Fase 20:** WhatsApp Integration (Edge Functions)
-- **Fase 21:** Filter / Sort / Group en vistas
+- **Fase 19:** Filter / Sort / Group en vistas
+- **Fase 20:** Tratto AI Agent + Sidebar Chat
+- **Fase 21:** WhatsApp Integration (Edge Functions)
 - **Fase 22:** Bidirectional Graph Editing (drawer lateral para editar item relacionado desde relation chip)
 - **Fase 23:** ItemDetailView UX Redesign (Attio-style: breadcrumb + tabs + sidebar accordion)

@@ -146,3 +146,44 @@ export type CellProps = {
   onCancel:    () => void
   onNavigate:  (dir: NavDirection) => void
 }
+
+// ─── Fase 19: View config (filter / sort / group) ────────────────────────────
+
+export type FilterOperator =
+  | 'equals' | 'not_equals'
+  | 'contains' | 'not_contains'
+  | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
+  | 'is_empty' | 'is_not_empty'
+  | 'in' | 'not_in'
+
+export type FilterValue =
+  | string | number | boolean | null
+  | string[] | number[]
+  | [string | number, string | number]
+
+export type ViewFilter = {
+  col_key:  string
+  operator: FilterOperator
+  value:    FilterValue
+}
+
+export type ViewSort = {
+  col_key: string
+  dir:     'asc' | 'desc'
+}
+
+export type DateBucket = 'day' | 'week' | 'month'
+
+export type ViewConfig = {
+  filters?:  ViewFilter[]
+  sort?:     ViewSort[]
+  group_by?: string | null
+  group_bucket?: DateBucket  // only relevant when grouping by a date column
+}
+
+export type GroupedRows = {
+  key:    string           // raw group key (for localStorage stability)
+  label:  string           // user-facing label
+  color?: string           // optional bg/border color (e.g. stage.color or option.color)
+  rows:   Row[]
+}

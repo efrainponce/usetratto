@@ -2,6 +2,18 @@
 
 ## 2026-04-22
 
+**~sesión 6 — Fase 19 Filter/Sort/Group per view CLOSED**
+- Migration `20260422000012_board_views_config.sql`: `board_views.config jsonb DEFAULT '{}'` — aplicada a remote
+- `lib/view-engine.ts` (511 LOC): `applyFilters` (11 operators AND), `applySort` (multi-col estable, nulls al final), `groupRows` (explode multiselect, bucket date day/week/month, option-order-aware), `dateBucketKey` helper
+- Types en `components/data-table/types.ts`: `ViewFilter/ViewSort/ViewConfig/FilterOperator/FilterValue/DateBucket/GroupedRows`
+- `BoardView` type + `getBoardViews` + PATCH `/api/boards/[id]/views/[viewId]` aceptan `config`
+- 3 paneles en `components/view-config/`: FilterPanel (operators por kind, between dual input, select/people dropdown, boolean toggle), SortPanel (↑/↓ swap + ASC/DESC + prioridad numerada), GroupPanel (radio + DateBucket picker inline)
+- `GenericDataTable` acepta `groups?: GroupedRows[]` + `groupedStorageKey` — grouped mode skip virtualization, header `<tr>` colapsable con chevron + color dot + count, colapsos persisten en localStorage. Flat mode intacto.
+- `BoardView` wiring: 3 botones toolbar (entre Sub-items e Importar) con badge count + estado brand, `processedRows` memo (filter→sort), `groupedRows` memo, debounced PATCH 500ms al editar config, click-outside close para los 3 popovers
+- Delegación: 4 Haiku en paralelo (types+API / engine / paneles / GenericDataTable) + 1 Haiku secuencial (BoardView wiring)
+- Estado: typecheck limpio, `npm run build` verde 80+ rutas
+- DIFERIDO: 19.12 (agregados footer por grupo), 19.15 (filter/sort/group en sub-items — SubItemsView usa renderers custom, requiere wiring aparte)
+
 **~sesión 5 — Quote editor v2 + institucion→cuenta rename + chain resolution**
 - Editor cotización v2: drag-reorder cols (handle-only, no conflicto con slider), sliders ancho por col + botón distribuir (100/n), sección Tipografía fontSize 10-16px, Encabezado textarea libre, label Notas editable, firma vendedor sin header (hide_label) → muestra owner debajo de línea. Interlineado apretado (1.5→1.3, marginBottom 8→2px). Thumbnail tabla jala columna `foto` via `thumbnail_col_key` (antes colored placeholder siempre). column_configs extendido con `width_pct` (fr en html grid, flex en PDF). Preview real: folio/cuenta/contacto/cargo/owner via sample-context.
 - Schema rename `institucion`→`cuenta` completo: board display Instituciones→Cuentas (slug `cuentas`, system_key `accounts` ya era genérico), col_key `institucion`→`cuenta` en Contactos, col directa dropada de Cotizaciones (la cuenta VIENE del contacto via chain lookup, no link). Nueva col `cargo` (text) en Contactos. Migraciones `20260422000010_contacts_cargo_col.sql` + `20260422000011_rename_institucion_to_cuenta.sql` idempotentes, aplicadas a remote.

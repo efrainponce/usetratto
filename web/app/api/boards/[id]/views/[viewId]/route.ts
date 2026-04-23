@@ -14,6 +14,7 @@ export async function PATCH(req: Request, { params }: Context) {
     name?: string
     position?: number
     is_default?: boolean
+    config?: Record<string, unknown>
   }
 
   const supabase = await createClient()
@@ -59,11 +60,18 @@ export async function PATCH(req: Request, { params }: Context) {
   if (body.position !== undefined) updateData.position = body.position
   if (body.is_default !== undefined) updateData.is_default = body.is_default
 
+  if (body.config !== undefined) {
+    if (typeof body.config !== 'object' || body.config === null || Array.isArray(body.config)) {
+      return jsonError('config must be an object', 400)
+    }
+    updateData.config = body.config
+  }
+
   const { data: updated, error } = await supabase
     .from('board_views')
     .update(updateData)
     .eq('id', viewId)
-    .select(`id, sid, name, is_default, position, created_at, board_view_columns(id, column_id, is_visible, position, width)`)
+    .select(`id, sid, name, is_default, position, config, created_at, board_view_columns(id, column_id, is_visible, position, width)`)
     .single()
 
   if (error) return jsonError(error.message, 500)

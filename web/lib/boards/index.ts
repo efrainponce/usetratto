@@ -1,6 +1,7 @@
 import 'server-only'
 import { unstable_cache } from 'next/cache'
 import { createServiceClient } from '@/lib/supabase/service'
+import type { ViewConfig } from '@/components/data-table/types'
 
 // ─── Shared types (import type-safe from client components) ──────────────────
 
@@ -357,6 +358,7 @@ export type BoardView = {
   name:       string
   is_default: boolean
   position:   number
+  config:     ViewConfig
   columns:    BoardViewColumn[]
 }
 
@@ -364,21 +366,21 @@ export async function getBoardViews(boardId: string, workspaceId: string): Promi
   const supabase = createServiceClient()
   const { data: existing } = await supabase
     .from('board_views')
-    .select('id, sid, name, is_default, position, board_view_columns(id, column_id, is_visible, position, width)')
+    .select('id, sid, name, is_default, position, config, board_view_columns(id, column_id, is_visible, position, width)')
     .eq('board_id', boardId)
     .order('position')
 
   if (existing && existing.length > 0) {
-    return existing.map(v => ({ ...v, columns: v.board_view_columns ?? [] }))
+    return existing.map(v => ({ ...v, config: v.config ?? {}, columns: v.board_view_columns ?? [] }))
   }
 
   // Auto-create Default view if none exist
   const { data: created } = await supabase
     .from('board_views')
     .insert({ board_id: boardId, workspace_id: workspaceId, name: 'Default', is_default: true, position: 0 })
-    .select('id, sid, name, is_default, position')
+    .select('id, sid, name, is_default, position, config')
     .single()
 
   if (!created) return []
-  return [{ ...created, columns: [] }]
+  return [{ ...created, config: created.config ?? {}, columns: [] }]
 }
