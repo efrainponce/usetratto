@@ -2,6 +2,13 @@
 
 ## 2026-04-22
 
+**~sesión 8 — Fase 19 polish + sub-items UX cleanup**
+- Fix cascada paneles filtro/orden/agrupar: doble positioning roto (absolute interno + wrapper absolute) → solo wrapper; `bg-[var(--bg)]` invisible (mismo que página) → `bg-[var(--surface)]`; width overflow por `<select>` people con nombres largos → layout apilado [col/op/×] arriba + valor full-width abajo + `min-w-0`; popover clipping → subheader `z-[5]` → `z-30` (vence al thead sticky z-20 que escapaba al root)
+- Banner dedicado para cambios locales (fuera del subheader, debajo): chip "• Aplicado solo para ti" + Descartar + Guardar en vista (admin-only) — evita que se lea como parte del popover
+- Toggle "Solo en esta vista" al crear columna (visible solo si views.length > 1): POST columna + PATCH paralelo `board_view_columns is_visible=false` para otras vistas
+- Sub-items CTAs simplificados: quitado "Desde catálogo" del subheader, "Agregar desde fuente" → "Nuevo", "Agregar sub-item" → "Nuevo", hint técnico "Bloques drag-and-drop..." removido
+- Sub-items table: header/rows/footer ahora scrollean juntos (wrapper overflow-auto + min-w-max + sticky top/bottom); columna # (sid) eliminada; alineación kind-aware width default image/file=180 en header y footer para matchear body
+
 **~sesión 7 — Fase 19 UX refinement: subheader + local vs vista + permiso**
 - Botones Filtrar/Ordenar/Agrupar reubicados del top header al subheader (junto a Columnas) con estilo compacto — quedan claramente asociados a la vista activa
 - Modelo dual: edits en paneles → `localConfig` (preview inmediato, solo para el usuario). Chip "• Aplicado solo para ti" + "Descartar" aparecen cuando hay cambios locales
