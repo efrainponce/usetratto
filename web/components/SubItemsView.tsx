@@ -688,17 +688,6 @@ function NativeRenderer({
             {rows.length}
           </span>
           <div className="flex-1" />
-          {sourceBoardId && (
-            <button
-              onClick={() => setShowPicker(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] rounded-sm transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              Desde catálogo
-            </button>
-          )}
         </div>
 
       {/* ── Column header ─────────────────────────────────────────────── */}
@@ -952,7 +941,7 @@ function NativeRenderer({
             className="flex items-center gap-1.5 text-[13px] text-[var(--brand)] hover:text-[var(--brand-deep)] font-medium transition-colors"
           >
             <span className="text-lg leading-none">+</span>
-            Agregar desde fuente
+            Nuevo
           </button>
         ) : (
           <InlineAddButton onAdd={name => createL1(name)} />
@@ -984,9 +973,11 @@ function NativeRenderer({
           </svg>
           {generating ? 'Generando…' : 'Generar PDF'}
         </button>
-        <span className="flex-1 text-right text-[11.5px] text-[var(--ink-4)]">
-          {templates.length === 0 ? 'Configura una plantilla en Configuración → Boards' : 'Bloques drag-and-drop · firma en canvas · estampa al PDF'}
-        </span>
+        {templates.length === 0 && (
+          <span className="flex-1 text-right text-[11.5px] text-[var(--ink-4)]">
+            Configura una plantilla en Configuración → Boards
+          </span>
+        )}
       </div>
       {generateErrors.length > 0 && (
         <div className="flex-none border-t border-[var(--stage-lost)] px-4 py-2 bg-[color-mix(in_oklab,var(--stage-lost)_8%,var(--surface)_92%)] text-[11.5px] text-[var(--stage-lost)] space-y-0.5">
@@ -1391,7 +1382,7 @@ function InlineAddButton({ onAdd }: { onAdd: (n: string) => void }) {
   const [adding, setAdding] = useState(false)
   if (!adding) return (
     <button onClick={() => setAdding(true)} className="flex items-center gap-1.5 text-[13px] text-[var(--brand)] hover:text-[var(--brand-deep)] font-medium transition-colors">
-      <span className="text-lg leading-none">+</span> Agregar sub-item
+      <span className="text-lg leading-none">+</span> Nuevo
     </button>
   )
   return <InlineAddRow depth={0} onAdd={n => { onAdd(n); setAdding(false) }} onCancel={() => setAdding(false)} />
