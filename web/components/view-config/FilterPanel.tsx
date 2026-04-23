@@ -372,7 +372,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
 
   return (
     <div
-      className="absolute top-full left-0 mt-1 w-[420px] bg-[var(--bg)] border border-[var(--border)] rounded-sm shadow-lg z-30 p-3"
+      className="w-[420px] bg-[var(--surface)] border border-[var(--border)] rounded-sm shadow-lg p-3"
       onClick={e => e.stopPropagation()}
     >
       {/* Header */}
