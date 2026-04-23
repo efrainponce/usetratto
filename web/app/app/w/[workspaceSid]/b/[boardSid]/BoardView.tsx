@@ -1110,8 +1110,6 @@ export function BoardView({
           </button>
         ) : null}
 
-        <div className="flex-1" />
-
         {/* Fase 19 — Filter button (subheader style) */}
         <div className="relative py-1" ref={filterBtnRef}>
           <button
@@ -1127,7 +1125,7 @@ export function BoardView({
             )}
           </button>
           {showFilter && activeView && (
-            <div className="absolute top-full right-0 mt-1 z-40">
+            <div className="absolute top-full left-0 mt-1 z-40">
               <FilterPanel
                 columns={columns}
                 filters={effectiveConfig.filters ?? []}
@@ -1153,7 +1151,7 @@ export function BoardView({
             )}
           </button>
           {showSort && activeView && (
-            <div className="absolute top-full right-0 mt-1 z-40">
+            <div className="absolute top-full left-0 mt-1 z-40">
               <SortPanel
                 columns={columns}
                 sorts={effectiveConfig.sort ?? []}
@@ -1179,7 +1177,7 @@ export function BoardView({
             )}
           </button>
           {showGroup && activeView && (
-            <div className="absolute top-full right-0 mt-1 z-40">
+            <div className="absolute top-full left-0 mt-1 z-40">
               <GroupPanel
                 columns={columns}
                 groupBy={effectiveConfig.group_by ?? null}
@@ -1190,6 +1188,8 @@ export function BoardView({
             </div>
           )}
         </div>
+
+        <div className="flex-1" />
 
         {/* Column picker */}
         <div className="relative py-1" ref={colPickerRef}>
