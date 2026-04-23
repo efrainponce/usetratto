@@ -36,7 +36,8 @@ type Props = {
   channelSummary?:      Record<string, { message_count: number; unread_count: number }>
   onBulkDelete?:        (ids: string[]) => void
   onColumnSettings?:    (colKey: string) => void
-  onAddColumn?:         (name: string, kind: string, settings?: Record<string, unknown>) => Promise<void>
+  onAddColumn?:         (name: string, kind: string, settings?: Record<string, unknown>, onlyInThisView?: boolean) => Promise<void>
+  showViewScopeToggle?: boolean
   loading?:             boolean
   storageKey?:          string   // if provided, column widths are persisted to localStorage
   groups?:              GroupedRows[]    // When provided + non-empty, renders grouped mode (disables virtualization)
@@ -56,6 +57,7 @@ export function GenericDataTable({
   onBulkDelete,
   onColumnSettings,
   onAddColumn,
+  showViewScopeToggle,
   loading,
   storageKey,
   groups,
@@ -523,7 +525,7 @@ export function GenericDataTable({
                 })}
                 {onAddColumn && (
                   <th className="border-r border-[var(--border)] px-1" style={{ width: 36 }}>
-                    <AddColumnButton onAdd={onAddColumn} />
+                    <AddColumnButton onAdd={onAddColumn} showViewScopeToggle={showViewScopeToggle} />
                   </th>
                 )}
               </tr>
@@ -758,10 +760,14 @@ const ADD_COL_KINDS: AddColKind[] = [
   { value: '__sysid',     label: 'ID del sistema',     kind: 'autonumber', settings: { source: 'sid', pad: 0 } },
 ]
 
-function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string, settings?: Record<string, unknown>) => Promise<void> }) {
+function AddColumnButton({ onAdd, showViewScopeToggle }: {
+  onAdd: (name: string, kind: string, settings?: Record<string, unknown>, onlyInThisView?: boolean) => Promise<void>
+  showViewScopeToggle?: boolean
+}) {
   const [open,     setOpen]     = useState(false)
   const [name,     setName]     = useState('')
   const [optValue, setOptValue] = useState('text')
+  const [onlyInThisView, setOnlyInThisView] = useState(false)
   const [saving,   setSaving]   = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [pos,      setPos]      = useState<{ top: number; left: number } | null>(null)
@@ -781,6 +787,7 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string, settin
     setOpen(true)
     setName('')
     setOptValue('text')
+    setOnlyInThisView(false)
     setError(null)
     setTimeout(() => inputRef.current?.focus(), 30)
   }
@@ -793,7 +800,7 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string, settin
     setSaving(true)
     setError(null)
     try {
-      await onAdd(name.trim(), opt.kind, opt.settings)
+      await onAdd(name.trim(), opt.kind, opt.settings, onlyInThisView)
       handleClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al crear columna')
@@ -861,6 +868,17 @@ function AddColumnButton({ onAdd }: { onAdd: (name: string, kind: string, settin
               >{k.label}</button>
             ))}
           </div>
+          {showViewScopeToggle && (
+            <label className="flex items-center gap-2 text-[12px] text-[var(--ink-2)] mb-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={onlyInThisView}
+                onChange={e => setOnlyInThisView(e.target.checked)}
+                className="w-3.5 h-3.5 accent-[var(--brand)]"
+              />
+              Solo en esta vista
+            </label>
+          )}
           {error && (
             <p className="text-[11px] text-[var(--stage-lost)] mb-2">{error}</p>
           )}

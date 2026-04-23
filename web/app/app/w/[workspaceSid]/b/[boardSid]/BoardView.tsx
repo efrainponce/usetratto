@@ -479,7 +479,7 @@ export function BoardView({
   }, [colIdMap, refColsMeta, refTargetCols, rawCols, ITEMS_FIELD])
 
   // ── Create ─────────────────────────────────────────────────────────────────
-  const handleAddColumn = useCallback(async (name: string, kind: string, settings?: Record<string, unknown>) => {
+  const handleAddColumn = useCallback(async (name: string, kind: string, settings?: Record<string, unknown>, onlyInThisView?: boolean) => {
     const res = await fetch(`/api/boards/${boardId}/columns`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -491,7 +491,31 @@ export function BoardView({
     }
     const col = await res.json() as BoardColumn
     setRawCols(prev => [...prev, col])
-  }, [boardId])
+
+    // View-scoped: hide the column in every view OTHER than the active one
+    if (onlyInThisView && activeViewId) {
+      const otherViews = views.filter(v => v.id !== activeViewId)
+      if (otherViews.length > 0) {
+        // Optimistic local state
+        setViews(prev => prev.map(v => {
+          if (v.id === activeViewId) return v
+          const existing = v.columns.find(c => c.column_id === col.id)
+          if (existing) {
+            return { ...v, columns: v.columns.map(c => c.column_id === col.id ? { ...c, is_visible: false } : c) }
+          }
+          return { ...v, columns: [...v.columns, { id: '', column_id: col.id, is_visible: false, position: 0, width: 200 }] }
+        }))
+        // Persist hiding in other views
+        await Promise.all(otherViews.map(v =>
+          fetch(`/api/boards/${boardId}/views/${v.id}/columns/${col.id}`, {
+            method:  'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ is_visible: false }),
+          })
+        ))
+      }
+    }
+  }, [boardId, activeViewId, views])
 
   const handleNew = async () => {
     const res = await fetch('/api/items', {
@@ -1297,6 +1321,7 @@ export function BoardView({
             if (col) setColSettingsCol(col)
           }}
           onAddColumn={isBoardAdmin ? handleAddColumn : undefined}
+          showViewScopeToggle={views.length > 1}
           loading={false}
         />
       </div>
