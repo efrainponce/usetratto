@@ -245,7 +245,6 @@ function NativeRenderer({
   // Column widths — resizable
   const [colWidths, setColWidths] = useState<Record<string, number>>({
     __expand: 20,
-    __sid:    64,
     __name:   160,
   })
 
@@ -690,15 +689,13 @@ function NativeRenderer({
           <div className="flex-1" />
         </div>
 
+      {/* ── Scrollable region: header + rows + footer scroll together ──── */}
+      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="min-w-max">
+
       {/* ── Column header ─────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide select-none flex-none">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] text-[11px] font-semibold text-[var(--ink-4)] uppercase tracking-wide select-none flex-none sticky top-0 z-10">
         <div className="flex-none" style={{ width: cw('__expand') }} />
-        <div className="relative flex-none" style={{ width: cw('__sid') }}>
-          #
-          <div onMouseDown={e => startResize('__sid', 64, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
-            <div className="h-4 w-px rounded-full bg-[var(--border)] group-hover/resizer:bg-[var(--brand-soft)] transition-colors" />
-          </div>
-        </div>
         <div className="relative flex-none" style={{ width: cw('__name') }}>
           Nombre
           <div onMouseDown={e => startResize('__name', 160, e)} className="absolute right-0 top-0 h-full w-3 flex items-center justify-center cursor-col-resize select-none z-10 group/resizer" onClick={e => e.stopPropagation()}>
@@ -796,7 +793,7 @@ function NativeRenderer({
       </div>
 
       {/* ── Rows ──────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
+      <div>
         {rows.length === 0 && (
           <div className="flex items-center justify-center py-10 text-[13px] text-[var(--ink-3)] italic">
             Sin sub-items
@@ -856,9 +853,8 @@ function NativeRenderer({
 
       {/* ── Aggregate footer row ─────────────────────────────────────────── */}
       {rows.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-1 border-t border-[var(--border)] bg-[var(--surface-2)] flex-none text-[11px] select-none">
+        <div className="flex items-center gap-2 px-4 py-1 border-t border-[var(--border)] bg-[var(--surface-2)] flex-none text-[11px] select-none sticky bottom-0 z-10">
           <div className="flex-none" style={{ width: cw('__expand') }} />
-          <div className="flex-none" style={{ width: cw('__sid') }} />
           <div className="flex-none text-[var(--ink-4)] italic" style={{ width: cw('__name') }}>Totales</div>
           {displayCols.map(col => {
             const kindDefault = col.kind === 'image' || col.kind === 'file' ? 180 : 96
@@ -934,6 +930,10 @@ function NativeRenderer({
           <div className="w-7 flex-none" />
         </div>
       )}
+
+      </div>
+      </div>
+      {/* ── end scrollable region ───────────────────────────────────────── */}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       <div className="flex-none border-t border-[var(--border)] px-4 py-2">
@@ -1105,9 +1105,6 @@ function NativeRow({
           <span className="text-[var(--ink-4)] text-[10px]">└</span>
         )}
       </div>
-
-      {/* SID */}
-      <div className="flex-none text-[12px] text-[var(--ink-3)] font-mono" style={{ width: w('__sid', 64) }}>{row.sid}</div>
 
       {/* Name */}
       <div className="flex-none" style={{ width: w('__name', 160) }}>
