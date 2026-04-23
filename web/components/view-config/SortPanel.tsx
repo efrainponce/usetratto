@@ -96,7 +96,7 @@ export function SortPanel({ columns, sorts, onChange, onClose }: Props) {
             newSorts[index].col_key = e.target.value
             onChange(newSorts)
           }}
-          className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+          className="flex-1 min-w-0 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
         >
           {sortableColumns.map(col => (
             <option key={col.key} value={col.key}>

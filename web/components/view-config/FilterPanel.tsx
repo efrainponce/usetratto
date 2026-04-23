@@ -95,7 +95,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
                 onValueChange([num, v2])
               }}
               placeholder="Min"
-              className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+              className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
             />
             <span className="text-[var(--ink-3)]">a</span>
             <input
@@ -106,7 +106,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
                 onValueChange([v1, num])
               }}
               placeholder="Max"
-              className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+              className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
             />
           </div>
         )
@@ -121,14 +121,14 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
               type="date"
               value={d1}
               onChange={e => onValueChange([e.target.value, d2])}
-              className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+              className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
             />
             <span className="text-[var(--ink-3)]">a</span>
             <input
               type="date"
               value={d2}
               onChange={e => onValueChange([d1, e.target.value])}
-              className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+              className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
             />
           </div>
         )
@@ -148,7 +148,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
           value={typeof value === 'string' ? value : ''}
           onChange={e => onValueChange(e.target.value)}
           placeholder="Valor..."
-          className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+          className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
         />
       )
     }
@@ -161,7 +161,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
           value={typeof value === 'number' ? value : ''}
           onChange={e => onValueChange(e.target.value ? Number(e.target.value) : null)}
           placeholder="Número..."
-          className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+          className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
         />
       )
     }
@@ -173,7 +173,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
           type="date"
           value={typeof value === 'string' ? value : ''}
           onChange={e => onValueChange(e.target.value)}
-          className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+          className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
         />
       )
     }
@@ -185,7 +185,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
         <select
           value={typeof value === 'string' ? value : ''}
           onChange={e => onValueChange(e.target.value)}
-          className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+          className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
         >
           <option value="">Seleccionar...</option>
           {options.map(opt => (
@@ -211,7 +211,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
             const vals = Array.from(e.target.selectedOptions, opt => opt.value)
             onValueChange(vals)
           }}
-          className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+          className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
         >
           {options.map(opt => (
             <option key={opt.value} value={opt.value}>
@@ -229,7 +229,7 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
         <select
           value={typeof value === 'string' ? value : ''}
           onChange={e => onValueChange(e.target.value)}
-          className="flex-1 text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none"
+          className="w-full text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none"
         >
           <option value="">Seleccionar...</option>
           {options.map(opt => (
@@ -281,65 +281,62 @@ export function FilterPanel({ columns, filters, onChange, onClose }: Props) {
 
     const operators = OPERATORS_BY_KIND[column.kind] ?? []
 
+    const needsValue = filter.operator !== 'is_empty' && filter.operator !== 'is_not_empty'
+
     return (
-      <div key={index} className="flex gap-2 items-start pb-3 mb-3 border-b border-[var(--border)] last:border-b-0 last:mb-0 last:pb-0">
-        {/* Column picker */}
-        <select
-          value={filter.col_key}
-          onChange={e => {
-            const newFilters = [...filters]
-            newFilters[index].col_key = e.target.value
-            // Reset operator to first available
-            const newCol = filterableColumns.find(c => c.key === e.target.value)
-            if (newCol) {
-              newFilters[index].operator = OPERATORS_BY_KIND[newCol.kind]?.[0] ?? 'equals'
-              newFilters[index].value = ''
-            }
-            onChange(newFilters)
-          }}
-          className="text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none flex-none w-[140px]"
-        >
-          {filterableColumns.map(col => (
-            <option key={col.key} value={col.key}>
-              {col.label}
-            </option>
-          ))}
-        </select>
+      <div key={index} className="pb-3 mb-3 border-b border-[var(--border)] last:border-b-0 last:mb-0 last:pb-0">
+        {/* Row 1: column picker + operator picker + remove button */}
+        <div className="flex gap-2 items-center mb-2">
+          <select
+            value={filter.col_key}
+            onChange={e => {
+              const newFilters = [...filters]
+              newFilters[index].col_key = e.target.value
+              const newCol = filterableColumns.find(c => c.key === e.target.value)
+              if (newCol) {
+                newFilters[index].operator = OPERATORS_BY_KIND[newCol.kind]?.[0] ?? 'equals'
+                newFilters[index].value = ''
+              }
+              onChange(newFilters)
+            }}
+            className="text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none flex-1 min-w-0"
+          >
+            {filterableColumns.map(col => (
+              <option key={col.key} value={col.key}>{col.label}</option>
+            ))}
+          </select>
 
-        {/* Operator picker */}
-        <select
-          value={filter.operator}
-          onChange={e => {
-            const newFilters = [...filters]
-            newFilters[index].operator = e.target.value as FilterOperator
-            onChange(newFilters)
-          }}
-          className="text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none flex-none w-[110px]"
-        >
-          {operators.map(op => (
-            <option key={op} value={op}>
-              {OPERATOR_LABELS[op]}
-            </option>
-          ))}
-        </select>
+          <select
+            value={filter.operator}
+            onChange={e => {
+              const newFilters = [...filters]
+              newFilters[index].operator = e.target.value as FilterOperator
+              onChange(newFilters)
+            }}
+            className="text-[12px] px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] focus:outline-none flex-1 min-w-0"
+          >
+            {operators.map(op => (
+              <option key={op} value={op}>{OPERATOR_LABELS[op]}</option>
+            ))}
+          </select>
 
-        {/* Value input */}
-        <div className="flex-1 flex items-center gap-2">
-          {renderValueInput(column, filter.operator, filter.value, (newVal) => {
-            const newFilters = [...filters]
-            newFilters[index].value = newVal
-            onChange(newFilters)
-          })}
+          <button
+            onClick={() => onChange(filters.filter((_, i) => i !== index))}
+            className="flex-none text-[var(--ink-3)] hover:text-[var(--stage-lost)] transition-colors w-6 h-6 flex items-center justify-center rounded-sm hover:bg-[var(--surface-2)]"
+            title="Eliminar filtro"
+          >×</button>
         </div>
 
-        {/* Remove button */}
-        <button
-          onClick={() => onChange(filters.filter((_, i) => i !== index))}
-          className="flex-none text-[var(--ink-3)] hover:text-[var(--ink)] transition-colors px-1 py-1"
-          title="Eliminar filtro"
-        >
-          ×
-        </button>
+        {/* Row 2: value input full width */}
+        {needsValue && (
+          <div className="w-full">
+            {renderValueInput(column, filter.operator, filter.value, (newVal) => {
+              const newFilters = [...filters]
+              newFilters[index].value = newVal
+              onChange(newFilters)
+            })}
+          </div>
+        )}
       </div>
     )
   }
