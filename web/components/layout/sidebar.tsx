@@ -1,7 +1,9 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import ChatPanel from '@/components/ChatPanel'
 
 export type SidebarBoard = {
   id:         string
@@ -26,62 +28,101 @@ type Props = {
 
 // ─── Icon map per system_key ──────────────────────────────────────────────────
 
+// Iconos del design handoff — stroke 1.6, monocromos, estilo uniforme
+const svgBase = {
+  width:           '16',
+  height:          '16',
+  viewBox:         '0 0 24 24',
+  fill:            'none',
+  stroke:          'currentColor',
+  strokeWidth:     '1.6',
+  strokeLinecap:   'round' as const,
+  strokeLinejoin:  'round' as const,
+}
+
 function BoardSvgIcon({ systemKey }: { systemKey: string | null }) {
   switch (systemKey) {
     case 'opportunities':
+      // Bandera = oportunidad abierta (Flag del handoff)
       return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z" />
+        <svg {...svgBase}>
+          <path d="M5 21V4h12l-2 4 2 4H5" />
         </svg>
       )
     case 'contacts':
+      // Dos personas (Users del handoff) — más claro que una sola
       return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-          <circle cx="12" cy="7" r="4" />
+        <svg {...svgBase}>
+          <circle cx="9" cy="8" r="3" />
+          <path d="M3 20c0-3 3-5 6-5s6 2 6 5" />
+          <circle cx="17" cy="7" r="2.5" />
+          <path d="M15 14c2.5 0 5 1.5 5 4" />
         </svg>
       )
     case 'accounts':
+      // Edificio del handoff
       return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 21h18M9 8h1m5 0h1M9 12h1m5 0h1M9 16h1m5 0h1M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+        <svg {...svgBase}>
+          <rect x="4" y="3" width="16" height="18" />
+          <line x1="9" y1="9" x2="9.01" y2="9" />
+          <line x1="15" y1="9" x2="15.01" y2="9" />
+          <line x1="9" y1="13" x2="9.01" y2="13" />
+          <line x1="15" y1="13" x2="15.01" y2="13" />
+          <line x1="9" y1="17" x2="15" y2="17" />
         </svg>
       )
     case 'vendors':
+      // Camión del handoff
       return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="1" y="3" width="15" height="13" rx="1" />
-          <path d="M16 8h4l3 5v4h-7V8z" />
-          <circle cx="5.5" cy="18.5" r="2.5" />
-          <circle cx="18.5" cy="18.5" r="2.5" />
+        <svg {...svgBase}>
+          <rect x="2" y="7" width="12" height="10" />
+          <polygon points="14 10 19 10 22 14 22 17 14 17" />
+          <circle cx="6" cy="19" r="2" />
+          <circle cx="18" cy="19" r="2" />
         </svg>
       )
     case 'catalog':
+      // Caja 3D del handoff
       return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="12 2 2 7 12 12 22 7 12 2" />
-          <polyline points="2 17 12 22 22 17" />
-          <polyline points="2 12 12 17 22 12" />
+        <svg {...svgBase}>
+          <path d="M12 3l9 5v8l-9 5-9-5V8z" />
+          <path d="M3 8l9 5 9-5" />
+          <line x1="12" y1="13" x2="12" y2="21" />
         </svg>
       )
     case 'quotes':
+      // Documento del handoff
       return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-          <line x1="10" y1="9" x2="8" y2="9" />
+        <svg {...svgBase}>
+          <path d="M14 3H6v18h12V7z" />
+          <polyline points="14 3 14 7 18 7" />
+          <line x1="9" y1="13" x2="15" y2="13" />
+          <line x1="9" y1="17" x2="13" y2="17" />
         </svg>
       )
     default:
       return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <svg {...svgBase}>
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <path d="M3 9h18M3 15h18M9 3v18" />
         </svg>
       )
   }
+}
+
+// Prioridad de orden de system boards. Valores más bajos = aparecen primero.
+const SYSTEM_BOARD_ORDER: Record<string, number> = {
+  opportunities: 0,
+  contacts:      1,
+  accounts:      2,
+  catalog:       3,
+  quotes:        4,
+  vendors:       5,
+}
+
+function systemBoardRank(key: string | null): number {
+  if (!key) return 999
+  return SYSTEM_BOARD_ORDER[key] ?? 100
 }
 
 function initial(name: string | null) {
@@ -94,6 +135,7 @@ function initial(name: string | null) {
 export default function Sidebar({ boards, user, workspaceName, workspaceSid }: Props) {
   const pathname = usePathname()
   const router   = useRouter()
+  const [chatOpen, setChatOpen] = useState(false)
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -101,8 +143,17 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
     router.refresh()
   }
 
-  const systemBoards = boards.filter(b => b.system_key !== null)
+  const systemBoards = boards
+    .filter(b => b.system_key !== null)
+    .slice()
+    .sort((a, b) => systemBoardRank(a.system_key) - systemBoardRank(b.system_key))
   const customBoards = boards.filter(b => b.system_key === null)
+
+  // Extract active boardSid from pathname: /app/w/X/b/<boardSid>/...
+  const activeBoardSid = useMemo(() => {
+    const m = pathname.match(/\/b\/(\d+)/)
+    return m ? parseInt(m[1], 10) : undefined
+  }, [pathname])
 
   return (
     <div className="group relative w-[56px] flex-none h-screen">
@@ -117,38 +168,21 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
         ].join(' ')}
       >
 
-        {/* Brand */}
+        {/* Brand — logo Tratto "dos tiras" */}
         <div className="flex items-center gap-[10px] px-[3px] pb-4">
-          <div className="w-[30px] h-[30px] flex-none flex items-center justify-center bg-[var(--brand)] text-[var(--brand-ink)] rounded-[var(--radius)] font-bold text-[13px]">
-            T
+          <div className="w-[30px] h-[30px] flex-none flex items-center justify-center bg-[var(--brand)] text-[var(--brand-ink)] rounded-[var(--radius)]">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 6c3 3 5 6 7 12" />
+              <path d="M10 6c3 3 5 6 7 12" />
+            </svg>
           </div>
           <div className="font-mono-tabular font-bold text-[17px] tracking-[0.04em] uppercase text-[var(--ink)] leading-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">
             TRATTO
           </div>
         </div>
 
-        {/* Workspace label */}
-        <div className="label-caps px-[10px] pt-[10px] pb-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">
-          Espacio
-        </div>
-
-        {/* Workspace chip */}
-        <div className="flex items-center gap-[10px] px-[3px] py-2 mb-1.5 rounded-[var(--radius)] group-hover:bg-[var(--surface-2)] group-hover:border group-hover:border-[var(--border)] group-hover:px-[10px] transition-all duration-150">
-          <div className="w-[28px] h-[28px] flex-none flex items-center justify-center bg-[var(--brand)] text-[var(--brand-ink)] rounded-[var(--radius)] font-bold text-[12px]">
-            {initial(workspaceName)}
-          </div>
-          <div className="flex-1 min-w-0 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">
-            <div className="text-[13px] font-semibold text-[var(--ink)] leading-tight truncate">
-              {workspaceName}
-            </div>
-            <div className="text-[11px] text-[var(--ink-3)] font-normal mt-0.5 leading-tight truncate">
-              {user.role} · workspace
-            </div>
-          </div>
-        </div>
-
         {/* Boards label */}
-        <div className="label-caps px-[10px] pt-[10px] pb-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">
+        <div className="label-caps px-[10px] pt-[6px] pb-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">
           Boards
         </div>
 
@@ -179,6 +213,19 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
 
         {/* Footer */}
         <div className="flex flex-col gap-1">
+          <button
+            onClick={() => setChatOpen(true)}
+            className="flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] text-[13.5px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] transition-colors whitespace-nowrap w-full text-left"
+            title="Asistente Tratto"
+          >
+            <div className="flex-none text-[var(--brand)]">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+            </div>
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">Asistente</span>
+          </button>
+
           <Link
             href={`/app/w/${workspaceSid}/settings`}
             className="flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] text-[13.5px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] transition-colors whitespace-nowrap"
@@ -191,6 +238,28 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
             </div>
             <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">Configuración</span>
           </Link>
+
+          <div className="h-px bg-[var(--border)] my-1 mx-[10px]" />
+
+          {/* Workspace label */}
+          <div className="label-caps px-[10px] pt-1 pb-0.5 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">
+            Espacio
+          </div>
+
+          {/* Workspace chip */}
+          <div className="flex items-center gap-[10px] px-[3px] py-2 rounded-[var(--radius)] group-hover:bg-[var(--surface-2)] group-hover:border group-hover:border-[var(--border)] group-hover:px-[10px] transition-all duration-150">
+            <div className="w-[28px] h-[28px] flex-none flex items-center justify-center bg-[var(--brand)] text-[var(--brand-ink)] rounded-[var(--radius)] font-bold text-[12px]">
+              {initial(workspaceName)}
+            </div>
+            <div className="flex-1 min-w-0 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">
+              <div className="text-[13px] font-semibold text-[var(--ink)] leading-tight truncate">
+                {workspaceName}
+              </div>
+              <div className="text-[11px] text-[var(--ink-3)] font-normal mt-0.5 leading-tight truncate">
+                {user.role} · workspace
+              </div>
+            </div>
+          </div>
 
           <div className="h-px bg-[var(--border)] my-1 mx-[10px]" />
 
@@ -214,6 +283,8 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
         </div>
 
       </aside>
+
+      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} boardSid={activeBoardSid} />
     </div>
   )
 }

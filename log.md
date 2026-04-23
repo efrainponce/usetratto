@@ -1,5 +1,18 @@
 # log
 
+## 2026-04-23
+
+**~sesión 1 — Fase 20 Tratto AI Agent (sidebar web) + billing + UI polish**
+- Fase 20 CLOSED sprint 20.A+20.B: engine provider-agnostic (`LLMAdapter` interface con implementaciones Gemini 2.5 Flash + Anthropic Haiku 4.5), agent loop con streaming/tool_use (`agent.ts`, max 8 iter), 8 tools (search_items · get_item · create_item · update_item · change_stage · add_message · list_boards · get_board_summary), cada tool valida Zod + usa `AgentContext` del JWT + aplica `restrict_to_own` automático, system prompt con guardrail de scope "solo Tratto"
+- Transport sidebar: `POST /api/chat` SSE streaming (max 500 chars input), `hooks/useChat.ts` (SSE parser, sessionStorage sessionId, tool pill state), `components/ChatPanel.tsx` drawer 420px con burbujas user/assistant + tool pills animadas + Enter envía, botón burbuja en footer del sidebar extrae `boardSid` activo del pathname
+- Billing system **indispensable** para nunca pagar: migration `20260423000002_llm_billing.sql` con 3 tablas — `llm_pricing` seeded (gemini 2.5 flash/lite/pro, haiku 4.5, sonnet 4.6, opus 4.7), `llm_usage` append-only, `llm_budgets` con global row (workspace_id=NULL) $0.25/día $3/mes conservador. `lib/tratto-agent/billing.ts`: `assertBudget()` pre-flight + cada iteración, `recordUsage()` post-step calcula cost desde pricing table. Chat route devuelve 429 si budget exceeded ANTES de tocar LLM. Endpoint `GET /api/chat/usage` expone {budget, usage, remaining}. Verified: query test costó $0.000456 con Gemini free tier (~548 queries/día de headroom)
+- LLM adapter translator: `ChatMessage[]` ↔ Gemini `Content[]` (tool_result → `user` + `functionResponse`) + Anthropic `MessageParam[]` (tool_result → `user` con `tool_use_id`). Custom `zodToJsonSchema.ts` para convertir schemas Zod a JSON Schema que ambos providers consumen. Gemini 2.0 Flash deprecated para cuentas nuevas → default cambiado a 2.5 Flash
+- Migration `20260423000001_chat_sessions.sql`: `chat_sessions` (transport + last_message_at) + `chat_messages` (role user/assistant/tool_result, tool_calls jsonb) + RLS user-only + trigger touch_last_message_at
+- UI polish: logo Tratto ahora es "dos tiras" curvas del design handoff (path M5 6c3 3 5 6 7 12) reemplazando la "T"; workspace chip movido al footer del sidebar arriba del logout (era top, ahora bottom); orden de system boards reforzado con `SYSTEM_BOARD_ORDER` map (Oportunidades=0 first, Contactos=1, Cuentas=2, Catálogo=3, Cotizaciones=4, Proveedores=5); iconos de boards cambiados a los del handoff (bandera=oportunidades, 2 personas=contactos, edificio con ventanas=cuentas, caja 3D=catálogo, doc con líneas=cotizaciones, camión=proveedores); `app/icon.svg` con logo Tratto sobre fondo brand pino reemplaza favicon.ico default
+- Deps instaladas en `web/`: `@google/genai` 1.50 + `@anthropic-ai/sdk` 0.90 + `zod` 4.3
+- Env vars nuevas: `LLM_PROVIDER=gemini|anthropic` (default gemini), `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_MODEL=gemini-2.5-flash`, `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`
+- 2 migraciones aplicadas a remote. Build verde 80+ rutas, typecheck limpio. Stage gates server-side simplificado (solo required+empty check, no conditions todavía — ButtonCell sigue evaluando conditions en client para UI path)
+
 ## 2026-04-22
 
 **~sesión 8 — Fase 19 polish + sub-items UX cleanup**
