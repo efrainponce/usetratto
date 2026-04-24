@@ -1,9 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import ChatPanel from '@/components/ChatPanel'
 
 export type SidebarBoard = {
   id:         string
@@ -135,7 +133,6 @@ function initial(name: string | null) {
 export default function Sidebar({ boards, user, workspaceName, workspaceSid }: Props) {
   const pathname = usePathname()
   const router   = useRouter()
-  const [chatOpen, setChatOpen] = useState(false)
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -149,12 +146,6 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
     .sort((a, b) => systemBoardRank(a.system_key) - systemBoardRank(b.system_key))
   const customBoards = boards.filter(b => b.system_key === null)
 
-  // Extract active boardSid from pathname: /app/w/X/b/<boardSid>/...
-  const activeBoardSid = useMemo(() => {
-    const m = pathname.match(/\/b\/(\d+)/)
-    return m ? parseInt(m[1], 10) : undefined
-  }, [pathname])
-
   return (
     <div className="group relative w-[56px] flex-none h-screen">
       <aside
@@ -163,13 +154,13 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
           'w-[56px] group-hover:w-[232px]',
           'transition-[width] duration-200 ease-out',
           'bg-[var(--bg-2)] border-r border-[var(--border)]',
-          'px-[10px] py-[14px] flex flex-col gap-1 overflow-hidden',
+          'px-[10px] pt-0 pb-[14px] flex flex-col gap-1 overflow-hidden',
           'group-hover:shadow-[var(--shadow-lg)]',
         ].join(' ')}
       >
 
         {/* Brand — logo Tratto "dos tiras" */}
-        <div className="flex items-center gap-[10px] px-[3px] pb-4">
+        <div className="h-[56px] flex-none flex items-center gap-[10px] pl-[13px] pr-[10px] group-hover:pl-[10px] border-b border-[var(--border)] -mx-[10px] mb-2 transition-[padding] duration-200 ease-out">
           <div className="w-[30px] h-[30px] flex-none flex items-center justify-center bg-[var(--brand)] text-[var(--brand-ink)] rounded-[var(--radius)]">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 6c3 3 5 6 7 12" />
@@ -213,19 +204,6 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
 
         {/* Footer */}
         <div className="flex flex-col gap-1">
-          <button
-            onClick={() => setChatOpen(true)}
-            className="flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] text-[13.5px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] transition-colors whitespace-nowrap w-full text-left"
-            title="Asistente Tratto"
-          >
-            <div className="flex-none text-[var(--brand)]">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-              </svg>
-            </div>
-            <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-75">Asistente</span>
-          </button>
-
           <Link
             href={`/app/w/${workspaceSid}/settings`}
             className="flex items-center gap-[10px] px-[10px] py-2 rounded-[var(--radius)] text-[13.5px] text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] transition-colors whitespace-nowrap"
@@ -283,8 +261,6 @@ export default function Sidebar({ boards, user, workspaceName, workspaceSid }: P
         </div>
 
       </aside>
-
-      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} boardSid={activeBoardSid} />
     </div>
   )
 }

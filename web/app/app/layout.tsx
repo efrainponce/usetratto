@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import Sidebar, { type SidebarBoard } from '@/components/layout/sidebar'
+import ChatRail from '@/components/ChatRail'
 
 export default async function AppLayout({
   children,
@@ -34,6 +35,7 @@ export default async function AppLayout({
       <main className="flex-1 overflow-auto">
         {children}
       </main>
+      <ChatRail />
     </div>
   )
 }

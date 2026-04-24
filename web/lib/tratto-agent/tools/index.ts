@@ -9,6 +9,8 @@ import { changeStage } from './change-stage'
 import { addMessage } from './add-message'
 import { listBoards } from './list-boards'
 import { getBoardSummary } from './get-board-summary'
+import { createColumn } from './create-column'
+import { createStage } from './create-stage'
 
 export const TRATTO_TOOLS: TrattoTool<any, any>[] = [
   searchItems,
@@ -19,6 +21,8 @@ export const TRATTO_TOOLS: TrattoTool<any, any>[] = [
   addMessage,
   listBoards,
   getBoardSummary,
+  createColumn,
+  createStage,
 ]
 
 export const TOOL_BY_NAME = new Map<string, TrattoTool<any, any>>(
