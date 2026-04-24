@@ -59,6 +59,7 @@ type Props = {
   boardId:               string
   boardSid:              number
   boardName:             string
+  boardSystemKey:        string | null
   initialStages:         BoardStage[]
   initialColumns:        BoardColumn[]
   initialUsers:          WorkspaceUser[]
@@ -76,7 +77,7 @@ type Props = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BoardView({
-  workspaceSid, boardId, boardSid, boardName,
+  workspaceSid, boardId, boardSid, boardName, boardSystemKey,
   initialStages, initialColumns, initialUsers, initialItems,
   initialSubItemColumns, initialSourceBoardId, initialViews, initialSubItemViews,
   boardSettings, subitemView, userRole, isBoardAdmin,
@@ -554,6 +555,7 @@ export function BoardView({
           workspaceSid={workspaceSid}
           itemId={rowId}
           boardId={boardId}
+          boardSystemKey={boardSystemKey}
           views={subItemViews}
           users={users}
           compact

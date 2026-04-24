@@ -26,7 +26,7 @@ export type BoardColumn = {
   settings: Record<string, unknown>
 }
 
-export type NativeData     = { kind: 'native';          columns: SubItemColumn[]; items: SubItemData[] }
+export type NativeData     = { kind: 'native';          columns: SubItemColumn[]; items: SubItemData[]; conditional_options?: Record<string, Record<string, string[]>> }
 export type BoardItemsData = { kind: 'board_items';      source_board_id: string; source_board_sid: number | null; source_board_name: string; columns: BoardColumn[]; items: SourceItem[] }
 export type BoardSubData   = { kind: 'board_sub_items';  source_board_id: string; columns: SubItemColumn[]; items: SubItemData[] }
 export type ViewData       = NativeData | BoardItemsData | BoardSubData

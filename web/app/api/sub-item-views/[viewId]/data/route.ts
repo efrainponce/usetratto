@@ -170,7 +170,84 @@ async function nativeHandler(
     }
   }
 
-  return NextResponse.json({ kind: 'native', columns: visibleColumns, items: l1 })
+  // Resolve conditional_select options — follow source_item_id → source board column value → CSV split.
+  // Shape: { [subItemId]: { [col_key]: string[] } }
+  const conditionalCols = visibleColumns.filter(c => c.kind === 'conditional_select')
+  const conditionalOptions: Record<string, Record<string, string[]>> = {}
+
+  if (conditionalCols.length > 0) {
+    const sourceIds2 = [...new Set(rows.map(r => r.source_item_id).filter(Boolean))] as string[]
+    if (sourceIds2.length > 0) {
+      const { data: sourceItems2 } = await supabase
+        .from('items')
+        .select('id, board_id')
+        .in('id', sourceIds2)
+
+      const srcBoardIds = [...new Set((sourceItems2 ?? []).map(s => s.board_id))]
+      const srcKeys = [...new Set(
+        conditionalCols
+          .map(c => (c.settings as Record<string, unknown>)?.source_col_key as string | undefined)
+          .filter((k): k is string => typeof k === 'string' && k.length > 0)
+      )]
+
+      if (srcBoardIds.length > 0 && srcKeys.length > 0) {
+        const { data: bcs } = await supabase
+          .from('board_columns')
+          .select('id, board_id, col_key')
+          .in('board_id', srcBoardIds)
+          .in('col_key', srcKeys)
+
+        const bcMap: Record<string, Record<string, string>> = {}
+        for (const bc of (bcs ?? [])) {
+          if (!bcMap[bc.board_id]) bcMap[bc.board_id] = {}
+          bcMap[bc.board_id][bc.col_key] = bc.id
+        }
+
+        const srcColIds = [...new Set((bcs ?? []).map(c => c.id))]
+        const valueByItemCol: Record<string, Record<string, string>> = {}
+        if (srcColIds.length > 0) {
+          const { data: ivs } = await supabase
+            .from('item_values')
+            .select('item_id, column_id, value_text')
+            .in('item_id', sourceIds2)
+            .in('column_id', srcColIds)
+          for (const v of (ivs ?? [])) {
+            if (v.value_text == null) continue
+            if (!valueByItemCol[v.item_id]) valueByItemCol[v.item_id] = {}
+            valueByItemCol[v.item_id][v.column_id] = v.value_text
+          }
+        }
+
+        const itemBoardById: Record<string, string> = {}
+        for (const s of (sourceItems2 ?? [])) itemBoardById[s.id] = s.board_id
+
+        const annotateTree = (items: SubItemData[]) => {
+          for (const item of items) {
+            if (item.source_item_id) {
+              const srcBoard = itemBoardById[item.source_item_id]
+              if (srcBoard) {
+                const byCol: Record<string, string[]> = {}
+                for (const col of conditionalCols) {
+                  const key = (col.settings as Record<string, unknown>)?.source_col_key as string | undefined
+                  if (!key) continue
+                  const srcColId = bcMap[srcBoard]?.[key]
+                  if (!srcColId) continue
+                  const raw = valueByItemCol[item.source_item_id]?.[srcColId]
+                  if (!raw) continue
+                  byCol[col.col_key] = raw.split(',').map(s => s.trim()).filter(Boolean)
+                }
+                if (Object.keys(byCol).length > 0) conditionalOptions[item.id] = byCol
+              }
+            }
+            if (item.children && item.children.length) annotateTree(item.children)
+          }
+        }
+        annotateTree(l1)
+      }
+    }
+  }
+
+  return NextResponse.json({ kind: 'native', columns: visibleColumns, items: l1, conditional_options: conditionalOptions })
 }
 
 // ─── board_items ──────────────────────────────────────────────────────────────

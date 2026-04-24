@@ -41,6 +41,7 @@ export default async function ItemPage({ params }: Props) {
       boardId={board.id}
       boardSid={board.sid}
       boardName={board.name}
+      boardSystemKey={board.system_key ?? null}
       initialStages={stages}
       initialColumns={columns}
       initialUsers={users}

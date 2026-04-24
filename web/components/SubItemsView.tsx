@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
+import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
-import dynamic from 'next/dynamic'
 import type { SubItemValue, SubItemData } from '@/lib/boards/types'
 import type { SubItemView, SubItemColumn, NativeData, EditTarget } from './sub-items/types'
 import { LoadingState } from './sub-items/LoadingState'
@@ -12,15 +12,6 @@ import { SubItemDetailDrawer } from './sub-items/SubItemDetailDrawer'
 import { RollupUpPopup } from './sub-items/RollupUpPopup'
 import { AddColumnInline } from './sub-items/AddColumnInline'
 import { ProductPicker } from './ProductPicker'
-
-const QuoteEditorModal = dynamic(() => import('./templates/QuoteEditorModal').then(m => m.QuoteEditorModal), {
-  ssr: false,
-  loading: () => (
-    <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center">
-      <div className="bg-white rounded-lg px-4 py-3 text-sm text-gray-600 shadow-lg">Cargando…</div>
-    </div>
-  ),
-})
 import { computeRollup, type RollupConfig } from '../lib/rollup-engine'
 import { evaluateCondition, type FormulaCondition } from '../lib/formula-engine'
 import { ColumnSettingsPanel, type PanelUser } from './ColumnSettingsPanel'
@@ -35,6 +26,7 @@ type Props = {
   workspaceSid?:           number
   itemId:                  string
   boardId:                 string
+  boardSystemKey?:         string | null
   views:                   SubItemView[]
   users?:                  PanelUser[]
   onCountChange?:          (count: number) => void
@@ -49,7 +41,7 @@ type Props = {
   isBoardAdmin?:           boolean
 }
 
-export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCountChange, onAddView, onDeleteView, onConfigureColumns, onBoardColumnCreated, compact, columnsVersion, boardSettings, subitemView, isBoardAdmin }: Props) {
+export function SubItemsView({ workspaceSid, itemId, boardId, boardSystemKey, views, users, onCountChange, onAddView, onDeleteView, onConfigureColumns, onBoardColumnCreated, compact, columnsVersion, boardSettings, subitemView, isBoardAdmin }: Props) {
   const [activeViewId, setActiveViewId] = useState<string>(views[0]?.id ?? '')
   const activeView = views.find(v => v.id === activeViewId) ?? views[0]
 
@@ -141,6 +133,7 @@ export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCo
           key={`${activeView.id}-${columnsVersion ?? 0}`}
           itemId={itemId}
           boardId={boardId}
+          boardSystemKey={boardSystemKey}
           viewId={activeView.id}
           config={activeView.config}
           users={users}
@@ -169,10 +162,11 @@ export function SubItemsView({ workspaceSid, itemId, boardId, views, users, onCo
 // Without source_board_id → manual add form.
 
 function NativeRenderer({
-  itemId, boardId, viewId, config, users, onCountChange, onBoardColumnCreated, compact, boardSettings, subitemView, isBoardAdmin, workspaceSid,
+  itemId, boardId, boardSystemKey, viewId, config, users, onCountChange, onBoardColumnCreated, compact, boardSettings, subitemView, isBoardAdmin, workspaceSid,
 }: {
   itemId:                  string
   boardId:                 string
+  boardSystemKey?:         string | null
   viewId:                  string
   config:                  Record<string, unknown>
   users?:                  PanelUser[]
@@ -198,49 +192,45 @@ function NativeRenderer({
   const [colSettings,  setColSettings]  = useState<SubItemColumn | null>(null)
   const [rollupTarget, setRollupTarget] = useState<{ colId: string; colKey: string; colName: string; colKind?: string; closedValues?: string[]; currentAggregate?: string; currentBoardColId?: string } | null>(null)
   const [savingRollup, setSavingRollup] = useState(false)
-  const [templates,    setTemplates]    = useState<Array<{ id: string; name: string }>>([])
-  const [generating,   setGenerating]   = useState(false)
-  const [generateErrors, setGenerateErrors] = useState<string[]>([])
-  const [editorOpen,   setEditorOpen]   = useState(false)
+  const [materializing, setMaterializing] = useState(false)
+  const [materializeError, setMaterializeError] = useState<string | null>(null)
+  const [conditionalOptions, setConditionalOptions] = useState<Record<string, Record<string, string[]>>>({})
 
-  // Templates that target the parent board — enable "Generar cotización" CTA at the bottom of the card
-  useEffect(() => {
-    if (!boardId) return
-    fetch(`/api/document-templates?target_board_id=${boardId}&status=active`)
-      .then(r => r.ok ? r.json() : { templates: [] })
-      .then(d => {
-        const list = Array.isArray(d) ? d : (d.templates ?? d.data ?? [])
-        setTemplates(list.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })))
-      })
-      .catch(() => setTemplates([]))
-  }, [boardId])
+  const router = useRouter()
 
-  const generateDoc = useCallback(async () => {
-    const tpl = templates[0]
-    if (!tpl) return
-    setGenerating(true)
-    setGenerateErrors([])
+  // Only opp boards with a source-mapped Catálogo view can materialize a quote
+  const canMaterializeQuote = boardSystemKey === 'opportunities' && sourceBoardId !== null
+  // Only catalog boards (Variantes view) can expand variants
+  const canExpandVariants = boardSystemKey === 'catalog' && sourceBoardId === null
+
+  const [expandModalOpen, setExpandModalOpen] = useState(false)
+  const [expandUseTallas, setExpandUseTallas] = useState(true)
+  const [expandUseColores, setExpandUseColores] = useState(false)
+  const [expanding, setExpanding] = useState(false)
+  const [expandError, setExpandError] = useState<string | null>(null)
+
+  const materializeQuote = useCallback(async () => {
+    setMaterializing(true)
+    setMaterializeError(null)
     try {
-      const res = await fetch('/api/documents/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template_id: tpl.id, source_item_id: itemId }),
-      })
+      const res = await fetch(`/api/items/${itemId}/materialize-quote`, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
-        if (Array.isArray(data.errors)) {
-          setGenerateErrors(data.errors)
-          return
-        }
-        alert(`Error: ${data.error ?? res.statusText}`)
+        setMaterializeError(data.error ?? res.statusText)
         return
       }
-      if (data.pdf_url) window.open(data.pdf_url, '_blank')
-      window.dispatchEvent(new CustomEvent('document-generated'))
+      const quoteSid: number | undefined = data.quote?.quote_sid
+      const quotesBoardSid: number | undefined = data.quotes_board_sid ?? undefined
+      if (workspaceSid && quoteSid && quotesBoardSid) {
+        router.push(`/app/w/${workspaceSid}/b/${quotesBoardSid}/${quoteSid}`)
+        return
+      }
+      // Fallback: notify so the reflejo tab refreshes in place
+      window.dispatchEvent(new CustomEvent('quote-materialized'))
     } finally {
-      setGenerating(false)
+      setMaterializing(false)
     }
-  }, [templates, itemId])
+  }, [itemId, workspaceSid, router])
 
   // Column widths — resizable
   const [colWidths, setColWidths] = useState<Record<string, number>>({
@@ -318,6 +308,7 @@ function NativeRenderer({
 
       setColumns(data.columns ?? [])
       setRows(data.items ?? [])
+      setConditionalOptions((data as NativeData).conditional_options ?? {})
     } catch (e) {
       console.error('[NativeRenderer] load error:', e)
     } finally {
@@ -326,6 +317,27 @@ function NativeRenderer({
   }, [viewId, itemId])
 
   useEffect(() => { load() }, [load])
+
+  const runExpand = useCallback(async () => {
+    setExpanding(true)
+    setExpandError(null)
+    try {
+      const res = await fetch(`/api/items/${itemId}/expand-variants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ use_tallas: expandUseTallas, use_colores: expandUseColores }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setExpandError(data.error ?? res.statusText)
+        return
+      }
+      setExpandModalOpen(false)
+      await load()
+    } finally {
+      setExpanding(false)
+    }
+  }, [itemId, expandUseTallas, expandUseColores, load])
 
   // ── Auto-expand L2_only ────────────────────────────────────────────────────
 
@@ -820,6 +832,7 @@ function NativeRenderer({
                 onRefresh={() => refreshRow(row.id)}
                 colWidths={colWidths}
                 workspaceSid={workspaceSid}
+                conditionalOptions={conditionalOptions[row.id]}
               />
             )}
             {showL2 && expandedL1.has(row.id) && (
@@ -840,6 +853,7 @@ function NativeRenderer({
                     onOpenDetail={() => setOpenDetailId(child.id)}
                     colWidths={colWidths}
                     workspaceSid={workspaceSid}
+                    conditionalOptions={conditionalOptions[child.id]}
                   />
                 ))}
                 {addingL2For === row.id && (
@@ -936,7 +950,7 @@ function NativeRenderer({
       {/* ── end scrollable region ───────────────────────────────────────── */}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <div className="flex-none border-t border-[var(--border)] px-4 py-2">
+      <div className="flex-none border-t border-[var(--border)] px-4 py-2 flex items-center justify-between gap-3">
         {sourceBoardId ? (
           <button
             onClick={() => setShowPicker(true)}
@@ -948,44 +962,41 @@ function NativeRenderer({
         ) : (
           <InlineAddButton onAdd={name => createL1(name)} />
         )}
-      </div>
-
-      {/* ── Generar cotización CTA ─────────────────────────────────────── */}
-      <div className="flex-none border-t border-[var(--border)] px-4 py-3 flex items-center gap-2.5 bg-[var(--surface-2)]">
-        <button
-          onClick={() => templates[0] && setEditorOpen(true)}
-          disabled={templates.length === 0 || !workspaceSid}
-          title={templates.length === 0 ? 'No hay plantilla de cotización configurada' : `Editar plantilla: ${templates[0]?.name}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          Abrir cotización en editor
-        </button>
-        <button
-          onClick={generateDoc}
-          disabled={generating || templates.length === 0 || rows.length === 0}
-          title={templates.length === 0 ? 'No hay plantilla' : rows.length === 0 ? 'Añade al menos una partida' : undefined}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)] hover:bg-[var(--surface)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-          </svg>
-          {generating ? 'Generando…' : 'Generar PDF'}
-        </button>
-        {templates.length === 0 && (
-          <span className="flex-1 text-right text-[11.5px] text-[var(--ink-4)]">
-            Configura una plantilla en Configuración → Boards
-          </span>
+        {canExpandVariants && (
+          <button
+            onClick={() => setExpandModalOpen(true)}
+            className="inline-flex items-center gap-1.5 text-[12px] text-[var(--ink-3)] hover:text-[var(--brand)] transition-colors"
+            title="Genera variantes desde las listas de tallas/colores del producto"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="stroke-current">
+              <path d="M3 6h6M6 3v6" strokeWidth="1.5" strokeLinecap="round"/>
+              <rect x="1.5" y="1.5" width="9" height="9" strokeWidth="1.2" rx="1"/>
+            </svg>
+            Expandir variantes
+          </button>
         )}
       </div>
-      {generateErrors.length > 0 && (
-        <div className="flex-none border-t border-[var(--stage-lost)] px-4 py-2 bg-[color-mix(in_oklab,var(--stage-lost)_8%,var(--surface)_92%)] text-[11.5px] text-[var(--stage-lost)] space-y-0.5">
-          {generateErrors.map((err, i) => (
-            <div key={i}>{err}</div>
-          ))}
+
+      {/* ── Mandar a cotización CTA (opp → quote snapshot) ─────────────────── */}
+      {canMaterializeQuote && (
+        <div className="flex-none border-t border-[var(--border)] px-4 py-3 flex items-center gap-2.5 bg-[var(--surface-2)]">
+          <button
+            onClick={materializeQuote}
+            disabled={materializing || rows.length === 0}
+            title={rows.length === 0 ? 'Añade al menos una partida' : 'Crea una cotización inmutable a partir de este catálogo'}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            {materializing ? 'Creando…' : 'Mandar a cotización'}
+          </button>
+        </div>
+      )}
+      {materializeError && (
+        <div className="flex-none border-t border-[var(--stage-lost)] px-4 py-2 bg-[color-mix(in_oklab,var(--stage-lost)_8%,var(--surface)_92%)] text-[11.5px] text-[var(--stage-lost)]">
+          {materializeError}
         </div>
       )}
 
@@ -1046,13 +1057,49 @@ function NativeRenderer({
           onClose={() => setRollupTarget(null)}
         />
       )}
-      {editorOpen && templates[0] && workspaceSid && (
-        <QuoteEditorModal
-          templateId={templates[0].id}
-          workspaceSid={workspaceSid}
-          itemId={itemId}
-          onClose={() => setEditorOpen(false)}
-        />
+      {expandModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center" onClick={() => !expanding && setExpandModalOpen(false)}>
+          <div className="bg-[var(--bg)] rounded-sm shadow-lg w-[360px] border border-[var(--border)]" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-[var(--border)]">
+              <div className="text-[14px] font-medium text-[var(--ink-1)]">Expandir variantes</div>
+              <div className="text-[12px] text-[var(--ink-4)] mt-0.5">Genera combinaciones a partir de las listas del producto.</div>
+            </div>
+            <div className="px-4 py-3 space-y-2">
+              <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+                <input type="checkbox" checked={expandUseTallas} onChange={e => setExpandUseTallas(e.target.checked)} />
+                <span>Tallas</span>
+                <span className="text-[11px] text-[var(--ink-4)] ml-auto">col: tallas</span>
+              </label>
+              <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+                <input type="checkbox" checked={expandUseColores} onChange={e => setExpandUseColores(e.target.checked)} />
+                <span>Colores</span>
+                <span className="text-[11px] text-[var(--ink-4)] ml-auto">col: colores_disponibles</span>
+              </label>
+              {!expandUseTallas && !expandUseColores && (
+                <div className="text-[11.5px] text-[var(--ink-4)] italic pt-1">Selecciona al menos una dimensión.</div>
+              )}
+              {expandError && (
+                <div className="text-[11.5px] text-[var(--stage-lost)] pt-1">{expandError}</div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-[var(--border)] flex items-center justify-end gap-2">
+              <button
+                onClick={() => setExpandModalOpen(false)}
+                disabled={expanding}
+                className="px-3 py-1.5 text-[13px] text-[var(--ink-3)] hover:text-[var(--ink-1)] transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={runExpand}
+                disabled={expanding || (!expandUseTallas && !expandUseColores)}
+                className="px-3 py-1.5 text-[13px] font-medium text-[var(--brand-ink)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {expanding ? 'Expandiendo…' : 'Expandir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1064,7 +1111,7 @@ function NativeRow({
   row, depth, isExpanded, displayCols, formulaCols, rollupCols, editTarget,
   onToggleExpand, onStartEdit, onCommit, onCancel, onDelete, onAddChild,
   computeFormula, onExpandVariants, onOpenDetail, isLocked, onImportChildren, onRefresh,
-  colWidths, workspaceSid,
+  colWidths, workspaceSid, conditionalOptions,
 }: {
   row: SubItemData; depth: number; isExpanded: boolean
   displayCols: SubItemColumn[]; formulaCols: SubItemColumn[]; rollupCols: SubItemColumn[]
@@ -1083,6 +1130,7 @@ function NativeRow({
   onRefresh?: () => void
   colWidths: Record<string, number>
   workspaceSid?: number
+  conditionalOptions?: Record<string, string[]>  // { col_key: options[] } for this row
 }) {
   const isEditing = (f: string) => editTarget?.id === row.id && editTarget.field === f
   const indent    = depth === 1 ? 'pl-5' : ''
@@ -1187,6 +1235,37 @@ function NativeRow({
                 onCancel={onCancel}
                 onNavigate={() => {}}
               />
+              {isInvalid && (
+                <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
+                  <span className="absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>
+                </div>
+              )}
+            </div>
+          )
+        }
+
+        if (col.kind === 'conditional_select') {
+          // Options come from the parent item (via source_item_id) — resolved server-side.
+          const rawOpts = conditionalOptions?.[col.col_key] ?? []
+          const opts = rawOpts.map(v => ({ value: v, label: v }))
+          return (
+            <div key={col.id} className="relative flex-none" style={{ width: w(col.id, 96) }} onClick={e => e.stopPropagation()}>
+              {opts.length === 0 ? (
+                <div className="w-full h-full px-2.5 py-2 text-[12px] text-[var(--ink-4)] italic truncate" title="Sin opciones — configúralas en Catálogo">
+                  —
+                </div>
+              ) : (
+                <SelectCell
+                  value={val?.value_text ?? null}
+                  isEditing={isEditing(col.id)}
+                  column={{ key: col.col_key, label: col.name, kind: 'select', settings: { options: opts } }}
+                  rowId={row.id}
+                  onStartEdit={canEdit ? () => onStartEdit(col.id) : () => {}}
+                  onCommit={v => onCommit(col.id, v as string)}
+                  onCancel={onCancel}
+                  onNavigate={() => {}}
+                />
+              )}
               {isInvalid && (
                 <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/70 bg-red-50/30" title={colValidation?.message}>
                   <span className="absolute top-0.5 right-0.5 text-[10px] leading-none select-none">❌</span>

@@ -132,9 +132,86 @@ export async function GET(req: Request) {
   // Filter out columns with no access (restricted without override)
   const visibleColumns = columnsWithAccess.filter(col => col.user_access !== null)
 
+  // Resolve conditional_select options — read the source item's column value and parse CSV.
+  // Shape: { [subItemId]: { [col_key]: ['A','B','C'] } }
+  const conditionalCols = visibleColumns.filter(c => c.kind === 'conditional_select')
+  const conditionalOptions: Record<string, Record<string, string[]>> = {}
+
+  if (conditionalCols.length > 0) {
+    const sourceItemIds = Array.from(new Set(subItems.map(s => s.source_item_id).filter(Boolean))) as string[]
+    if (sourceItemIds.length > 0) {
+      const { data: sourceItems } = await service
+        .from('items')
+        .select('id, board_id')
+        .in('id', sourceItemIds)
+
+      // Unique (board_id, source_col_key) pairs we need to resolve
+      const needed = new Set<string>()
+      for (const col of conditionalCols) {
+        const srcKey = (col.settings as Record<string, unknown>)?.source_col_key as string | undefined
+        if (!srcKey) continue
+        for (const s of (sourceItems ?? [])) needed.add(`${s.board_id}::${srcKey}`)
+      }
+
+      const bcLookup: Record<string, Record<string, string>> = {} // { board_id: { col_key: col_id } }
+      if (needed.size > 0) {
+        const boardIds = Array.from(new Set(Array.from(needed).map(k => k.split('::')[0])))
+        const colKeys  = Array.from(new Set(Array.from(needed).map(k => k.split('::')[1])))
+        const { data: bcs } = await service
+          .from('board_columns')
+          .select('id, board_id, col_key')
+          .in('board_id', boardIds)
+          .in('col_key', colKeys)
+        for (const bc of (bcs ?? [])) {
+          if (!bcLookup[bc.board_id]) bcLookup[bc.board_id] = {}
+          bcLookup[bc.board_id][bc.col_key] = bc.id
+        }
+      }
+
+      // Fetch values: one query per distinct column_id, filtered by source_item_ids
+      const allColumnIds = Array.from(new Set(Object.values(bcLookup).flatMap(m => Object.values(m))))
+      const valuesByItemCol: Record<string, Record<string, string>> = {} // { item_id: { col_id: value_text } }
+      if (allColumnIds.length > 0) {
+        const { data: ivs } = await service
+          .from('item_values')
+          .select('item_id, column_id, value_text')
+          .in('item_id', sourceItemIds)
+          .in('column_id', allColumnIds)
+        for (const v of (ivs ?? [])) {
+          if (!valuesByItemCol[v.item_id]) valuesByItemCol[v.item_id] = {}
+          if (v.value_text != null) valuesByItemCol[v.item_id][v.column_id] = v.value_text
+        }
+      }
+
+      // Assemble map per sub_item
+      const itemBoardById: Record<string, string> = {}
+      for (const si of (sourceItems ?? [])) itemBoardById[si.id] = si.board_id
+
+      for (const si of subItems) {
+        if (!si.source_item_id) continue
+        const srcBoard = itemBoardById[si.source_item_id]
+        if (!srcBoard) continue
+        const byCol: Record<string, string[]> = {}
+        for (const col of conditionalCols) {
+          const srcKey = (col.settings as Record<string, unknown>)?.source_col_key as string | undefined
+          if (!srcKey) continue
+          const colId = bcLookup[srcBoard]?.[srcKey]
+          if (!colId) continue
+          const raw = valuesByItemCol[si.source_item_id]?.[colId]
+          if (!raw) continue
+          byCol[col.col_key] = raw.split(',').map(s => s.trim()).filter(s => s.length > 0)
+        }
+        if (Object.keys(byCol).length > 0) {
+          conditionalOptions[si.id] = byCol
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     columns: visibleColumns,
     items,
+    conditional_options: conditionalOptions,
   })
 }
 

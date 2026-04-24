@@ -120,7 +120,9 @@ board_columns (id, sid, board_id, col_key, name, kind, position, is_system, is_h
   -- col_key: identificador estable tipo 'stage', 'owner', 'deadline', 'custom_1'
   -- kind: 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'people' | 'boolean' |
   --        'url' | 'file' | 'email' | 'phone' | 'autonumber' | 'formula' | 'relation' |
-  --        'button' | 'signature' | 'rollup' | 'reflejo'
+  --        'button' | 'signature' | 'rollup' | 'reflejo' | 'image' | 'conditional_select'
+  -- conditional_select: dropdown cuyas options salen de settings.source_col_key leído del item
+  --                     origen via sub_items.source_item_id (o relation col); opciones = CSV parseado
   -- is_system: true para columnas core (name, stage, owner, deadline, created_by, created_at, updated_at)
   -- settings: jsonb — opciones select, target_board_id relation, role metatag (owner/primary_stage/end_date),
   --           ref_source_col_key/ref_field_col_key/ref_field_kind (reflejo), auto_fill_targets, validation, etc.
@@ -214,10 +216,11 @@ document_audit_events (id, document_item_id, workspace_id, event_type, actor_id,
 | `contacts`     | table    | Personas (phone + email + cargo + cuenta como cols de sistema) |
 | `accounts`     | table    | Organizaciones (display: "Cuentas") |
 | `vendors`      | table    | Proveedores |
-| `catalog`      | table    | Catálogo de productos (name + descripcion + foto + unit_price) |
-| `quotes`       | pipeline | Cotizaciones generadas — stages Borrador/Enviada/Pendiente firma/Firmada/Anulada |
+| `catalog`      | table    | Catálogo de productos (name + sku + descripcion + unidad + foto + unit_price/precio venta + proveedor + costo_unitario + tallas + colores_disponibles) |
+| `quotes`       | pipeline | Cotizaciones generadas — stages Borrador/Enviada/Pendiente firma/Firmada/Anulada. Sub-item view `Partidas` recibe snapshots via RPC `materialize_quote_from_opportunity` |
+| `documents`    | pipeline | Documentos del combo (factura/oc_cliente/oc_proveedor/recepcion/devolucion) — discriminador `doc_type` + `direction`. Stages gated por `settings.applies_to_doc_types`. Folio `DOC` |
 
-**Opinionated knowledge graph:** cada system board trae `sub_item_views` por defecto (ver Fase 18.5 en plan.md). Ej: Oportunidades → {Catálogo, Cotizaciones}. Contactos → {Oportunidades, Cotizaciones}. Cuentas → {Contactos}. La cuenta de una oportunidad/cotización se resuelve via chain lookup desde el contacto (no link directo). System boards NO se pueden borrar.
+**Opinionated knowledge graph:** cada system board trae `sub_item_views` por defecto (ver Fase 18.5 en plan.md). Ej: Oportunidades → {Catálogo, Cotizaciones, Documentos}. Contactos → {Oportunidades, Cotizaciones, Documentos}. Cuentas → {Contactos, Documentos}. Proveedores → {Documentos}. Catálogo → {Variantes} (con columnas talla/color kind=conditional_select que leen tallas/colores_disponibles del producto). La cuenta de una oportunidad/cotización se resuelve via chain lookup desde el contacto (no link directo). System boards NO se pueden borrar.
 
 Estos boards se crean con `seed_system_boards(workspace_id)` al crear un workspace. Cada uno tiene sus `board_columns` de sistema pre-configuradas.
 

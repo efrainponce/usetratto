@@ -31,6 +31,7 @@ type Props = {
   boardId:             string
   boardSid:            number
   boardName:           string
+  boardSystemKey:      string | null
   initialStages:       BoardStage[]
   initialColumns:      BoardColumn[]
   initialUsers:        WorkspaceUser[]
@@ -44,7 +45,7 @@ type Props = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ItemDetailView({
-  workspaceSid, boardId, boardSid, boardName,
+  workspaceSid, boardId, boardSid, boardName, boardSystemKey,
   initialStages, initialColumns, initialUsers, initialItem, initialSubItemViews,
   boardSettings, subitemView, isBoardAdmin,
 }: Props) {
@@ -282,6 +283,7 @@ export function ItemDetailView({
                 workspaceSid={workspaceSid}
                 itemId={item.id}
                 boardId={boardId}
+                boardSystemKey={boardSystemKey}
                 views={subItemViews}
                 users={users}
                 boardSettings={boardSettings}
